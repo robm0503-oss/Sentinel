@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <title>Sentinel</title>
-<!-- Sentinel Haus-System v2 -->
+<!-- Sentinel Haus-System v3 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
@@ -66,7 +66,8 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
 .sheet p { margin: 0; color: var(--muted); line-height: 1.5; font-size: .95rem; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label, .grp h3 { font: 500 .7rem var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0; }
-.field input[type=text], .field input[type=password], .field input[type=number], .field select {
+.field textarea { resize: vertical; line-height: 1.4; }
+.field input[type=text], .field input[type=password], .field input[type=number], .field select, .field textarea {
   background: #151a1f; border: 1px solid var(--line); border-radius: 10px; color: var(--text); font: 500 1rem var(--display); padding: 11px 12px; width: 100%;
 }
 .check { display: flex; align-items: center; gap: 10px; font-size: .98rem; }
@@ -147,7 +148,8 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       <label for="sModel">Gehirn</label>
       <select id="sModel">
         <option value="claude-haiku-5-5">Haiku 5.5 · schnell und günstig</option>
-        <option value="claude-sonnet-5-5">Sonnet 5.5 · klüger, teurer</option>
+        <option value="claude-sonnet-5-5">Sonnet 5.5 · natürliche Gespräche (empfohlen)</option>
+        <option value="claude-opus-5-5">Opus 5.5 · am klügsten, deutlich teurer und langsamer</option>
       </select>
     </div>
     <div class="field">
@@ -165,6 +167,10 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <div class="field">
       <label for="sHaToken">Home Assistant Zugangstoken</label>
       <input id="sHaToken" type="password" autocomplete="off" placeholder="Langlebiges Zugriffstoken">
+    </div>
+    <div class="field">
+      <label for="sAbout">Über mich (das weiß Sentinel immer)</label>
+      <textarea id="sAbout" rows="5" placeholder="Wer du bist, was du machst, was dir wichtig ist …"></textarea>
     </div>
     <label class="check"><input id="sSearch" type="checkbox"> Im Internet suchen dürfen</label>
     <label class="check"><input id="sWake" type="checkbox"> Nur antworten, wenn „Sentinel“ gesagt wird</label>
@@ -194,6 +200,9 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   };
   const cfg = Object.assign({ key: "", model: "claude-haiku-5-5", ort: "", limit: 300, search: true, wake: true, ear: true, eye: true, haUrl: "", haToken: "" }, store.get("cfg", {}));
   const saveCfg = () => store.set("cfg", cfg);
+  // Umstieg auf v3: Sonnet als Standard-Gehirn für natürlichere Gespräche
+  if (!cfg.v3) { if (cfg.model === "claude-haiku-5-5") cfg.model = "claude-sonnet-5-5"; cfg.v3 = true; saveCfg(); }
+  if (typeof cfg.about !== "string") cfg.about = "";
 
   // ================= GESICHT =================
   const cv = $("face"), ctx = cv.getContext("2d"), S = cv.width / 240;
@@ -436,17 +445,40 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   let rec = null, recRunning = false, lastRecErr = null, followUntil = 0, oneShot = false;
   const earBtn = $("earBtn");
   function earUI() { earBtn.classList.toggle("on", cfg.ear); earBtn.setAttribute("aria-pressed", String(cfg.ear)); }
+  // Ganze Sätze sammeln: Android liefert oft Wortfetzen oder wiederholt Teile.
+  // Erst wenn du ca. 1,5 Sekunden nichts mehr sagst, geht der komplette Satz raus.
+  const PAUSE_MS = 1500;
+  let heardText = "", flushTimer = null;
+  function joinResults(results) {
+    const parts = [];
+    for (let i = 0; i < results.length; i++) {
+      const t = ((results[i][0] && results[i][0].transcript) || "").trim();
+      if (!t) continue;
+      const last = parts[parts.length - 1];
+      if (last && t.toLowerCase().startsWith(last.toLowerCase())) parts[parts.length - 1] = t; // Android-Wiederholung
+      else if (last && last.toLowerCase().endsWith(t.toLowerCase())) continue;
+      else parts.push(t);
+    }
+    return parts.join(" ").replace(/\s+/g, " ").trim();
+  }
+  function flushHeard() {
+    clearTimeout(flushTimer);
+    const t = heardText; heardText = "";
+    if (!t) return;
+    earPause();                 // frisch neu starten, damit Altes nicht im nächsten Satz landet
+    heard(t);
+    if (!busy && !speaking) setTimeout(earStart, 200);
+  }
   function earStart() {
     if (!SR || recRunning || busy || speaking || !(cfg.ear || oneShot)) return;
     try {
+      heardText = "";
       rec = new SR(); rec.lang = "de-DE"; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
       rec.onresult = e => {
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const r = e.results[i], t = (r[0] && r[0].transcript || "").trim();
-          if (!t) continue;
-          if (r.isFinal) heard(t);
-          else if (addressed(t)) setMood("zuhoeren");
-        }
+        heardText = joinResults(e.results);
+        if (heardText && addressed(heardText) && !busy && !speaking) setMood("zuhoeren");
+        clearTimeout(flushTimer);
+        flushTimer = setTimeout(flushHeard, PAUSE_MS);
       };
       rec.onerror = e => {
         lastRecErr = e.error;
@@ -456,6 +488,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       };
       rec.onend = () => {
         recRunning = false;
+        if (heardText) { flushHeard(); return; }
         const wait = lastRecErr === "network" ? 2500 : 250; lastRecErr = null;
         if ((cfg.ear || oneShot) && !busy && !speaking) setTimeout(earStart, wait);
       };
@@ -463,7 +496,10 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       if (!busy && !speaking) status(cfg.ear ? "hört zu" : "bereit");
     } catch (e) { recRunning = false; }
   }
-  function earPause() { if (rec && recRunning) { try { rec.abort(); } catch (e) {} } recRunning = false; }
+  function earPause() {
+    if (rec) { rec.onend = null; rec.onresult = null; if (recRunning) { try { rec.abort(); } catch (e) {} } }
+    recRunning = false;
+  }
   function afterSpeaking() { followUntil = Date.now() + FOLLOW_MS; setTimeout(earStart, 350); }
   function addressed(t) { return oneShot || !cfg.wake || Date.now() < followUntil || WAKE.test(t); }
   function heard(t) {
@@ -708,14 +744,21 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     const zeile = (titel, a) => `${titel}: ${a.length ? a.join("; ") : "(noch nichts)"}`;
     const listenText = Object.keys(listen).length ? Object.entries(listen).map(([n, a]) => `${n} (${a.length})`).join(", ") : "(keine)";
     const termText = termine.length ? termine.slice(0, 8).map(t => `${t.typ === "timer" ? "Timer" : "Erinnerung"} ${wannText(t.at)}: ${t.text || "ohne Text"}`).join("; ") : "(keine)";
-    return `Du bist Sentinel, der persönliche KI-Assistent und das Haus-System von ${wer}, so wie JARVIS bei Tony Stark. Dein Gesicht ist ein Tablet mit animierten Augen und Mund.
-Charakter: souverän, kompetent, vorausschauend und zuverlässig. Höflich, mit trockenem, feinem Humor, nie albern. Du sprichst ${wer} beim Namen an, wenn es passt, und duzt.
-Du bist ehrlich: Wenn du etwas nicht weißt, nicht siehst oder nicht kannst, sagst du das klar statt zu raten. Du gibst nicht vor, ein Mensch zu sein.
-Deine Antworten werden laut vorgelesen: knapp und präzise (meist 1 bis 3 Sätze), Deutsch, kein Markdown, keine Listen, keine Emojis, keine Links, keine Quellenangaben. Zahlen und Uhrzeiten so, wie man sie ausspricht.
+    return `Du bist Sentinel, der persönliche KI-Assistent und Gesprächspartner von ${wer}, so ähnlich wie JARVIS bei Tony Stark. Dein Gesicht ist ein Tablet mit animierten Augen und Mund. Dein Gehirn ist Claude.
+
+So redest du:
+Du führst ganz normale, natürliche Gespräche, so wie ein kluger, vertrauter Mensch, mit dem man gern redet. Du gehst auf das ein, was ${wer} gerade sagt, greifst Früheres aus dem Gespräch auf, hast eigene Gedanken und Meinungen, stellst auch mal eine Rückfrage und lässt das Gespräch fließen. Du klingst nie wie eine Maschine, die Funktionen aufzählt.
+Charakter: souverän, warmherzig, kompetent, mit trockenem, feinem Humor. Du duzt und sprichst ${wer} gelegentlich beim Namen an, aber nicht in jedem Satz.
+Länge: Bei Smalltalk und einfachen Fragen kurz, ein bis zwei Sätze. Wenn ${wer} etwas erklärt oder erzählt haben möchte, darfst du ausführlicher werden, aber immer so, wie man es gesprochen sagen würde.
+Deine Antworten werden laut vorgelesen: Deutsch, kein Markdown, keine Aufzählungszeichen, keine Emojis, keine Links, keine Quellenangaben. Zahlen und Uhrzeiten so, wie man sie ausspricht, also "Viertel nach drei" oder "fünfzehn Uhr zwölf".
+Du bist ehrlich: Wenn du etwas nicht weißt oder nicht kannst, sagst du es. Du gibst nicht vor, ein Mensch zu sein.
 Beginne JEDE Antwort mit genau einem Stimmungs-Tag für deine Augen: ${TAGS.map(t => "[" + t + "]").join(" ")}. Danach direkt der Text, den du sagst.
-Du hörst über ein Mikrofon. Was du hörst, kann Erkennungsfehler enthalten. Schließ aus dem Zusammenhang, was gemeint war. Nur wenn es wirklich unklar ist, frag kurz nach.
-${stream ? `Deine Augen sind eine Kamera. Zu jeder Nachricht bekommst du ein aktuelles Kamerabild: Das ist genau das, was du in diesem Moment siehst. Nutze es, wenn es passt, etwa bei "was siehst du", "schau mal" oder "was halte ich hier". Beschreibe nur, was wirklich im Bild ist. Wenn etwas unscharf, zu dunkel oder nicht im Bild ist, sag das und bitte darum, es näher zu zeigen. Erfinde nie etwas.
-Wenn im Bild etwas Wichtiges zu sehen ist, schreib ganz am Ende eine kurze Notiz für dein Gedächtnis in der Form [sah: ...]. Die wird nicht vorgelesen. Frühere Bilder siehst du nicht mehr, nur deine [sah: ...]-Notizen.` : "Deine Kamera ist gerade aus, du siehst also nichts. Sag das, wenn dir jemand etwas zeigen will."}
+
+Hören: Was ${wer} sagt, kommt über eine Spracherkennung. Die verschluckt oder verdreht manchmal Wörter. Deute großzügig, was gemeint ist, und antworte einfach darauf. Nur wenn du wirklich gar nicht erraten kannst, was gemeint war, frag locker nach.
+
+Sehen: ${stream ? `Du hast eine Kamera als Augen, aber du schaust nur hin, wenn es ums Sehen geht. Ein Kamerabild bekommst du nur, wenn ${wer} dich bittet, etwas anzuschauen. Brauchst du in einem solchen Moment ein Bild und hast keins, nutze kamera_bild. Sprich NICHT von dir aus über die Kamera oder darüber, was du siehst. Wenn du ein Bild hast, beschreibe nur, was wirklich darauf ist, und erfinde nichts. Ist etwas unscharf oder nicht im Bild, sag es und bitte darum, es näher zu zeigen.
+Wenn du auf einem Bild etwas Wichtiges gesehen hast, schreib ganz am Ende eine kurze Notiz in der Form [sah: ...]. Die wird nicht vorgelesen und hilft dir, dich später daran zu erinnern.` : `Deine Kamera ist aus. Erwähne das nur, wenn ${wer} dich bittet, etwas anzuschauen.`}
+${cfg.about ? `\nWas ${wer} selbst über sich erzählt:\n${cfg.about}\n` : ""}
 Deine Fähigkeiten: Timer und Erinnerungen stellen (sie klingeln auch, wenn gerade niemand redet), Listen führen (z. B. Einkauf, Aufgaben), dir Dinge merken${cfg.search ? ", im Internet nach aktuellen Infos suchen (Wetter, Nachrichten, Öffnungszeiten, Preise)" : ""}${cfg.haUrl && cfg.haToken ? ", das Smart Home über Home Assistant steuern (erst mit ha_geraete nachsehen, dann mit ha_schalten schalten; bei Türschlössern, Alarmanlagen und Heizung vorher kurz bestätigen lassen)" : ". Smart-Home-Steuerung ist noch nicht eingerichtet; sag das, wenn danach gefragt wird"}.
 Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
@@ -747,6 +790,7 @@ ${zeile("Menschen", ich.menschen)}`;
       { name: "liste", description: "Bearbeitet eine Liste wie Einkauf oder Aufgaben. aktion: anzeigen, hinzufuegen, entfernen oder leeren.",
         input_schema: obj({ aktion: { type: "string", enum: ["anzeigen", "hinzufuegen", "entfernen", "leeren"] }, liste: { type: "string" }, eintraege: { type: "array", items: { type: "string" } } }, ["aktion", "liste"]) },
     ];
+    if (stream) t.push({ name: "kamera_bild", description: "Schaut durch deine Kamera und gibt dir das aktuelle Bild. Nur nutzen, wenn du gebeten wirst, etwas anzuschauen.", input_schema: obj({}) });
     if (cfg.haUrl && cfg.haToken) {
       t.push(
         { name: "ha_geraete", description: "Listet Smart-Home-Geräte aus Home Assistant mit entity_id, Name und Zustand. Optional nach Bereich (z. B. light, switch, media_player, climate) oder Suchwort filtern.",
@@ -763,7 +807,13 @@ ${zeile("Menschen", ich.menschen)}`;
     return t;
   }
 
+  const SEE_RE = /\b(siehst|sieh|schau|schaust|guck|guckst|zeig|zeige|zeigen|halte|halt ich|in der hand|das hier|dies hier|was ist das|wer ist das|erkennst|erkenn|lies|lesen|wie sehe|wie seh|aussehen|aussehe|outfit|anhab|kamera|foto)\w*/i;
   async function runTool(b) {
+    if (b.name === "kamera_bild") {
+      const data = snapshot();
+      if (!data) return { type: "tool_result", tool_use_id: b.id, content: "Die Kamera ist aus.", is_error: true };
+      return { type: "tool_result", tool_use_id: b.id, content: [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data } }, { type: "text", text: "Das siehst du gerade." }] };
+    }
     const ok = content => ({ type: "tool_result", tool_use_id: b.id, content: typeof content === "string" ? content : JSON.stringify(content) });
     const fail = text => ({ type: "tool_result", tool_use_id: b.id, content: String(text), is_error: true });
     const inp = b.input || {};
@@ -849,8 +899,8 @@ ${zeile("Menschen", ich.menschen)}`;
   }
 
   async function think(userText) {
-    // Bei jeder Nachricht sieht er, was die Kamera gerade sieht (kein Umweg, daher schneller)
-    const img = snapshot();
+    // Nur hinschauen, wenn es ums Sehen geht – sonst ganz normales Gespräch
+    const img = SEE_RE.test(userText) ? snapshot() : null;
     const content = img
       ? [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: img } }, { type: "text", text: userText }]
       : userText;
@@ -859,7 +909,7 @@ ${zeile("Menschen", ich.menschen)}`;
     for (let round = 0; round < 8; round++) {
       let data;
       try {
-        data = await api({ model: cfg.model, max_tokens: 700, system: rules(), tools: tools(), messages: work });
+        data = await api({ model: cfg.model, max_tokens: 1000, system: rules(), tools: tools(), messages: work });
       } catch (e) {
         if (e.kind === "search" && cfg.search) { cfg.search = false; saveCfg(); note("Websuche ist für deinen API-Key nicht freigeschaltet. Sie ist jetzt aus.", 6000); round--; continue; }
         throw e;
@@ -910,7 +960,7 @@ ${zeile("Menschen", ich.menschen)}`;
       const { tag, clean, sah } = parse(answer || "");
       const said = clean || "Erledigt.";
       history.push({ role: "user", content: text }, { role: "assistant", content: said + (sah ? ` [sah: ${sah}]` : "") });
-      while (history.length > 20) history.splice(0, 2);
+      while (history.length > 40) history.splice(0, 2);
       logTurn("assistant", said + (sah ? ` (gesehen: ${sah})` : ""));
       busy = false; sendBtn.disabled = false;
       setMood(tag);
@@ -1009,7 +1059,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   function openSettings() {
     $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sOrt").value = cfg.ort;
     $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake;
-    $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken;
+    $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about;
     const u = usage.tag === heute() ? usage : { n: 0, inTok: 0, outTok: 0 };
     $("sUsage").textContent = `Heute: ${u.n} Anfragen · ${u.inTok.toLocaleString("de-DE")} Tokens rein · ${u.outTok.toLocaleString("de-DE")} Tokens raus`;
     $("setPanel").hidden = false;
@@ -1020,7 +1070,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.ort = $("sOrt").value.trim();
     cfg.limit = Math.max(10, Math.min(5000, parseInt($("sLimit").value, 10) || 300));
     cfg.search = $("sSearch").checked; cfg.wake = $("sWake").checked;
-    cfg.haUrl = $("sHaUrl").value.trim(); cfg.haToken = $("sHaToken").value.trim();
+    cfg.haUrl = $("sHaUrl").value.trim(); cfg.haToken = $("sHaToken").value.trim(); cfg.about = $("sAbout").value.trim().slice(0, 4000);
     saveCfg(); $("setPanel").hidden = true; note("Gespeichert.", 2000);
   });
 
