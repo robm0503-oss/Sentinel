@@ -173,10 +173,21 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       <textarea id="sAbout" rows="5" placeholder="Wer du bist, was du machst, was dir wichtig ist …"></textarea>
     </div>
     <label class="check"><input id="sSearch" type="checkbox"> Im Internet suchen dürfen</label>
+    <div class="field">
+      <label for="sEngine">Ohren</label>
+      <select id="sEngine">
+        <option value="vosk">Eigene Ohren · hören dauerhaft, offline (empfohlen)</option>
+        <option value="google">Google-Erkennung · genauer, braucht aber Antippen</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="sWakeExtra">Weckwort-Varianten (mit Komma)</label>
+      <input id="sWakeExtra" type="text" autocomplete="off" placeholder="z. B. sende nil, zentner">
+    </div>
     <label class="check"><input id="sWake" type="checkbox"> Nur antworten, wenn „Sentinel“ gesagt wird</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint">Sentinel Version 8</div>
+    <div class="hint">Sentinel Version 9</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -208,7 +219,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     get(k, d) { try { const v = localStorage.getItem("sentinel." + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem("sentinel." + k, JSON.stringify(v)); } catch (e) {} },
   };
-  const cfg = Object.assign({ key: "", model: "claude-haiku-5-5", ort: "", limit: 300, search: true, wake: true, look: true, ear: true, eye: true, haUrl: "", haToken: "" }, store.get("cfg", {}));
+  const cfg = Object.assign({ key: "", model: "claude-haiku-5-5", ort: "", limit: 300, search: true, wake: true, look: true, engine: "vosk", wakeExtra: "", voskUrl: "", ear: true, eye: true, haUrl: "", haToken: "" }, store.get("cfg", {}));
   const saveCfg = () => store.set("cfg", cfg);
   // Umstieg auf v3: Sonnet als Standard-Gehirn für natürlichere Gespräche
   if (!cfg.v3) { if (cfg.model === "claude-haiku-5-5") cfg.model = "claude-sonnet-5-5"; cfg.v3 = true; saveCfg(); }
@@ -480,7 +491,13 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   // ================= OHREN: Dauerhören mit Weckwort =================
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   // „Sentinel“ und typische Verhörer der Google-Spracherkennung
-  const WAKE = /\b(sentinel+s?|sentinal|sentenel|sentenell|centinel+|sendinel+|zentinel+|santinel+|setinel+|sentin|sentiment|sentimental|senti ?nel+|sendi ?nel+|send in el|sent in el|zenti ?nel+)\b[\s,.!?:]*/i;
+  const WAKE_BASE = "sentinel+s?|sentinal|sentenel|sentenell|centinel+|sendinel+|zentinel+|santinel+|setinel+|sentin|sentiment|sentimental|senti ?nel+|sendi ?nel+|send in el|sent in el|zenti ?nel+";
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  function buildWake() {
+    const extra = String(cfg.wakeExtra || "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean).map(esc).join("|");
+    return new RegExp("\\b(" + WAKE_BASE + (extra ? "|" + extra : "") + ")\\b[\\s,.!?:]*", "i");
+  }
+  let WAKE = buildWake();
   const FOLLOW_MS = 15000; // so lange darf man nach seiner Antwort ohne "Sentinel" weiterreden
   let rec = null, recRunning = false, lastRecErr = null, followUntil = 0, oneShot = false;
   const earBtn = $("earBtn");
@@ -527,6 +544,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   }
   function earStart() {
     clearTimeout(retryTimer);
+    if (cfg.engine !== "google") return; // eigene Ohren laufen dauerhaft, kein Neustart nötig
     if (!SR || recRunning || busy || speaking || !(cfg.ear || oneShot)) return;
     if (document.visibilityState !== "visible") return;
     try {
@@ -577,10 +595,11 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     if (rec) { const r = rec; rec = null; r.onend = r.onresult = r.onerror = r.onstart = null; try { r.abort(); } catch (e) {} }
     recRunning = false; startPending = 0;
   }
-  function afterSpeaking() { followUntil = Date.now() + FOLLOW_MS; setTimeout(earStart, 350); }
+  function afterSpeaking() { followUntil = Date.now() + FOLLOW_MS; muteUntil = Date.now() + 600; setTimeout(earStart, 350); }
   // Wächter: nichts darf dauerhaft hängen bleiben
   setInterval(() => {
     if (busy || speaking || !$("startPanel").hidden) return;
+    if (cfg.engine !== "google") return voskWatch();
     const now = Date.now();
     // blau, aber seit 8 Sekunden nichts mehr gehört -> zurück auf normal
     if (mood === "zuhoeren" && document.activeElement !== msg && now - lastResultAt > 8000) setMood("neutral");
@@ -593,8 +612,81 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     if (!recRunning) earStart();
   }, 3000);
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && cfg.ear && !busy && !speaking) { hardReset("wieder sichtbar"); earStart(); }
+    if (document.visibilityState !== "visible") return;
+    if (cfg.engine !== "google") { if (vosk.ctx && vosk.ctx.state !== "running") vosk.ctx.resume().catch(() => {}); return; }
+    if (cfg.ear && !busy && !speaking) { hardReset("wieder sichtbar"); earStart(); }
   });
+
+  // ================= EIGENE OHREN (Vosk, läuft komplett auf dem Tablet) =================
+  // Braucht kein Antippen, hört dauerhaft, kostet nichts. Das Sprachmodell (ca. 46 MB) wird
+  // einmal geladen und dann im Tablet gespeichert.
+  const VOSK_JS = "https://cdn.jsdelivr.net/npm/vosk-browser@0.0.8/dist/vosk.js";
+  const VOSK_MODEL = "https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-de-0.15.tar.gz";
+  const vosk = { ctx: null, stream: null, model: null, rec: null, node: null, loading: false, ready: false, lastAudio: 0 };
+  let voskUtterStart = 0, voskAddressed = false, muteUntil = 0;
+  function loadScript(src) {
+    return new Promise((ok, no) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => no(new Error("Skript nicht ladbar")); document.head.appendChild(s); });
+  }
+  function voskPrepareCtx() { // muss bei einer Berührung passieren (Aufwecken oder Mikro-Knopf)
+    try {
+      if (!vosk.ctx) vosk.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      vosk.ctx.resume().catch(() => {});
+    } catch (e) {}
+  }
+  async function voskStart() {
+    if (vosk.ready || vosk.loading) return;
+    vosk.loading = true;
+    status("lädt Ohren …"); elog("lade Sprachmodell (beim ersten Mal ca. 50 MB)");
+    note("Ich lade meine Ohren. Beim ersten Mal dauert das ein bis zwei Minuten.");
+    try {
+      voskPrepareCtx();
+      if (!window.Vosk) await loadScript(VOSK_JS);
+      vosk.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }, video: false });
+      vosk.model = await Vosk.createModel(cfg.voskUrl || VOSK_MODEL);
+      const rec = new vosk.model.KaldiRecognizer(vosk.ctx.sampleRate);
+      rec.on("partialresult", m => voskText((m.result && m.result.partial) || "", false));
+      rec.on("result", m => voskText((m.result && m.result.text) || "", true));
+      vosk.rec = rec;
+      const src = vosk.ctx.createMediaStreamSource(vosk.stream);
+      const node = vosk.ctx.createScriptProcessor(4096, 1, 1);
+      node.onaudioprocess = ev => {
+        vosk.lastAudio = Date.now();
+        // Während er selbst spricht oder nachdenkt, hört er nicht hin (sonst hört er sich selbst)
+        if (!cfg.ear || speaking || busy || Date.now() < muteUntil) return;
+        try { rec.acceptWaveform(ev.inputBuffer); } catch (e) {}
+      };
+      src.connect(node); node.connect(vosk.ctx.destination);
+      vosk.node = node; vosk.ready = true;
+      elog("Ohren bereit"); note(""); status(cfg.ear ? "hört zu" : "bereit");
+    } catch (e) {
+      elog("Ohren-Fehler: " + (e && e.message || e));
+      note("Meine Ohren konnten nicht geladen werden. Prüf das Internet und lade die Seite neu.");
+      status("bereit");
+    }
+    vosk.loading = false;
+  }
+  function voskText(t, final) {
+    t = String(t || "").trim();
+    if (!t || t === "[unk]") return;
+    lastResultAt = Date.now();
+    if (!final) {
+      if (!voskUtterStart) voskUtterStart = Date.now();
+      if (!voskAddressed && addressed(t, voskUtterStart)) voskAddressed = true;
+      if (voskAddressed && !busy && !speaking) setMood("zuhoeren");
+      return;
+    }
+    const forced = voskAddressed || addressed(t, voskUtterStart || Date.now());
+    voskUtterStart = 0; voskAddressed = false;
+    elog("gehört: " + t);
+    heard(t, forced);
+  }
+  function voskWatch() {
+    if (!vosk.ready) return;
+    if (vosk.ctx && vosk.ctx.state !== "running") { elog("Audio pausiert, starte neu"); vosk.ctx.resume().catch(() => {}); }
+    if (mood === "zuhoeren" && document.activeElement !== msg && Date.now() - lastResultAt > 8000) setMood("neutral");
+    const track = vosk.stream && vosk.stream.getAudioTracks()[0];
+    if (track && track.readyState === "ended") { elog("Mikro wurde beendet, lade neu"); vosk.ready = false; voskStart(); }
+  }
   // Angesprochen, wenn: „Sentinel“ gesagt, Gespräch läuft noch, oder du schaust ihn beim Reden an (wie bei Google Nest)
   const lookingAtMe = () => cfg.look && stream && detector && performance.now() - faceSeenAt < 2500;
   function addressed(t, at = Date.now()) { return oneShot || !cfg.wake || at < followUntil || WAKE.test(t) || lookingAtMe(); }
@@ -614,6 +706,12 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   $("logClose").addEventListener("click", () => { $("logPanel").hidden = true; });
   earBtn.addEventListener("click", () => {
     wake(); keepAwake();
+    if (cfg.engine !== "google") {
+      cfg.ear = !cfg.ear; saveCfg(); earUI(); voskPrepareCtx();
+      if (cfg.ear) { if (!vosk.ready) voskStart(); note(cfg.wake ? "Ich höre zu. Sag „Sentinel“ oder schau mich an." : "Ich höre zu.", 3500); status("hört zu"); }
+      else { status("bereit"); if (!busy && !speaking) setMood("neutral"); }
+      return;
+    }
     if (!SR) { note("Dieser Browser kann nicht zuhören. Nimm Chrome.", 4000); return; }
     cfg.ear = !cfg.ear; saveCfg(); earUI();
     if (cfg.ear) { note(cfg.wake ? "Ich höre zu. Sag „Sentinel“ und dann deine Frage." : "Ich höre zu.", 3500); hardReset("Mikro-Knopf"); earStart(); }
@@ -1175,6 +1273,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   function openSettings() {
     $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sOrt").value = cfg.ort;
     $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
+    $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || "";
     $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about;
     const u = usage.tag === heute() ? usage : { n: 0, inTok: 0, outTok: 0 };
     $("sUsage").textContent = `Heute: ${u.n} Anfragen · ${u.inTok.toLocaleString("de-DE")} Tokens rein · ${(u.cacheTok || 0).toLocaleString("de-DE")} günstig aus dem Zwischenspeicher · ${u.outTok.toLocaleString("de-DE")} Tokens raus`;
@@ -1186,6 +1285,12 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.ort = $("sOrt").value.trim();
     cfg.limit = Math.max(10, Math.min(5000, parseInt($("sLimit").value, 10) || 300));
     cfg.search = $("sSearch").checked; cfg.wake = $("sWake").checked; cfg.look = $("sLook").checked;
+    const engineChanged = cfg.engine !== $("sEngine").value;
+    cfg.engine = $("sEngine").value; cfg.wakeExtra = $("sWakeExtra").value.trim(); WAKE = buildWake();
+    if (engineChanged) {
+      if (cfg.engine === "google") { cfg.ear = true; earUI(); hardReset("Ohren gewechselt"); earStart(); }
+      else { earPause(); voskPrepareCtx(); if (cfg.ear) voskStart(); }
+    }
     cfg.haUrl = $("sHaUrl").value.trim(); cfg.haToken = $("sHaToken").value.trim(); cfg.about = $("sAbout").value.trim().slice(0, 4000);
     saveCfg(); $("setPanel").hidden = true; note("Gespeichert.", 2000);
   });
@@ -1211,9 +1316,10 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     $("startPanel").hidden = true;
     keepAwake();
     try { await document.documentElement.requestFullscreen(); } catch (e) {}
+    if (cfg.engine !== "google") { voskPrepareCtx(); if (cfg.ear) voskStart(); }
     if (cfg.eye) await camStart();
     earUI();
-    if (!SR) note("Dieser Browser kann nicht zuhören. Nimm Chrome.");
+    if (cfg.engine === "google" && !SR) note("Dieser Browser kann nicht zuhören. Nimm Chrome.");
     begruessen(true);
   });
   if (!window.isSecureContext) {
