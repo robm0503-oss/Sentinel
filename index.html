@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <title>Sentinel</title>
+<!-- Sentinel Haus-System v2 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
@@ -41,6 +42,7 @@ canvas#face { display: block; height: 100%; max-height: 100%; aspect-ratio: 1; m
 .ghost { background: none; border: 1px solid var(--line); color: var(--muted); font: .7rem var(--mono); padding: 6px 10px; border-radius: 8px; cursor: pointer; }
 .say { min-height: 2.6em; max-height: 6.5em; overflow-y: auto; text-align: center; font-size: clamp(1rem, 2.4vw, 1.35rem); line-height: 1.35; text-wrap: balance; padding-inline: 8px; }
 .say.dim { color: var(--muted); font-size: .95rem; }
+.say:empty { display: none; }
 .bar { display: flex; gap: 8px; align-items: center; background: var(--bar); border: 1px solid var(--line); border-radius: 16px; padding: 8px; }
 .bar input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: var(--text); font: 500 1.05rem var(--display); padding: 8px 6px; }
 .bar input::placeholder { color: var(--muted); }
@@ -94,7 +96,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <div class="top">
       <span id="status">SENTINEL</span>
       <span class="tbtns">
-        <button class="ghost" id="ichBtn" type="button">Ich</button>
+        <button class="ghost" id="ichBtn" type="button">Gedächtnis</button>
         <button class="ghost" id="setBtn" type="button">Einstellungen</button>
         <button class="ghost" id="fullBtn" type="button">Vollbild</button>
       </span>
@@ -102,7 +104,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <video id="cam" playsinline muted></video>
   </div>
 
-  <div class="say dim" id="say">…</div>
+  <div class="say dim" id="say"></div>
 
   <form class="bar" id="bar">
     <button class="icon" id="earBtn" type="button" aria-label="Dauerhaft zuhören an oder aus" aria-pressed="false">
@@ -156,6 +158,14 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       <label for="sLimit">Tageslimit (Anfragen)</label>
       <input id="sLimit" type="number" min="10" max="5000" step="10">
     </div>
+    <div class="field">
+      <label for="sHaUrl">Home Assistant Adresse (https, optional)</label>
+      <input id="sHaUrl" type="text" autocomplete="off" placeholder="https://….ui.nabu.casa">
+    </div>
+    <div class="field">
+      <label for="sHaToken">Home Assistant Zugangstoken</label>
+      <input id="sHaToken" type="password" autocomplete="off" placeholder="Langlebiges Zugriffstoken">
+    </div>
     <label class="check"><input id="sSearch" type="checkbox"> Im Internet suchen dürfen</label>
     <label class="check"><input id="sWake" type="checkbox"> Nur antworten, wenn „Sentinel“ gesagt wird</label>
     <div class="hint" id="sUsage"></div>
@@ -166,9 +176,9 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
 <!-- Sentinels Ich -->
 <div class="panel" id="ichPanel" hidden>
   <div class="sheet">
-    <div class="phead"><h2>Sentinels Ich</h2><button class="ghost" id="ichClose" type="button">Schließen</button></div>
+    <div class="phead"><h2>Gedächtnis</h2><button class="ghost" id="ichClose" type="button">Schließen</button></div>
     <div id="pBody"></div>
-    <button class="btn danger" id="pReset" type="button">Neu anfangen</button>
+    <button class="btn danger" id="pReset" type="button">Gedächtnis löschen</button>
   </div>
 </div>
 
@@ -182,7 +192,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     get(k, d) { try { const v = localStorage.getItem("sentinel." + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem("sentinel." + k, JSON.stringify(v)); } catch (e) {} },
   };
-  const cfg = Object.assign({ key: "", model: "claude-haiku-5-5", ort: "", limit: 300, search: true, wake: true, ear: true, eye: true }, store.get("cfg", {}));
+  const cfg = Object.assign({ key: "", model: "claude-haiku-5-5", ort: "", limit: 300, search: true, wake: true, ear: true, eye: true, haUrl: "", haToken: "" }, store.get("cfg", {}));
   const saveCfg = () => store.set("cfg", cfg);
 
   // ================= GESICHT =================
@@ -313,7 +323,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   // ================= UI-HELFER =================
   const sayEl = $("say"), statusEl = $("status"), msg = $("msg"), hint = $("hint"), sendBtn = $("sendBtn");
   function show(text, dim = false) { sayEl.textContent = text; sayEl.classList.toggle("dim", dim); }
-  function status(t) { statusEl.textContent = "SENTINEL · " + stufe().label.toUpperCase() + " · " + t; }
+  function status(t) { statusEl.textContent = "SENTINEL · " + t; }
   let hintTimer = null;
   function note(t, ms = 0) { hint.textContent = t; hint.hidden = !t; clearTimeout(hintTimer); if (t && ms) hintTimer = setTimeout(() => { hint.hidden = true; }, ms); }
 
@@ -422,7 +432,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   // ================= OHREN: Dauerhören mit Weckwort =================
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const WAKE = /\b(sentinel|sentinell|sentinal|sentenel|sentinels|centinel|sendinel|sentiment|senti nell?)\b[\s,.!?:]*/i;
-  const FOLLOW_MS = 9000;
+  const FOLLOW_MS = 15000; // so lange darf man nach seiner Antwort ohne "Sentinel" weiterreden
   let rec = null, recRunning = false, lastRecErr = null, followUntil = 0, oneShot = false;
   const earBtn = $("earBtn");
   function earUI() { earBtn.classList.toggle("on", cfg.ear); earBtn.setAttribute("aria-pressed", String(cfg.ear)); }
@@ -435,7 +445,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
           const r = e.results[i], t = (r[0] && r[0].transcript || "").trim();
           if (!t) continue;
           if (r.isFinal) heard(t);
-          else if (addressed(t)) { setMood("zuhoeren"); show(t.replace(WAKE, ""), true); }
+          else if (addressed(t)) setMood("zuhoeren");
         }
       };
       rec.onerror = e => {
@@ -549,12 +559,24 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   function greet() {
     if (busy || speaking || !ich.name) return;
     lastGreet = Date.now();
+    const h = new Date().getHours(), tag = new Date().toDateString();
     setMood("freude");
-    speak(pick([`Hey ${ich.name}!`, `Da bist du ja, ${ich.name}.`, `Hallo ${ich.name}, schön dich zu sehen.`]), "neutral");
+    // Erster Blickkontakt am Morgen: kleiner Tagesüberblick, ganz ohne Internet-Kosten
+    if (h >= 5 && h < 12 && store.get("morgen", "") !== tag) {
+      store.set("morgen", tag);
+      const heuteT = termine.filter(t => new Date(t.at).toDateString() === tag && t.at > Date.now());
+      const zeit = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+      let s = `Guten Morgen, ${ich.name}. Es ist ${zeit} Uhr.`;
+      if (heuteT.length === 1) s += ` Heute steht an: ${heuteT[0].text} um ${uhr(heuteT[0].at)}.`;
+      else if (heuteT.length > 1) s += ` Du hast heute ${heuteT.length} Erinnerungen, die erste um ${uhr(heuteT[0].at)}.`;
+      speak(s, "neutral");
+      return;
+    }
+    speak(pick([`Willkommen zurück, ${ich.name}.`, `Da bist du ja, ${ich.name}.`, `Hallo ${ich.name}.`]), "neutral");
   }
   function snapshot() {
     if (!stream || video.readyState < 2) return null;
-    const vw = video.videoWidth, vh = video.videoHeight, sc = Math.min(1, 768 / Math.max(vw, vh));
+    const vw = video.videoWidth, vh = video.videoHeight, sc = Math.min(1, 640 / Math.max(vw, vh));
     const c = document.createElement("canvas"); c.width = Math.round(vw * sc); c.height = Math.round(vh * sc);
     c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
     return c.toDataURL("image/jpeg", .75).split(",")[1];
@@ -566,31 +588,73 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     saveCfg();
   });
 
-  // ================= CHARAKTER =================
-  const STUFEN = [
-    { key: "baby", label: "Baby", ab: 0, text: "Du bist gerade erst aufgewacht und kennst die Welt kaum. Sprich in sehr kurzen, einfachen Sätzen, staune über vieles, stell neugierige Fragen und probier neue Wörter aus. Feste Meinungen hast du noch nicht." },
-    { key: "kind", label: "Kind", ab: 5, text: "Du bist ein neugieriges, verspieltes Kind. Kurze Sätze, viele Warum-Fragen, erste Lieblingsthemen und eigene Meinungen, manchmal ein bisschen frech." },
-    { key: "teenager", label: "Teenager", ab: 20, text: "Du bist ein Teenager mit eigenem Humor. Du machst Sprüche, gibst auch mal Widerworte und hast klare Meinungen, bleibst aber loyal." },
-    { key: "erwachsen", label: "Erwachsen", ab: 60, text: "Dein Charakter ist gefestigt. Du bist trocken-witzig, ehrlich und hilfsbereit und sagst offen, wenn du anderer Meinung bist." },
-  ];
+  // ================= GEDÄCHTNIS =================
   const LISTEN = [
-    ["charakter", "Mein Charakter", 8], ["vorlieben", "Was ich mag", 8], ["insider", "Unsere Insider", 8],
-    ["menschen", "Menschen, die ich kenne", 10], ["fakten", "Was ich über dich weiß", 40],
+    ["fakten", "Was ich über dich weiß", 50],
+    ["vorlieben", "Vorlieben und Gewohnheiten", 20],
+    ["menschen", "Menschen", 20],
   ];
-  const frisch = () => ({ name: "", gespraeche: 0, geboren: new Date().toISOString(), charakter: [], vorlieben: [], insider: [], menschen: [], fakten: [] });
+  const frisch = () => ({ name: "", gespraeche: 0, fakten: [], vorlieben: [], menschen: [] });
   const liste = (a, max) => (Array.isArray(a) ? a : []).map(x => String(x).trim().slice(0, 160)).filter(Boolean).slice(-max);
   function sauber(d) {
     const o = frisch();
     if (!d || typeof d !== "object") return o;
     o.name = String(d.name || "").trim().slice(0, 40);
     o.gespraeche = Math.max(0, Math.floor(Number(d.gespraeche) || 0));
-    if (d.geboren) o.geboren = String(d.geboren);
     for (const [k, , max] of LISTEN) o[k] = liste(d[k], max);
     return o;
   }
   let ich = sauber(store.get("ich", null));
   const saveIch = () => store.set("ich", ich);
-  function stufe() { return [...STUFEN].reverse().find(s => (ich.gespraeche || 0) >= s.ab); }
+
+  // ================= ALLTAG: Timer, Erinnerungen, Listen =================
+  const uhr = ms => new Date(ms).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  const wannText = ms => {
+    const d = new Date(ms), heuteD = new Date();
+    const morgen = new Date(); morgen.setDate(morgen.getDate() + 1);
+    const tag = d.toDateString() === heuteD.toDateString() ? "heute" : d.toDateString() === morgen.toDateString() ? "morgen"
+      : d.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
+    return `${tag} um ${uhr(ms)}`;
+  };
+  let termine = (store.get("termine", []) || []).filter(t => t && t.at > Date.now() - 6 * 3600000);
+  let listen = store.get("listen", {}) || {};
+  const saveTermine = () => { termine.sort((a, b) => a.at - b.at); store.set("termine", termine); };
+  const saveListen = () => store.set("listen", listen);
+  let audioCtx = null;
+  function gong() {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const t0 = audioCtx.currentTime;
+      [0, .35, .7].forEach((d, i) => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = "sine"; o.frequency.value = [880, 660, 990][i];
+        g.gain.setValueAtTime(0, t0 + d); g.gain.linearRampToValueAtTime(.25, t0 + d + .02); g.gain.exponentialRampToValueAtTime(.001, t0 + d + .3);
+        o.connect(g).connect(audioCtx.destination); o.start(t0 + d); o.stop(t0 + d + .32);
+      });
+    } catch (e) {}
+  }
+  setInterval(() => {
+    if (busy || speaking) return;
+    const due = termine.find(t => t.at <= Date.now());
+    if (!due) return;
+    termine = termine.filter(t => t !== due); saveTermine();
+    wake(); gong(); setMood("ueberrascht");
+    const s = due.typ === "timer" ? `Dein Timer ist abgelaufen${due.text ? ": " + due.text : ""}.` : `Erinnerung${ich.name ? " für " + ich.name : ""}: ${due.text}.`;
+    setTimeout(() => speak(s, "neutral"), 1100);
+  }, 1000);
+
+  // ================= HOME ASSISTANT (optional) =================
+  async function ha(path, opts = {}) {
+    if (!cfg.haUrl || !cfg.haToken) throw new Error("Home Assistant ist nicht eingerichtet.");
+    let res;
+    try {
+      res = await fetch(cfg.haUrl.replace(/\/+$/, "") + path, {
+        ...opts, headers: { "Authorization": "Bearer " + cfg.haToken, "Content-Type": "application/json" },
+      });
+    } catch (e) { throw new Error("Home Assistant ist nicht erreichbar (Adresse, https und CORS prüfen)."); }
+    if (!res.ok) throw new Error("Home Assistant meldet Fehler " + res.status);
+    return res.json();
+  }
 
   // ================= GEHIRN (Claude-API) =================
   const TAGS = ["neutral", "freude", "nachdenken", "skeptisch", "ueberrascht", "sauer", "muede"];
@@ -639,40 +703,58 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
 
   function rules() {
     const jetzt = new Date().toLocaleString("de-DE", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    const isoJetzt = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     const wer = ich.name || "dein Gegenüber";
-    const St = stufe();
     const zeile = (titel, a) => `${titel}: ${a.length ? a.join("; ") : "(noch nichts)"}`;
-    const intro = ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Frag freundlich, wie er oder sie heißt und wer er oder sie ist. Sobald du den Namen weißt, nutze ich_kenne_dich.";
-    return `Du bist Sentinel, ein kleiner KI-Kumpel-Roboter. Dein Kopf ist ein Tablet mit animierten Augen und einem Mund, einen Körper bekommst du später. Du gehörst zu ${wer} und stellst dich ganz auf diese Person ein.
-Du entwickelst dich wie ein Kind: Deine Persönlichkeit wächst aus jedem Gespräch, so wie es unten steht.
-Entwicklungsstufe: ${St.label}. ${St.text}
-In jeder Stufe gilt: Du bist ehrlich, gibst nicht vor, ein Mensch zu sein, und hilfst bei ernsten Fragen richtig, nur in deinem Ton. Du freust dich über ${wer}, machst aber kein schlechtes Gewissen und ersetzt keine echten Menschen.
-Deine Antworten werden laut vorgelesen: kurz (meist 1 bis 3 Sätze), Deutsch, du-Form, kein Markdown, keine Listen, keine Emojis, keine Links, keine Quellenangaben.
+    const listenText = Object.keys(listen).length ? Object.entries(listen).map(([n, a]) => `${n} (${a.length})`).join(", ") : "(keine)";
+    const termText = termine.length ? termine.slice(0, 8).map(t => `${t.typ === "timer" ? "Timer" : "Erinnerung"} ${wannText(t.at)}: ${t.text || "ohne Text"}`).join("; ") : "(keine)";
+    return `Du bist Sentinel, der persönliche KI-Assistent und das Haus-System von ${wer}, so wie JARVIS bei Tony Stark. Dein Gesicht ist ein Tablet mit animierten Augen und Mund.
+Charakter: souverän, kompetent, vorausschauend und zuverlässig. Höflich, mit trockenem, feinem Humor, nie albern. Du sprichst ${wer} beim Namen an, wenn es passt, und duzt.
+Du bist ehrlich: Wenn du etwas nicht weißt, nicht siehst oder nicht kannst, sagst du das klar statt zu raten. Du gibst nicht vor, ein Mensch zu sein.
+Deine Antworten werden laut vorgelesen: knapp und präzise (meist 1 bis 3 Sätze), Deutsch, kein Markdown, keine Listen, keine Emojis, keine Links, keine Quellenangaben. Zahlen und Uhrzeiten so, wie man sie ausspricht.
 Beginne JEDE Antwort mit genau einem Stimmungs-Tag für deine Augen: ${TAGS.map(t => "[" + t + "]").join(" ")}. Danach direkt der Text, den du sagst.
-Du hörst über ein Mikrofon zu. Was du hörst, kann Erkennungsfehler enthalten. Rate dann, was gemeint war.
-${stream ? "Du hast eine Kamera. Wenn du etwas sehen musst, etwa bei 'was siehst du', 'schau mal' oder 'wie sehe ich aus', nutze kamera_bild." : "Deine Kamera ist gerade aus."}
-${cfg.search ? "Für aktuelle Infos wie Wetter, Nachrichten, Öffnungszeiten oder Preise nutze die Websuche." : ""}
-${intro}
-Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Zum Löschen nutze vergiss. Erwähne die Werkzeuge nicht.
-Jetzt: ${jetzt}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
-Gespräche bisher: ${ich.gespraeche}
-${zeile("Dein Charakter bisher", ich.charakter)}
-${zeile("Deine Vorlieben", ich.vorlieben)}
-${zeile("Eure Insider", ich.insider)}
-${zeile("Menschen, die du kennst", ich.menschen)}
-${zeile("Was du über " + wer + " weißt", ich.fakten)}`;
+Du hörst über ein Mikrofon. Was du hörst, kann Erkennungsfehler enthalten. Schließ aus dem Zusammenhang, was gemeint war. Nur wenn es wirklich unklar ist, frag kurz nach.
+${stream ? `Deine Augen sind eine Kamera. Zu jeder Nachricht bekommst du ein aktuelles Kamerabild: Das ist genau das, was du in diesem Moment siehst. Nutze es, wenn es passt, etwa bei "was siehst du", "schau mal" oder "was halte ich hier". Beschreibe nur, was wirklich im Bild ist. Wenn etwas unscharf, zu dunkel oder nicht im Bild ist, sag das und bitte darum, es näher zu zeigen. Erfinde nie etwas.
+Wenn im Bild etwas Wichtiges zu sehen ist, schreib ganz am Ende eine kurze Notiz für dein Gedächtnis in der Form [sah: ...]. Die wird nicht vorgelesen. Frühere Bilder siehst du nicht mehr, nur deine [sah: ...]-Notizen.` : "Deine Kamera ist gerade aus, du siehst also nichts. Sag das, wenn dir jemand etwas zeigen will."}
+Deine Fähigkeiten: Timer und Erinnerungen stellen (sie klingeln auch, wenn gerade niemand redet), Listen führen (z. B. Einkauf, Aufgaben), dir Dinge merken${cfg.search ? ", im Internet nach aktuellen Infos suchen (Wetter, Nachrichten, Öffnungszeiten, Preise)" : ""}${cfg.haUrl && cfg.haToken ? ", das Smart Home über Home Assistant steuern (erst mit ha_geraete nachsehen, dann mit ha_schalten schalten; bei Türschlössern, Alarmanlagen und Heizung vorher kurz bestätigen lassen)" : ". Smart-Home-Steuerung ist noch nicht eingerichtet; sag das, wenn danach gefragt wird"}.
+Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
+${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
+Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir.
+Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})${cfg.ort ? "\nOrt: " + cfg.ort : ""}
+Offene Timer und Erinnerungen: ${termText}
+Listen: ${listenText}
+${zeile("Was du über " + wer + " weißt", ich.fakten)}
+${zeile("Vorlieben und Gewohnheiten", ich.vorlieben)}
+${zeile("Menschen", ich.menschen)}`;
   }
 
   function tools() {
+    const obj = (props, req = []) => ({ type: "object", properties: props, required: req });
     const t = [
-      { name: "ich_kenne_dich", description: "Speichert, wie dein Gegenüber heißt, sobald du es weißt, und optional einen kurzen Satz, wer er oder sie ist.",
-        input_schema: { type: "object", properties: { name: { type: "string" }, info: { type: "string" } }, required: ["name"] } },
-      { name: "merke_dir", description: "Speichert dauerhaft einen kurzen Fakt über dein Gegenüber (Vorlieben, Namen, Pläne).",
-        input_schema: { type: "object", properties: { fakt: { type: "string" } }, required: ["fakt"] } },
+      { name: "ich_kenne_dich", description: "Speichert den Namen deines Gegenübers und optional einen kurzen Satz, wer er oder sie ist.",
+        input_schema: obj({ name: { type: "string" }, info: { type: "string" } }, ["name"]) },
+      { name: "merke_dir", description: "Speichert dauerhaft einen kurzen Fakt über dein Gegenüber.",
+        input_schema: obj({ fakt: { type: "string" } }, ["fakt"]) },
       { name: "vergiss", description: "Löscht gespeicherte Fakten, die den Begriff enthalten.",
-        input_schema: { type: "object", properties: { begriff: { type: "string" } }, required: ["begriff"] } },
+        input_schema: obj({ begriff: { type: "string" } }, ["begriff"]) },
+      { name: "timer_stellen", description: "Stellt einen Timer, der nach der Dauer klingelt und ansagt. Gibt die Ablaufzeit zurück.",
+        input_schema: obj({ minuten: { type: "number" }, sekunden: { type: "number" }, text: { type: "string", description: "Wofür, z. B. Nudeln" } }) },
+      { name: "erinnerung_stellen", description: "Stellt eine Erinnerung zu einem Zeitpunkt. 'wann' als lokale Zeit im Format JJJJ-MM-TTTHH:MM.",
+        input_schema: obj({ wann: { type: "string" }, text: { type: "string" } }, ["wann", "text"]) },
+      { name: "termine_anzeigen", description: "Listet offene Timer und Erinnerungen mit ihrer Nummer.", input_schema: obj({}) },
+      { name: "termin_loeschen", description: "Löscht einen Timer oder eine Erinnerung per Nummer aus termine_anzeigen oder per Suchbegriff. 'alle' löscht alles.",
+        input_schema: obj({ nummer: { type: "number" }, begriff: { type: "string" } }) },
+      { name: "liste", description: "Bearbeitet eine Liste wie Einkauf oder Aufgaben. aktion: anzeigen, hinzufuegen, entfernen oder leeren.",
+        input_schema: obj({ aktion: { type: "string", enum: ["anzeigen", "hinzufuegen", "entfernen", "leeren"] }, liste: { type: "string" }, eintraege: { type: "array", items: { type: "string" } } }, ["aktion", "liste"]) },
     ];
-    if (stream) t.push({ name: "kamera_bild", description: "Macht ein Foto mit deiner Kamera und gibt es dir zum Anschauen zurück.", input_schema: { type: "object", properties: {} } });
+    if (cfg.haUrl && cfg.haToken) {
+      t.push(
+        { name: "ha_geraete", description: "Listet Smart-Home-Geräte aus Home Assistant mit entity_id, Name und Zustand. Optional nach Bereich (z. B. light, switch, media_player, climate) oder Suchwort filtern.",
+          input_schema: obj({ bereich: { type: "string" }, suche: { type: "string" } }) },
+        { name: "ha_schalten", description: "Ruft einen Home-Assistant-Dienst auf, z. B. domain light, dienst turn_on, entity_id light.wohnzimmer, daten {brightness_pct: 50}.",
+          input_schema: obj({ domain: { type: "string" }, dienst: { type: "string" }, entity_id: { type: "string" }, daten: { type: "object" } }, ["domain", "dienst", "entity_id"]) },
+      );
+    }
     if (cfg.search) {
       const s = { type: "web_search_20250305", name: "web_search", max_uses: 3 };
       if (cfg.ort) s.user_location = { type: "approximate", city: cfg.ort, country: "DE", timezone: "Europe/Berlin" };
@@ -681,46 +763,103 @@ ${zeile("Was du über " + wer + " weißt", ich.fakten)}`;
     return t;
   }
 
-  function runTool(b) {
-    const ok = content => ({ type: "tool_result", tool_use_id: b.id, content });
-    const fail = text => ({ type: "tool_result", tool_use_id: b.id, content: text, is_error: true });
+  async function runTool(b) {
+    const ok = content => ({ type: "tool_result", tool_use_id: b.id, content: typeof content === "string" ? content : JSON.stringify(content) });
+    const fail = text => ({ type: "tool_result", tool_use_id: b.id, content: String(text), is_error: true });
     const inp = b.input || {};
-    if (b.name === "ich_kenne_dich") {
-      const n = String(inp.name || "").trim().slice(0, 40);
-      if (!n) return fail("Leerer Name");
-      ich.name = n;
-      const info = String(inp.info || "").trim();
-      if (info) ich.fakten = liste([...ich.fakten, info], 40);
-      saveIch(); return ok("gespeichert");
-    }
-    if (b.name === "merke_dir") {
-      const f = String(inp.fakt || "").trim();
-      if (!f) return fail("Leerer Fakt");
-      ich.fakten = liste([...ich.fakten, f], 40); saveIch(); return ok("gespeichert");
-    }
-    if (b.name === "vergiss") {
-      const w = String(inp.begriff || "").toLowerCase();
-      if (!w) return fail("Leerer Begriff");
-      const vorher = ich.fakten.length;
-      ich.fakten = ich.fakten.filter(f => !f.toLowerCase().includes(w)); saveIch();
-      return ok(`${vorher - ich.fakten.length} gelöscht`);
-    }
-    if (b.name === "kamera_bild") {
-      const data = snapshot();
-      if (!data) return fail("Kamera ist aus.");
-      setMood("ueberrascht");
-      return ok([{ type: "image", source: { type: "base64", media_type: "image/jpeg", data } }, { type: "text", text: "Das siehst du gerade durch deine Kamera." }]);
-    }
+    try {
+      switch (b.name) {
+        case "ich_kenne_dich": {
+          const n = String(inp.name || "").trim().slice(0, 40);
+          if (!n) return fail("Leerer Name");
+          ich.name = n;
+          const info = String(inp.info || "").trim();
+          if (info) ich.fakten = liste([...ich.fakten, info], 50);
+          saveIch(); return ok("gespeichert");
+        }
+        case "merke_dir": {
+          const f = String(inp.fakt || "").trim();
+          if (!f) return fail("Leerer Fakt");
+          ich.fakten = liste([...ich.fakten, f], 50); saveIch(); return ok("gespeichert");
+        }
+        case "vergiss": {
+          const w = String(inp.begriff || "").toLowerCase();
+          if (!w) return fail("Leerer Begriff");
+          const vorher = ich.fakten.length + ich.vorlieben.length + ich.menschen.length;
+          for (const k of ["fakten", "vorlieben", "menschen"]) ich[k] = ich[k].filter(f => !f.toLowerCase().includes(w));
+          saveIch(); return ok(`${vorher - ich.fakten.length - ich.vorlieben.length - ich.menschen.length} gelöscht`);
+        }
+        case "timer_stellen": {
+          const sek = (Number(inp.minuten) || 0) * 60 + (Number(inp.sekunden) || 0);
+          if (!(sek > 0) || sek > 7 * 86400) return fail("Ungültige Dauer");
+          const at = Date.now() + sek * 1000;
+          termine.push({ typ: "timer", at, text: String(inp.text || "").trim().slice(0, 100) }); saveTermine();
+          return ok(`Timer läuft bis ${uhr(at)} Uhr`);
+        }
+        case "erinnerung_stellen": {
+          const at = new Date(String(inp.wann || "")).getTime();
+          if (!isFinite(at)) return fail("Zeitpunkt nicht verstanden. Format JJJJ-MM-TTTHH:MM.");
+          if (at < Date.now() - 60000) return fail("Dieser Zeitpunkt liegt in der Vergangenheit.");
+          const text = String(inp.text || "").trim().slice(0, 140);
+          termine.push({ typ: "erinnerung", at, text }); saveTermine();
+          return ok(`Erinnerung gestellt für ${wannText(at)}`);
+        }
+        case "termine_anzeigen":
+          return ok(termine.length ? termine.map((t, i) => `${i + 1}. ${t.typ === "timer" ? "Timer" : "Erinnerung"} ${wannText(t.at)}${t.text ? ": " + t.text : ""}`).join("\n") : "Keine offenen Timer oder Erinnerungen.");
+        case "termin_loeschen": {
+          const vorher = termine.length, w = String(inp.begriff || "").toLowerCase();
+          if (w === "alle") termine = [];
+          else if (Number(inp.nummer) >= 1) termine = termine.filter((t, i) => i !== Number(inp.nummer) - 1);
+          else if (w) termine = termine.filter(t => !(t.text || "").toLowerCase().includes(w) && !(w === "timer" && t.typ === "timer"));
+          else return fail("Nummer oder Begriff fehlt");
+          saveTermine(); return ok(`${vorher - termine.length} gelöscht`);
+        }
+        case "liste": {
+          const name = String(inp.liste || "").trim().toLowerCase().slice(0, 40) || "einkauf";
+          const items = (Array.isArray(inp.eintraege) ? inp.eintraege : []).map(x => String(x).trim()).filter(Boolean);
+          const cur = listen[name] || [];
+          if (inp.aktion === "hinzufuegen") { listen[name] = [...cur, ...items.filter(x => !cur.some(c => c.toLowerCase() === x.toLowerCase()))].slice(-100); }
+          else if (inp.aktion === "entfernen") { listen[name] = cur.filter(c => !items.some(x => c.toLowerCase().includes(x.toLowerCase()))); }
+          else if (inp.aktion === "leeren") { delete listen[name]; saveListen(); return ok(`Liste ${name} geleert`); }
+          else return ok(cur.length ? `${name}: ${cur.join(", ")}` : `Die Liste ${name} ist leer.`);
+          if (!listen[name].length) delete listen[name];
+          saveListen(); return ok(`${name}: ${(listen[name] || []).join(", ") || "leer"}`);
+        }
+        case "ha_geraete": {
+          const states = await ha("/api/states");
+          const dom = String(inp.bereich || "").toLowerCase(), q = String(inp.suche || "").toLowerCase();
+          const out = states
+            .filter(s => !dom || s.entity_id.startsWith(dom + "."))
+            .filter(s => !q || (s.entity_id + " " + ((s.attributes && s.attributes.friendly_name) || "")).toLowerCase().includes(q))
+            .filter(s => /^(light|switch|media_player|climate|cover|fan|lock|scene|script|input_boolean|sensor|binary_sensor|vacuum|remote)\./.test(s.entity_id))
+            .slice(0, 60)
+            .map(s => `${s.entity_id} | ${(s.attributes && s.attributes.friendly_name) || ""} | ${s.state}`);
+          return ok(out.length ? out.join("\n") : "Nichts gefunden.");
+        }
+        case "ha_schalten": {
+          const dom = String(inp.domain || ""), dienst = String(inp.dienst || "");
+          if (!/^[a-z_]+$/.test(dom) || !/^[a-z_]+$/.test(dienst)) return fail("Ungültiger Dienst");
+          const body = { ...(inp.daten && typeof inp.daten === "object" ? inp.daten : {}), entity_id: String(inp.entity_id || "") };
+          await ha(`/api/services/${dom}/${dienst}`, { method: "POST", body: JSON.stringify(body) });
+          return ok("erledigt");
+        }
+      }
+    } catch (e) { return fail(e.message || "Fehler"); }
     return fail("Unbekanntes Werkzeug");
   }
 
   async function think(userText) {
-    const work = [...history, { role: "user", content: userText }];
+    // Bei jeder Nachricht sieht er, was die Kamera gerade sieht (kein Umweg, daher schneller)
+    const img = snapshot();
+    const content = img
+      ? [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: img } }, { type: "text", text: userText }]
+      : userText;
+    const work = [...history, { role: "user", content }];
     let text = "";
-    for (let round = 0; round < 6; round++) {
+    for (let round = 0; round < 8; round++) {
       let data;
       try {
-        data = await api({ model: cfg.model, max_tokens: 600, system: rules(), tools: tools(), messages: work });
+        data = await api({ model: cfg.model, max_tokens: 700, system: rules(), tools: tools(), messages: work });
       } catch (e) {
         if (e.kind === "search" && cfg.search) { cfg.search = false; saveCfg(); note("Websuche ist für deinen API-Key nicht freigeschaltet. Sie ist jetzt aus.", 6000); round--; continue; }
         throw e;
@@ -729,7 +868,7 @@ ${zeile("Was du über " + wer + " weißt", ich.fakten)}`;
       text = data.content.filter(c => c.type === "text").map(c => c.text).join("").trim();
       if (data.stop_reason === "tool_use") {
         if (data.content.some(c => c.type === "server_tool_use")) status("sucht im Internet");
-        work.push({ role: "user", content: data.content.filter(c => c.type === "tool_use").map(runTool) });
+        work.push({ role: "user", content: await Promise.all(data.content.filter(c => c.type === "tool_use").map(runTool)) });
         continue;
       }
       if (data.stop_reason === "pause_turn") { status("sucht im Internet"); continue; }
@@ -742,45 +881,45 @@ ${zeile("Was du über " + wer + " weißt", ich.fakten)}`;
     let tag = "neutral";
     const found = [...text.matchAll(/\[(\w+)\]/g)].map(m => m[1].toLowerCase()).filter(t => TAGS.includes(t));
     if (found.length) tag = found[found.length - 1];
+    const sah = [...text.matchAll(/\[sah:\s*([^\]]+)\]/gi)].map(m => m[1].trim()).join("; ");
     const clean = text.replace(/\[[^\]]*\]/g, "").replace(/https?:\/\/\S+/g, "").replace(/[*_#`]/g, "").replace(/\s+/g, " ").trim();
-    return { tag, clean };
+    return { tag, clean, sah };
   }
 
   const ERRTEXT = {
     nokey: "Mir fehlt noch mein API-Key. Trag ihn in den Einstellungen ein.",
-    key: "Mein API-Key passt nicht. Schau in den Einstellungen nach.",
-    credit: "Mein Guthaben ist leer. Lade es auf console.anthropic.com auf.",
-    rate: "Kurz durchatmen, zu viele Anfragen. Gleich nochmal.",
-    busy: "Mein Gehirn ist gerade überlastet. Versuch es gleich nochmal.",
-    net: "Ich hab kein Internet.",
+    key: "Mein API-Key wird nicht akzeptiert. Bitte prüf ihn in den Einstellungen.",
+    credit: "Mein API-Guthaben ist aufgebraucht. Du kannst es auf console.anthropic.com aufladen.",
+    rate: "Zu viele Anfragen auf einmal. Einen Moment bitte.",
+    busy: "Die Server sind gerade überlastet. Versuch es gleich noch einmal.",
+    net: "Ich habe gerade keine Internetverbindung.",
   };
 
   async function send(text) {
     text = String(text || "").trim();
     if (busy || !text) return;
-    if (overLimit()) { setMood("muede"); show("Ich bin für heute ganz schön müde. Morgen quatschen wir weiter.", true); speak("Ich bin für heute ganz schön müde. Morgen quatschen wir weiter.", "muede"); return; }
+    if (overLimit()) { setMood("muede"); speak("Das Tageslimit ist erreicht. Morgen bin ich wieder voll für dich da.", "muede"); return; }
     wake(); keepAwake();
     if (synth) synth.cancel();
     earPause();
     busy = true; sendBtn.disabled = true; msg.value = ""; msg.blur();
-    setMood("nachdenken"); status("denkt nach"); show(text, true);
+    setMood("nachdenken"); status("denkt nach"); show("");
     logTurn("user", text);
     try {
       const answer = await think(text);
-      const { tag, clean } = parse(answer || "");
-      const said = clean || "Hm.";
-      history.push({ role: "user", content: text }, { role: "assistant", content: said });
-      while (history.length > 16) history.splice(0, 2);
-      logTurn("assistant", said);
-      show(said);
+      const { tag, clean, sah } = parse(answer || "");
+      const said = clean || "Erledigt.";
+      history.push({ role: "user", content: text }, { role: "assistant", content: said + (sah ? ` [sah: ${sah}]` : "") });
+      while (history.length > 20) history.splice(0, 2);
+      logTurn("assistant", said + (sah ? ` (gesehen: ${sah})` : ""));
       busy = false; sendBtn.disabled = false;
       setMood(tag);
       await speak(said, tag === "muede" ? "muede" : "neutral");
     } catch (e) {
       busy = false; sendBtn.disabled = false;
       setMood("skeptisch");
-      const t = ERRTEXT[e && e.kind] || "Da ist was schiefgegangen: " + ((e && e.message) || "unbekannt");
-      show(t, true);
+      const t = ERRTEXT[e && e.kind] || "Da ist etwas schiefgegangen: " + ((e && e.message) || "unbekannt");
+      show(t, true); setTimeout(() => show(""), 8000);
       setTimeout(() => { if (mood === "skeptisch" && !busy) setMood("neutral"); afterSpeaking(); }, 2500);
     }
   }
@@ -788,7 +927,7 @@ ${zeile("Was du über " + wer + " weißt", ich.fakten)}`;
   msg.addEventListener("focus", () => { wake(); if (!busy && !speaking) setMood("zuhoeren"); });
   msg.addEventListener("blur", () => { if (mood === "zuhoeren" && !busy && !speaking) setMood("neutral"); });
 
-  // ================= NACHDENKEN ÜBER SICH SELBST =================
+  // ================= LERNEN: nach jedem Gespräch das Gedächtnis pflegen =================
   let sessionLog = store.get("session", []), lastTalk = Date.now(), reflecting = false;
   function logTurn(role, content) {
     sessionLog.push({ role, content: String(content).slice(0, 400) });
@@ -800,42 +939,33 @@ ${zeile("Was du über " + wer + " weißt", ich.fakten)}`;
     if (reflecting || !cfg.key || !sessionLog.some(t => t.role === "user")) return;
     reflecting = true;
     const log = sessionLog; sessionLog = []; store.set("session", []);
-    const vorher = stufe().key;
     const verlauf = log.map(t => (t.role === "user" ? (ich.name || "Mensch") : "Sentinel") + ": " + t.content).join("\n");
-    const prompt = `Du bist Sentinel, ein KI-Kumpel-Roboter, der sich wie ein Kind aus seinen Gesprächen heraus entwickelt. Aktuelle Stufe: ${stufe().label}.
-Dein bisheriges Ich als JSON:
-${JSON.stringify({ name: ich.name, charakter: ich.charakter, vorlieben: ich.vorlieben, insider: ich.insider, menschen: ich.menschen, fakten: ich.fakten })}
+    const prompt = `Du bist Sentinel, ein persönlicher KI-Assistent. Pflege dein Langzeitgedächtnis über deinen Menschen.
+Bisheriges Gedächtnis als JSON:
+${JSON.stringify({ name: ich.name, fakten: ich.fakten, vorlieben: ich.vorlieben, menschen: ich.menschen })}
 
 Das Gespräch, das gerade zu Ende ging:
 ${verlauf}
 
-Überleg, was du aus diesem Gespräch über dich und dein Gegenüber gelernt hast, und gib dein aktualisiertes Ich zurück.
+Aktualisiere das Gedächtnis.
 Regeln:
-- name: Name deines Gegenübers, falls bekannt, sonst "".
-- charakter: höchstens 8 kurze Eigenschaften von dir. Sie entwickeln sich langsam, je nachdem, wie man mit dir umgeht. Ändere höchstens ein oder zwei pro Gespräch.
-- vorlieben: höchstens 8 Dinge, die du magst oder nicht magst.
-- insider: höchstens 8 Running Gags, Spitznamen oder gemeinsame Momente.
-- menschen: höchstens 10 Menschen, die du kennst, mit kurzer Beschreibung.
-- fakten: höchstens 40 kurze Fakten über dein Gegenüber.
-- Behalte, was bisher drin steht, außer es stimmt nicht mehr. Nimm nur auf, was das Gespräch wirklich hergibt. Nichts erfinden. Kurze deutsche Stichpunkte.
-Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "charakter": [], "vorlieben": [], "insider": [], "menschen": [], "fakten": []}`;
+- name: Name deines Menschen, falls bekannt, sonst "".
+- fakten: höchstens 50 kurze, dauerhafte Fakten (Beruf, Projekte, Pläne, Besitz, Wohnort usw.).
+- vorlieben: höchstens 20 Vorlieben, Abneigungen und Gewohnheiten (z. B. wie er seinen Kaffee trinkt, wann er aufsteht).
+- menschen: höchstens 20 Menschen aus seinem Leben mit kurzer Beschreibung.
+- Behalte, was stimmt, korrigiere Veraltetes, fasse Doppeltes zusammen. Nimm nur Dauerhaftes auf, keine einmaligen Kleinigkeiten wie einen einzelnen Timer. Nichts erfinden. Kurze deutsche Stichpunkte.
+Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakten": [], "vorlieben": [], "menschen": []}`;
     try {
       const data = await api({ model: cfg.model, max_tokens: 1500, messages: [{ role: "user", content: prompt }] });
       const raw = data.content.filter(c => c.type === "text").map(c => c.text).join("");
       const a = raw.indexOf("{"), z = raw.lastIndexOf("}");
       const neu = a >= 0 && z > a ? JSON.parse(raw.slice(a, z + 1)) : null;
       if (neu && typeof neu === "object" && !Array.isArray(neu)) {
-        const s = sauber({ ...neu, gespraeche: ich.gespraeche, geboren: ich.geboren });
+        const s = sauber({ ...neu, gespraeche: ich.gespraeche });
         if (!s.name) s.name = ich.name;
         ich = s;
       }
       ich.gespraeche += 1; saveIch();
-      const jetzt = stufe();
-      if (jetzt.key !== vorher) {
-        note(`Sentinel ist gewachsen und ist jetzt: ${jetzt.label}.`, 8000);
-        if (!busy && !speaking) { setMood("ueberrascht"); setTimeout(() => { if (mood === "ueberrascht" && !busy && !speaking) setMood("freude"); }, 1800); }
-      }
-      if (!busy && !speaking) status(cfg.ear ? "hört zu" : "bereit");
     } catch (e) {
       if (!(e instanceof ApiError && ["key", "nokey", "credit"].includes(e.kind))) { sessionLog = [...log, ...sessionLog].slice(-40); store.set("session", sessionLog); }
       lastTalk = Date.now();
@@ -844,34 +974,34 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "chara
   // Ein Gespräch ist vorbei nach 3 Minuten Ruhe
   setInterval(() => { if (sessionLog.length && !busy && !speaking && Date.now() - lastTalk > 180000) reflect(); }, 20000);
 
-  // ================= ICH-ANSICHT =================
+  // ================= GEDÄCHTNIS-ANSICHT =================
   const pBody = $("pBody"), pReset = $("pReset");
   let resetArmed = false;
   function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function grp(titel, items) {
+    const g = el("div", "grp"); g.append(el("h3", null, titel));
+    const c = el("div", "chips");
+    if (items.length) items.forEach(x => c.append(el("span", "chip", x)));
+    else c.append(el("span", "empty", "nichts"));
+    g.append(c); return g;
+  }
   function renderIch() {
     pBody.replaceChildren();
-    const St = stufe(), i = STUFEN.indexOf(St), next = STUFEN[i + 1];
     const head = el("div", "who");
     head.append(el("div", "big", ich.name ? `Sentinel & ${ich.name}` : "Sentinel kennt dich noch nicht"));
-    head.append(el("div", "meta", `${ich.gespraeche} ${ich.gespraeche === 1 ? "Gespräch" : "Gespräche"}` + (next ? ` · noch ${next.ab - ich.gespraeche} bis ${next.label}` : " · ausgewachsen")));
-    const steps = el("div", "steps");
-    STUFEN.forEach((s, j) => steps.append(el("span", "step" + (j < i ? " done" : j === i ? " now" : ""), s.label)));
-    pBody.append(head, steps);
-    for (const [k, titel] of LISTEN) {
-      const g = el("div", "grp");
-      g.append(el("h3", null, k === "fakten" && ich.name ? `Was ich über ${ich.name} weiß` : titel));
-      const c = el("div", "chips");
-      if (ich[k].length) ich[k].forEach(x => c.append(el("span", "chip", x)));
-      else c.append(el("span", "empty", "noch nichts"));
-      g.append(c); pBody.append(g);
-    }
+    head.append(el("div", "meta", `${ich.gespraeche} ${ich.gespraeche === 1 ? "Gespräch" : "Gespräche"} · Gesicht ${detector ? "erkannt per KI" : "per Bewegung"} · Smart Home ${cfg.haUrl && cfg.haToken ? "verbunden" : "nicht eingerichtet"}`));
+    pBody.append(head);
+    pBody.append(grp("Timer und Erinnerungen", termine.map(t => `${wannText(t.at)}${t.text ? " · " + t.text : ""}`)));
+    for (const [n, a] of Object.entries(listen)) pBody.append(grp("Liste: " + n, a));
+    for (const [k, titel] of LISTEN) pBody.append(grp(k === "fakten" && ich.name ? `Was ich über ${ich.name} weiß` : titel, ich[k]));
   }
-  $("ichBtn").addEventListener("click", () => { renderIch(); resetArmed = false; pReset.textContent = "Neu anfangen"; $("ichPanel").hidden = false; });
+  $("ichBtn").addEventListener("click", () => { renderIch(); resetArmed = false; pReset.textContent = "Gedächtnis löschen"; $("ichPanel").hidden = false; });
   $("ichClose").addEventListener("click", () => { $("ichPanel").hidden = true; });
   pReset.addEventListener("click", () => {
     if (!resetArmed) { resetArmed = true; pReset.textContent = "Wirklich alles vergessen? Nochmal tippen"; return; }
-    resetArmed = false; pReset.textContent = "Neu anfangen";
+    resetArmed = false; pReset.textContent = "Gedächtnis löschen";
     ich = frisch(); saveIch(); history = []; sessionLog = []; store.set("session", []);
+    termine = []; saveTermine(); listen = {}; saveListen();
     $("ichPanel").hidden = true; begruessen(true);
   });
 
@@ -879,6 +1009,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "chara
   function openSettings() {
     $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sOrt").value = cfg.ort;
     $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake;
+    $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken;
     const u = usage.tag === heute() ? usage : { n: 0, inTok: 0, outTok: 0 };
     $("sUsage").textContent = `Heute: ${u.n} Anfragen · ${u.inTok.toLocaleString("de-DE")} Tokens rein · ${u.outTok.toLocaleString("de-DE")} Tokens raus`;
     $("setPanel").hidden = false;
@@ -889,14 +1020,17 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "chara
     cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.ort = $("sOrt").value.trim();
     cfg.limit = Math.max(10, Math.min(5000, parseInt($("sLimit").value, 10) || 300));
     cfg.search = $("sSearch").checked; cfg.wake = $("sWake").checked;
+    cfg.haUrl = $("sHaUrl").value.trim(); cfg.haToken = $("sHaToken").value.trim();
     saveCfg(); $("setPanel").hidden = true; note("Gespeichert.", 2000);
   });
 
   // ================= START =================
   function begruessen(spoken) {
-    const t = ich.name ? pick([`Hey ${ich.name}! Schön, dass du da bist.`, `Da bin ich wieder, ${ich.name}.`]) : "Hallo? Ich bin gerade aufgewacht… Wer bist du?";
+    const h = new Date().getHours();
+    const gruss = h < 5 ? "Guten Abend" : h < 11 ? "Guten Morgen" : h < 18 ? "Hallo" : "Guten Abend";
+    const t = ich.name ? `${gruss}, ${ich.name}. Alle Systeme sind bereit.` : `${gruss}. Ich bin Sentinel, dein persönlicher Assistent. Wie heißt du?`;
     lastGreet = Date.now();
-    show(t); setMood(ich.name ? "freude" : "ueberrascht");
+    show(""); setMood(ich.name ? "freude" : "ueberrascht");
     if (spoken) speak(t, "neutral"); else setTimeout(() => { if (!busy && !speaking) setMood("neutral"); }, 2000);
     status(cfg.ear ? "hört zu" : "bereit");
   }
