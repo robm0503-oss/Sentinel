@@ -191,7 +191,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check"><input id="sWake" type="checkbox"> Nur antworten, wenn „Sentinel“ gesagt wird</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint">Sentinel Version 10</div>
+    <div class="hint">Sentinel Version 11</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -645,7 +645,9 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     try {
       voskPrepareCtx();
       if (!window.Vosk) await loadScript(VOSK_JS);
-      vosk.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }, video: false });
+      // Echo-Unterdrückung AUS: Sonst schaltet Android in den "Telefonmodus" und die Stimme wird leise oder stumm.
+      // Er hört sich trotzdem nicht selbst, weil er beim Sprechen nicht zuhört.
+      vosk.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true, channelCount: 1 }, video: false });
       vosk.model = await Vosk.createModel(cfg.voskUrl || VOSK_MODEL);
       const rec = new vosk.model.KaldiRecognizer(vosk.ctx.sampleRate);
       rec.on("partialresult", m => voskText((m.result && m.result.partial) || "", false));
@@ -714,16 +716,31 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     if (!t || t === "[unk]") return;
     lastResultAt = Date.now();
     if (!final) {
+      clearTimeout(endTimer); // redet weiter -> Satz noch nicht abschicken
+      endTimer = setTimeout(finishUtterance, 8000); // Sicherheitsnetz, falls kein Satzende kommt
       if (!capturing) { capturing = true; capture = preroll.slice(); preroll = []; }
       if (!voskUtterStart) voskUtterStart = Date.now();
       if (!voskAddressed && addressed(t, voskUtterStart)) voskAddressed = true;
       if (voskAddressed && !busy && !speaking) setMood("zuhoeren");
       return;
     }
-    const startedAt = voskUtterStart || Date.now(), roughAddressed = voskAddressed;
+    // Satzende erkannt – aber noch 1,3 s warten: Wer kurz Luft holt, redet oft weiter.
+    // Kommt in der Zeit neue Sprache, wird alles zu EINEM Satz zusammengefasst.
+    roughText = (roughText + " " + t).trim();
+    if (!capturing) { capturing = true; capture = preroll.slice(); preroll = []; }
+    if (!voskUtterStart) voskUtterStart = Date.now();
+    clearTimeout(endTimer);
+    endTimer = setTimeout(finishUtterance, 1300);
+  }
+  let roughText = "", endTimer = null;
+  function finishUtterance() {
+    clearTimeout(endTimer);
+    const t = roughText;
+    const startedAt = voskUtterStart || Date.now(), roughAddressed = voskAddressed || addressed(t, startedAt);
     const chunks = capturing ? capture.slice() : preroll.slice();
-    capture = []; capturing = false; preroll = []; voskUtterStart = 0; voskAddressed = false;
-    if (!cfg.groqKey) { elog("gehört: " + t); heard(t, roughAddressed || addressed(t, startedAt)); return; }
+    capture = []; capturing = false; preroll = []; voskUtterStart = 0; voskAddressed = false; roughText = "";
+    if (!t) return;
+    if (!cfg.groqKey) { elog("gehört: " + t); heard(t, roughAddressed); return; }
     whisper(chunks).then(exact => {
       if (exact === "") return;                         // nur Geräusch / Whisper-Halluzination
       const text = exact || t;                          // bei Fehler: eigener Text als Ersatz
@@ -1366,12 +1383,14 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     }
     $("startPanel").hidden = true;
     keepAwake();
-    try { await document.documentElement.requestFullscreen(); } catch (e) {}
-    if (cfg.engine !== "google") { voskPrepareCtx(); if (cfg.ear) voskStart(); }
-    if (cfg.eye) await camStart();
+    // Stimme und Audio SOFORT beim Antippen freischalten – Android erlaubt Ton nur direkt nach einer Berührung
+    if (cfg.engine !== "google") voskPrepareCtx();
     earUI();
-    if (cfg.engine === "google" && !SR) note("Dieser Browser kann nicht zuhören. Nimm Chrome.");
     begruessen(true);
+    try { await document.documentElement.requestFullscreen(); } catch (e) {}
+    if (cfg.engine !== "google" && cfg.ear) voskStart();
+    if (cfg.eye) await camStart();
+    if (cfg.engine === "google" && !SR) note("Dieser Browser kann nicht zuhören. Nimm Chrome.");
   });
   if (!window.isSecureContext) {
     $("startText").textContent = "Achtung: Mikrofon und Kamera gehen nur, wenn die Seite über https geöffnet wird.";
