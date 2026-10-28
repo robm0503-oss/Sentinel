@@ -1,0 +1,1485 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Sentinel</title>
+<!-- Sentinel Haus-System v6 -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Sentinel Tablet – das ganze Tablet ist der Kopf */
+:root {
+  --bg: #000;
+  --bar: #0e1114;
+  --line: #23292f;
+  --text: #e7e4dc;
+  --muted: #858a90;
+  --eye: #ffb547;
+  --bad: #ff6b5f;
+  --display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--display); overflow: hidden; -webkit-tap-highlight-color: transparent; }
+
+.app {
+  height: 100%; display: flex; flex-direction: column; gap: 8px;
+  padding: max(8px, env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) max(10px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+}
+.stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; position: relative; }
+canvas#face { display: block; height: 100%; max-height: 100%; aspect-ratio: 1; max-width: 100%; touch-action: none; cursor: pointer; }
+.top {
+  position: absolute; top: 4px; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  font: .72rem var(--mono); color: var(--muted); letter-spacing: .06em;
+}
+.tbtns { display: flex; gap: 6px; }
+.ghost { background: none; border: 1px solid var(--line); color: var(--muted); font: .7rem var(--mono); padding: 6px 10px; border-radius: 8px; cursor: pointer; }
+.say { min-height: 2.6em; max-height: 6.5em; overflow-y: auto; text-align: center; font-size: clamp(1rem, 2.4vw, 1.35rem); line-height: 1.35; text-wrap: balance; padding-inline: 8px; }
+.say.dim { color: var(--muted); font-size: .95rem; }
+.say:empty { display: none; }
+.bar { display: flex; gap: 8px; align-items: center; background: var(--bar); border: 1px solid var(--line); border-radius: 16px; padding: 8px; }
+.bar input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: var(--text); font: 500 1.05rem var(--display); padding: 8px 6px; }
+.bar input::placeholder { color: var(--muted); }
+.icon { width: 46px; height: 46px; flex: none; border-radius: 12px; border: 1px solid var(--line); background: #151a1f; color: var(--text); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.icon svg { width: 22px; height: 22px; }
+.icon.primary { background: var(--eye); color: #1a1205; border-color: var(--eye); }
+.icon.on { border-color: var(--eye); color: var(--eye); box-shadow: inset 0 0 0 1px var(--eye); }
+.icon:disabled { opacity: .4; cursor: default; }
+.icon:focus-visible, .ghost:focus-visible, .btn:focus-visible { outline: 2px solid var(--eye); outline-offset: 2px; }
+.hint { font: .72rem var(--mono); color: var(--muted); text-align: center; }
+video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+/* Blätter (Einstellungen, Ich, Start) */
+.panel {
+  position: fixed; inset: 0; z-index: 20; background: #000d; display: flex; align-items: center; justify-content: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+}
+.sheet { width: 100%; max-width: 560px; max-height: 100%; overflow-y: auto; background: var(--bar); border: 1px solid var(--line); border-radius: 18px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.phead { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.sheet h2 { margin: 0; font-size: 1rem; letter-spacing: .16em; text-transform: uppercase; }
+.sheet p { margin: 0; color: var(--muted); line-height: 1.5; font-size: .95rem; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label, .grp h3 { font: 500 .7rem var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0; }
+.field textarea { resize: vertical; line-height: 1.4; }
+.field input[type=text], .field input[type=password], .field input[type=number], .field select, .field textarea {
+  background: #151a1f; border: 1px solid var(--line); border-radius: 10px; color: var(--text); font: 500 1rem var(--display); padding: 11px 12px; width: 100%;
+}
+.check { display: flex; align-items: center; gap: 10px; font-size: .98rem; }
+.check input { width: 20px; height: 20px; accent-color: var(--eye); }
+.btn { border: 0; border-radius: 12px; padding: 13px 16px; font: 700 1rem var(--display); letter-spacing: .04em; cursor: pointer; background: var(--eye); color: #1a1205; }
+.btn.danger { background: none; border: 1px solid var(--bad); color: var(--bad); }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+.row .btn { flex: 1; }
+.err { color: var(--bad); font-size: .9rem; }
+.who .big { font-size: 1.3rem; font-weight: 700; }
+.who .meta { font: .78rem var(--mono); color: var(--muted); margin-top: 4px; }
+.steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.step { text-align: center; font: 600 .78rem var(--display); padding: 7px 4px; border-radius: 8px; border: 1px solid var(--line); color: var(--muted); }
+.step.done { color: var(--text); }
+.step.now { border-color: var(--eye); color: var(--eye); box-shadow: inset 0 0 0 1px var(--eye); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip { border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; font-size: .9rem; }
+.empty { color: var(--muted); font-size: .88rem; }
+#pBody { display: flex; flex-direction: column; gap: 16px; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="stage">
+    <canvas id="face" width="480" height="480" aria-label="Sentinels Gesicht"></canvas>
+    <div class="top">
+      <span id="status">SENTINEL</span>
+      <span class="tbtns">
+        <button class="ghost" id="ichBtn" type="button">Gedächtnis</button>
+        <button class="ghost" id="setBtn" type="button">Einstellungen</button>
+        <button class="ghost" id="fullBtn" type="button">Vollbild</button>
+      </span>
+    </div>
+    <video id="cam" playsinline muted></video>
+  </div>
+
+  <div class="say dim" id="say"></div>
+
+  <form class="bar" id="bar">
+    <button class="icon" id="earBtn" type="button" aria-label="Dauerhaft zuhören an oder aus" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+    </button>
+    <button class="icon" id="eyeBtn" type="button" aria-label="Kamera an oder aus" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
+    <input id="msg" type="text" autocomplete="off" placeholder="Oder hier schreiben" enterkeyhint="send">
+    <button class="icon primary" id="sendBtn" type="submit" aria-label="Senden">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+    </button>
+  </form>
+  <div class="hint" id="hint" hidden></div>
+</div>
+
+<!-- Start: einmal tippen, damit Mikro, Kamera und Stimme erlaubt werden -->
+<div class="panel" id="startPanel">
+  <div class="sheet">
+    <h2>Sentinel</h2>
+    <p id="startText">Tipp auf Aufwecken. Danach fragt das Tablet einmal, ob Sentinel Mikrofon und Kamera benutzen darf.</p>
+    <div class="field" id="keyField" hidden>
+      <label for="keyInput">Anthropic API-Key</label>
+      <input id="keyInput" type="password" autocomplete="off" placeholder="sk-ant-…">
+    </div>
+    <div class="err" id="startErr" hidden></div>
+    <button class="btn" id="startBtn" type="button">Aufwecken</button>
+  </div>
+</div>
+
+<!-- Einstellungen -->
+<div class="panel" id="setPanel" hidden>
+  <div class="sheet">
+    <div class="phead"><h2>Einstellungen</h2><button class="ghost" id="setClose" type="button">Schließen</button></div>
+    <div class="field">
+      <label for="sKey">API-Key</label>
+      <input id="sKey" type="password" autocomplete="off" placeholder="sk-ant-…">
+    </div>
+    <div class="field">
+      <label for="sModel">Gehirn</label>
+      <select id="sModel">
+        <option value="claude-haiku-5-5">Haiku 5.5 · schnell und günstig</option>
+        <option value="claude-sonnet-5-5">Sonnet 5.5 · natürliche Gespräche (empfohlen)</option>
+        <option value="claude-opus-5-5">Opus 5.5 · am klügsten, deutlich teurer und langsamer</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="sOrt">Ort (für Wetter und Suche in der Nähe)</label>
+      <input id="sOrt" type="text" placeholder="z. B. Wittenberge">
+    </div>
+    <div class="field">
+      <label for="sLimit">Tageslimit (Anfragen)</label>
+      <input id="sLimit" type="number" min="10" max="5000" step="10">
+    </div>
+    <div class="field">
+      <label for="sHaUrl">Home Assistant Adresse (https, optional)</label>
+      <input id="sHaUrl" type="text" autocomplete="off" placeholder="https://….ui.nabu.casa">
+    </div>
+    <div class="field">
+      <label for="sHaToken">Home Assistant Zugangstoken</label>
+      <input id="sHaToken" type="password" autocomplete="off" placeholder="Langlebiges Zugriffstoken">
+    </div>
+    <div class="field">
+      <label for="sAbout">Über mich (das weiß Sentinel immer)</label>
+      <textarea id="sAbout" rows="5" placeholder="Wer du bist, was du machst, was dir wichtig ist …"></textarea>
+    </div>
+    <label class="check"><input id="sSearch" type="checkbox"> Im Internet suchen dürfen</label>
+    <div class="field">
+      <label for="sEngine">Ohren</label>
+      <select id="sEngine">
+        <option value="vosk">Eigene Ohren · hören dauerhaft, offline (empfohlen)</option>
+        <option value="google">Google-Erkennung · genauer, braucht aber Antippen</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="sGroq">Groq-Key für genaue Spracherkennung (Whisper, kostenlos)</label>
+      <input id="sGroq" type="password" autocomplete="off" placeholder="gsk_…">
+    </div>
+    <div class="field">
+      <label for="sWakeExtra">Weckwort-Varianten (mit Komma)</label>
+      <input id="sWakeExtra" type="text" autocomplete="off" placeholder="z. B. sende nil, zentner">
+    </div>
+    <label class="check"><input id="sWake" type="checkbox"> Nur antworten, wenn „Sentinel“ gesagt wird</label>
+    <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
+    <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
+    <div class="hint" id="sUsage"></div>
+    <div class="hint" id="verHint">Sentinel Version 13</div>
+    <button class="btn" id="setSave" type="button">Speichern</button>
+  </div>
+</div>
+
+<!-- Diagnose -->
+<div class="panel" id="logPanel" hidden>
+  <div class="sheet">
+    <div class="phead"><h2>Ohren-Protokoll</h2><button class="ghost" id="logClose" type="button">Schließen</button></div>
+    <pre id="logBody" style="margin:0;white-space:pre-wrap;font:.8rem var(--mono);color:var(--muted)"></pre>
+  </div>
+</div>
+
+<!-- Sentinels Ich -->
+<div class="panel" id="ichPanel" hidden>
+  <div class="sheet">
+    <div class="phead"><h2>Gedächtnis</h2><button class="ghost" id="ichClose" type="button">Schließen</button></div>
+    <div id="pBody"></div>
+    <button class="btn danger" id="pReset" type="button">Gedächtnis löschen</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+
+  // ================= SPEICHER (nur auf diesem Tablet) =================
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("sentinel." + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem("sentinel." + k, JSON.stringify(v)); } catch (e) {} },
+  };
+  const cfg = Object.assign({ key: "", model: "claude-haiku-5-5", ort: "", limit: 300, search: true, wake: true, look: true, engine: "vosk", wakeExtra: "", voskUrl: "", ear: true, eye: true, haUrl: "", haToken: "" }, store.get("cfg", {}));
+  const saveCfg = () => store.set("cfg", cfg);
+  // Umstieg auf v3: Sonnet als Standard-Gehirn für natürlichere Gespräche
+  if (!cfg.v3) { if (cfg.model === "claude-haiku-5-5") cfg.model = "claude-sonnet-5-5"; cfg.v3 = true; saveCfg(); }
+  if (typeof cfg.about !== "string") cfg.about = "";
+  // v12: zurück zur Google-Erkennung – die versteht am besten. Antippen weckt die Ohren zuverlässig.
+  if (!cfg.v12) { cfg.engine = "google"; cfg.ear = true; cfg.v12 = true; saveCfg(); }
+
+  // ================= ANDROID-APP? =================
+  // In der echten App gibt es native Ohren und Stimme: dauerhaft zuhören ohne Antippen, wie Alexa.
+  const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  const SV = NATIVE ? ((window.Capacitor.Plugins && window.Capacitor.Plugins.SentinelVoice) ||
+                       (window.Capacitor.registerPlugin && window.Capacitor.registerPlugin("SentinelVoice"))) : null;
+  if (NATIVE) cfg.engine = "native";
+  const ttsWait = {};
+
+  // ================= GESICHT =================
+  const cv = $("face"), ctx = cv.getContext("2d"), S = cv.width / 240;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let eyeColor = "#ffb547";
+  const base = { w: 1, h: 1, top: 0, tilt: 0, bot: 0 };
+  const E = (o = {}) => ({ ...base, ...o });
+  const MOODS = {
+    neutral:     { L: E(), R: E() },
+    freude:      { L: E({ h: .92, bot: .5 }), R: E({ h: .92, bot: .5 }) },
+    zuhoeren:    { L: E({ w: 1.08, h: 1.12 }), R: E({ w: 1.08, h: 1.12 }), anim: "pulse" },
+    nachdenken:  { L: E({ top: .12 }), R: E({ top: .3 }), gaze: [-14, -11] },
+    skeptisch:   { L: E({ top: .06 }), R: E({ top: .44, tilt: .08 }) },
+    ueberrascht: { L: E({ w: .84, h: 1.24 }), R: E({ w: .84, h: 1.24 }) },
+    sauer:       { L: E({ top: .06, tilt: .34 }), R: E({ top: .06, tilt: .34 }) },
+    muede:       { L: E({ top: .78 }), R: E({ top: .78 }), gaze: [0, 7], anim: "breath", noBlink: true },
+    geniesst:    { L: E({ h: .6, bot: .55 }), R: E({ h: .6, bot: .55 }), gaze: [0, 2], noBlink: true },
+    aua:         { L: E(), R: E(), noBlink: true },
+  };
+  const MOOD_COLOR = {
+    neutral: "#ffb547", freude: "#7dff9a", zuhoeren: "#7fdcff", nachdenken: "#b49cff", skeptisch: "#ffd23f",
+    ueberrascht: "#ff8fd6", sauer: "#ff4a3d", muede: "#5b7fd8", geniesst: "#7dff9a", aua: "#ff8fd6",
+  };
+  const MOUTH = {
+    neutral:     { w: 34, curve: 2,   open: 0,  tilt: 0 },
+    freude:      { w: 46, curve: 12,  open: 0,  tilt: 0 },
+    zuhoeren:    { w: 22, curve: 1,   open: 0,  tilt: 0 },
+    nachdenken:  { w: 22, curve: -1,  open: 0,  tilt: -6 },
+    skeptisch:   { w: 30, curve: -2,  open: 0,  tilt: 8 },
+    ueberrascht: { w: 18, curve: 0,   open: .9, tilt: 0 },
+    sauer:       { w: 40, curve: -10, open: 0,  tilt: 0 },
+    muede:       { w: 20, curve: 0,   open: 0,  tilt: 0 },
+    geniesst:    { w: 40, curve: 14,  open: 0,  tilt: 0 },
+    aua:         { w: 24, curve: -6,  open: 0,  tilt: -10 },
+  };
+  const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  let rgb = hex("#ffb547");
+  const mouth = { w: 34, curve: 2, open: 0, tilt: 0 };
+  let mood = "neutral";
+  const cur = { L: E(), R: E() };
+  let gaze = [0, 0], gazeTarget = [0, 0], lastPointer = 0, nextSaccade = 0;
+  let blink = 1, blinkStart = -1, nextBlink = performance.now() + 2500;
+  let lastActivity = performance.now();
+  let busy = false, speaking = false;
+  let faceGaze = null, faceSeenAt = 0; // von der Kamera
+
+  function setMood(k) { if (MOODS[k]) mood = k; }
+  function wake() { lastActivity = performance.now(); if (mood === "muede") setMood("neutral"); }
+  const lerp = (a, b, t) => a + (b - a) * t;
+
+  function roundRect(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath(); ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+  let pokedEye = 0;
+  function drawEye(side, p, t, anim) {
+    let w = p.w, h = p.h;
+    if (anim === "pulse") { const k = 1 + Math.sin(t / 260) * .04; w *= k; h *= k; }
+    if (anim === "breath") h *= 1 + Math.sin(t / 900) * .06;
+    const ew = 54 * w, eh = 64 * h * blink;
+    const cx = 120 + side * 42 + gaze[0] * (side === 1 ? 1 : .92), cy = 104 + gaze[1];
+    const x0 = cx - ew / 2, y0 = cy - eh / 2, x1 = cx + ew / 2, y1 = cy + eh / 2;
+    ctx.save(); ctx.shadowColor = eyeColor; ctx.shadowBlur = 18; ctx.fillStyle = eyeColor;
+    roundRect(x0, y0, ew, eh, 18 * Math.min(w, h)); ctx.fill(); ctx.restore();
+    ctx.fillStyle = "#000";
+    if (p.top > .005 || p.tilt > .005) {
+      const inner = side === -1 ? x1 : x0, outer = side === -1 ? x0 : x1;
+      ctx.beginPath();
+      ctx.moveTo(outer + side * 6, y0 - 30); ctx.lineTo(inner - side * 6, y0 - 30);
+      ctx.lineTo(inner - side * 6, y0 + eh * (p.top + p.tilt)); ctx.lineTo(outer + side * 6, y0 + eh * p.top);
+      ctx.closePath(); ctx.fill();
+    }
+    if (p.bot > .005) { ctx.beginPath(); ctx.ellipse(cx, y1 + eh * (.55 - p.bot), ew * .82, eh * .55, 0, 0, Math.PI * 2); ctx.fill(); }
+  }
+  function drawMouth(t) {
+    const target = MOUTH[mood] || MOUTH.neutral, k = reduce ? 1 : .18;
+    for (const key in mouth) mouth[key] = lerp(mouth[key], target[key], k);
+    let open = mouth.open;
+    if (speaking) open = Math.max(open, .12 + Math.abs(Math.sin(t / 85)) * (.55 + .45 * Math.sin(t / 210)) * .88);
+    const cx = 120 + gaze[0] * .5, cy = 180 + gaze[1] * .4, w = mouth.w * (speaking ? .85 : 1);
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(mouth.tilt * Math.PI / 180);
+    ctx.shadowColor = eyeColor; ctx.shadowBlur = 12; ctx.fillStyle = eyeColor; ctx.strokeStyle = eyeColor;
+    if (open > .06) { const h = 4 + open * 22; ctx.beginPath(); ctx.ellipse(0, mouth.curve * .3, w / 2, h / 2, 0, 0, Math.PI * 2); ctx.fill(); }
+    else { ctx.lineWidth = 5; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(-w / 2, 0); ctx.quadraticCurveTo(0, mouth.curve * 2, w / 2, 0); ctx.stroke(); }
+    ctx.restore();
+  }
+  function frame(t) {
+    const tc = hex(MOOD_COLOR[mood] || MOOD_COLOR.neutral);
+    rgb = rgb.map((v, i) => lerp(v, tc[i], reduce ? 1 : .08));
+    eyeColor = "rgb(" + rgb.map(Math.round).join(",") + ")";
+    if (!busy && !speaking && mood === "neutral" && t - lastActivity > 180000) setMood("muede");
+    const m = MOODS[mood];
+    if (m.gaze) gazeTarget = m.gaze.slice();
+    else if (t - lastPointer < 2500) { /* Finger hat Vorrang */ }
+    else if (faceGaze && t - faceSeenAt < 1500) gazeTarget = faceGaze.slice();
+    else if (t > nextSaccade) {
+      gazeTarget = reduce ? [0, 0] : [(Math.random() * 2 - 1) * 16, (Math.random() * 2 - 1) * 10];
+      nextSaccade = t + 1400 + Math.random() * 2800;
+    }
+    const gk = reduce ? 1 : .2;
+    gaze = [lerp(gaze[0], gazeTarget[0], gk), lerp(gaze[1], gazeTarget[1], gk)];
+    const k = reduce ? 1 : .16;
+    const tgt = s => mood === "aua" ? (((s === "L") === (pokedEye === -1)) ? E({ top: .88 }) : E({ w: .9, h: 1.18 })) : m[s];
+    for (const s of ["L", "R"]) { const g = tgt(s); for (const key in base) cur[s][key] = lerp(cur[s][key], g[key], k); }
+    if (!m.noBlink && blinkStart < 0 && t > nextBlink) blinkStart = t;
+    if (blinkStart >= 0) {
+      const d = (t - blinkStart) / 150;
+      blink = d < 1 ? 1 - Math.sin(d * Math.PI) * .9 : 1;
+      if (d >= 1) { blinkStart = -1; nextBlink = t + (Math.random() < .2 ? 180 : 2200 + Math.random() * 3500); }
+    } else blink = 1;
+    ctx.setTransform(S, 0, 0, S, 0, 0);
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, 240, 240);
+    drawEye(-1, cur.L, t, m.anim); drawEye(1, cur.R, t, m.anim);
+    drawMouth(t);
+    if (mood === "muede") {
+      ctx.fillStyle = eyeColor; ctx.globalAlpha = .55 + Math.sin(t / 700) * .35;
+      ctx.font = '600 14px "Chakra Petch", sans-serif'; ctx.fillText("z", 168, 66);
+      ctx.font = '600 11px "Chakra Petch", sans-serif'; ctx.fillText("z", 180, 54);
+      ctx.globalAlpha = 1;
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // ================= UI-HELFER =================
+  const sayEl = $("say"), statusEl = $("status"), msg = $("msg"), hint = $("hint"), sendBtn = $("sendBtn");
+  function show(text, dim = false) { sayEl.textContent = text; sayEl.classList.toggle("dim", dim); }
+  function status(t) { statusEl.textContent = "SENTINEL · " + t; }
+  let hintTimer = null;
+  function note(t, ms = 0) { hint.textContent = t; hint.hidden = !t; clearTimeout(hintTimer); if (t && ms) hintTimer = setTimeout(() => { hint.hidden = true; }, ms); }
+
+  // ================= BERÜHRUNG =================
+  const pick = a => a[Math.floor(Math.random() * a.length)];
+  const LINES = {
+    streicheln: ["Mmh, das ist schön.", "Genau da, weiter so.", "Ich könnte mich dran gewöhnen."],
+    aua: ["Aua, hey! Das war mein Auge.", "Autsch, nicht ins Auge!", "Hey, die brauch ich noch."],
+    genervt: ["Lass das!", "Okay, jetzt reicht's aber.", "Ich bin doch kein Klavier."],
+  };
+  let press = null, taps = [], moodTimer = null;
+  function tempMood(k, ms) {
+    setMood(k); clearTimeout(moodTimer);
+    moodTimer = setTimeout(() => { if (mood === k && !busy && !speaking) { setMood("neutral"); pokedEye = 0; } }, ms);
+  }
+  function react(kind, moodKey) {
+    if (busy || speaking) return;
+    setMood(moodKey); clearTimeout(moodTimer);
+    speak(pick(LINES[kind]), "neutral").then(() => { pokedEye = 0; });
+  }
+  function pointTo(e) {
+    const r = cv.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
+    gazeTarget = [Math.max(-1, Math.min(1, x * 2.2)) * 18, Math.max(-1, Math.min(1, y * 2.2)) * 14];
+    lastPointer = performance.now(); wake();
+  }
+  cv.addEventListener("pointerdown", e => {
+    pointTo(e);
+    // Antippen = "Ich will mit dir reden": Ohren frisch starten (Android erlaubt das nur direkt nach einer Berührung)
+    // und die nächsten 15 Sekunden ohne "Sentinel" zuhören.
+    if (NATIVE && cfg.ear && !busy && !speaking) { followUntil = Date.now() + FOLLOW_MS; nativeEarsOn(); setMood("zuhoeren"); }
+    if (cfg.engine === "google" && SR && !busy && !speaking) {
+      cfg.ear = true; earUI(); followUntil = Date.now() + FOLLOW_MS;
+      hardReset("Antippen"); earStart(); setMood("zuhoeren"); status("hört zu");
+    }
+    press = { x: e.clientX, y: e.clientY, t: performance.now(), dist: 0, stroked: false, long: false };
+    press.timer = setTimeout(() => {
+      if (!press || press.dist > 25) return;
+      press.long = true;
+      if (!busy && !speaking) send("(" + (ich.name || "Dein Gegenüber") + " hält gerade lange den Finger auf dein Gesicht auf dem Bildschirm. Reagiere kurz und passend darauf.)");
+    }, 1300);
+  });
+  cv.addEventListener("pointermove", e => {
+    pointTo(e);
+    if (!press) return;
+    press.dist += Math.hypot(e.clientX - press.x, e.clientY - press.y);
+    press.x = e.clientX; press.y = e.clientY;
+    if (!press.stroked && press.dist > 160 && performance.now() - press.t > 350) {
+      press.stroked = true; clearTimeout(press.timer);
+      if (busy || speaking) return;
+      setMood("geniesst"); clearTimeout(moodTimer);
+      speak(pick(LINES.streicheln), "geniesst").then(() => tempMood("freude", 1500));
+    }
+  });
+  cv.addEventListener("pointerup", e => {
+    if (!press) return;
+    clearTimeout(press.timer);
+    const p = press; press = null;
+    if (p.stroked || p.long || p.dist > 25 || performance.now() - p.t > 600) return;
+    const now = performance.now();
+    taps = taps.filter(x => now - x < 2500); taps.push(now);
+    if (taps.length >= 8) { taps = []; react("genervt", "sauer"); return; }
+    if (taps.length >= 5) { tempMood("skeptisch", 1800); return; }
+    const r = cv.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width * 240, y = (e.clientY - r.top) / r.height * 240;
+    for (const side of [-1, 1]) {
+      const ex = 120 + side * 42 + gaze[0], ey = 104 + gaze[1];
+      if (Math.abs(x - ex) < 32 && Math.abs(y - ey) < 38) { pokedEye = side; react("aua", "aua"); return; }
+    }
+    // kurzes Antippen: einfach zuhören (blaue Augen), nicht mehr freuen
+  });
+  cv.addEventListener("pointercancel", () => { if (press) clearTimeout(press.timer); press = null; });
+
+  // ================= BILDSCHIRM AN + VOLLBILD =================
+  let wakeLock = null;
+  async function keepAwake() {
+    try { if (navigator.wakeLock && !wakeLock) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); } } catch (e) {}
+  }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") keepAwake(); });
+  $("fullBtn").addEventListener("click", async () => {
+    keepAwake();
+    try { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen(); }
+    catch (e) { note("Vollbild geht hier nicht.", 3000); }
+  });
+
+  // ================= STIMME =================
+  const synth = window.speechSynthesis;
+  let voice = null;
+  function pickVoice() {
+    if (!synth) return;
+    const vs = synth.getVoices().filter(v => /^de/i.test(v.lang));
+    voice = vs.find(v => /male|mann|conrad|stefan|markus|killian/i.test(v.name)) || vs[0] || null;
+  }
+  if (synth) { pickVoice(); synth.onvoiceschanged = pickVoice; }
+  // Lange Texte in Sätze zerlegen: Android bricht lange Vorlesetexte sonst einfach ab und hängt dann.
+  function chunks(text) {
+    const sents = String(text).match(/[^.!?…]+[.!?…]+["“”»«)]*\s*|[^.!?…]+$/g) || [text];
+    const out = []; let cur = "";
+    for (const s of sents) {
+      if ((cur + s).length > 180 && cur) { out.push(cur.trim()); cur = ""; }
+      if (s.length > 220) { s.split(/,\s+/).forEach(p => out.push(p.trim())); continue; }
+      cur += s;
+    }
+    if (cur.trim()) out.push(cur.trim());
+    return out.filter(Boolean);
+  }
+  let speakId = 0;
+  function speak(text, afterMood) {
+    return new Promise(resolve => {
+      const id = ++speakId;
+      let finished = false;
+      const done = () => {
+        if (finished) return; finished = true;
+        if (id !== speakId) return resolve();
+        speaking = false; setMood(afterMood); status("bereit"); afterSpeaking(); resolve();
+      };
+      if (NATIVE && SV && text) {
+        // App: Android-Sprachausgabe. Die Ohren pausieren dabei automatisch und hören danach weiter.
+        const uid = "u" + id;
+        ttsWait[uid] = done;
+        speaking = true; status("spricht");
+        SV.speak({ text: String(text), id: uid, rate: 1.05 }).catch(done);
+        setTimeout(done, 8000 + String(text).length * 120); // Sicherheitsnetz
+        return;
+      }
+      if (!synth || !text) { setMood(afterMood); afterSpeaking(); return resolve(); }
+      try {
+        earPause();
+        synth.cancel();
+        speaking = true; status("spricht");
+        const parts = chunks(text);
+        let i = 0;
+        const next = () => {
+          if (id !== speakId) return done();
+          if (i >= parts.length) return done();
+          const part = parts[i++];
+          const u = new SpeechSynthesisUtterance(part);
+          u.lang = "de-DE"; if (voice) u.voice = voice; u.rate = 1.05;
+          let moved = false;
+          const go = () => { if (moved) return; moved = true; clearTimeout(guard); next(); };
+          u.onend = go; u.onerror = go;
+          // Sicherheitsnetz: falls Android das Ende nicht meldet, nach angemessener Zeit weiter
+          const guard = setTimeout(() => { try { synth.cancel(); } catch (e) {} go(); }, 4000 + part.length * 110);
+          synth.speak(u);
+        };
+        next();
+      } catch (e) { done(); }
+    });
+  }
+
+  // ================= OHREN: Dauerhören mit Weckwort =================
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  // „Sentinel“ und typische Verhörer der Google-Spracherkennung
+  const WAKE_BASE = "sentinel+s?|sentinal|sentenel|sentenell|centinel+|sendinel+|zentinel+|santinel+|setinel+|sentin|sentiment|sentimental|senti ?nel+|sendi ?nel+|send in el|sent in el|zenti ?nel+";
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  function buildWake() {
+    const extra = String(cfg.wakeExtra || "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean).map(esc).join("|");
+    return new RegExp("\\b(" + WAKE_BASE + (extra ? "|" + extra : "") + ")\\b[\\s,.!?:]*", "i");
+  }
+  let WAKE = buildWake();
+  const FOLLOW_MS = 15000; // so lange darf man nach seiner Antwort ohne "Sentinel" weiterreden
+  let rec = null, recRunning = false, lastRecErr = null, followUntil = 0, oneShot = false;
+  const earBtn = $("earBtn");
+  function earUI() { earBtn.classList.toggle("on", cfg.ear); earBtn.setAttribute("aria-pressed", String(cfg.ear)); }
+  // Ganze Sätze sammeln: Android liefert oft Wortfetzen oder wiederholt Teile.
+  // Erst wenn du ca. 1,5 Sekunden nichts mehr sagst, geht der komplette Satz raus.
+  const PAUSE_MS = 1500;
+  let heardText = "", flushTimer = null, utterStart = 0, utterAddressed = false, lastResultAt = 0, recStartedAt = 0;
+  let resIdx = 0, resLen = 0; // schon verarbeitete Ergebnisse der laufenden Runde überspringen
+  function joinResults(results, from = 0) {
+    const parts = [];
+    for (let i = from; i < results.length; i++) {
+      const t = ((results[i][0] && results[i][0].transcript) || "").trim();
+      if (!t) continue;
+      const last = parts[parts.length - 1];
+      if (last && t.toLowerCase().startsWith(last.toLowerCase())) parts[parts.length - 1] = t; // Android-Wiederholung
+      else if (last && last.toLowerCase().endsWith(t.toLowerCase())) continue;
+      else parts.push(t);
+    }
+    return parts.join(" ").replace(/\s+/g, " ").trim();
+  }
+  // Diagnose-Protokoll: Tipp auf die Statuszeile oben links zeigt, was die Ohren gerade machen
+  const earLog = [];
+  function elog(t) {
+    earLog.push(new Date().toLocaleTimeString("de-DE") + " " + t);
+    if (earLog.length > 40) earLog.shift();
+    if (!$("logPanel").hidden) $("logBody").textContent = earLog.slice().reverse().join("\n");
+  }
+  // Android kann nur kurze Zuhör-Runden zuverlässig. Deshalb: viele kurze Runden hintereinander,
+  // der Text wird über die Runden hinweg gesammelt, bis du 1,5 Sekunden Pause machst.
+  let baseText = "", startPending = 0, lastAlive = 0, retryTimer = null;
+  function flushHeard() {
+    clearTimeout(flushTimer);
+    const t = heardText, forced = utterAddressed;
+    heardText = ""; baseText = ""; utterAddressed = false; utterStart = 0; resIdx = resLen;
+    if (!t) return;
+    elog("gehört: " + t);
+    heard(t, forced);
+  }
+  function hardReset(why) {
+    elog("Neustart der Ohren (" + why + ")");
+    if (rec) { rec.onend = rec.onresult = rec.onerror = rec.onstart = null; try { rec.abort(); } catch (e) {} }
+    rec = null; recRunning = false; startPending = 0;
+  }
+  function earStart() {
+    clearTimeout(retryTimer);
+    if (cfg.engine !== "google") return; // eigene Ohren laufen dauerhaft, kein Neustart nötig
+    if (!SR || recRunning || busy || speaking || !(cfg.ear || oneShot)) return;
+    if (document.visibilityState !== "visible") return;
+    try {
+      const r = new SR(); rec = r; resIdx = 0; resLen = 0;
+      r.lang = "de-DE"; r.continuous = true; r.interimResults = true; r.maxAlternatives = 1;
+      r.onstart = () => { if (rec !== r) return; startPending = 0; lastAlive = Date.now(); };
+      r.onsoundstart = r.onspeechstart = r.onaudiostart = () => { if (rec === r) lastAlive = Date.now(); };
+      r.onresult = e => {
+        if (rec !== r) return;
+        lastAlive = Date.now();
+        resLen = e.results.length;
+        const cur = joinResults(e.results, resIdx);
+        if (!cur) return;
+        heardText = (baseText + " " + cur).trim();
+        lastResultAt = Date.now();
+        if (!utterStart) utterStart = Date.now();
+        // Zählt, wann du ANGEFANGEN hast zu reden – lange Sätze fallen so nicht aus dem Gesprächsfenster
+        if (!utterAddressed && addressed(heardText, utterStart)) utterAddressed = true;
+        if (utterAddressed && !busy && !speaking) setMood("zuhoeren");
+        clearTimeout(flushTimer);
+        flushTimer = setTimeout(flushHeard, PAUSE_MS);
+      };
+      r.onerror = e => {
+        if (rec !== r) return;
+        lastRecErr = e.error;
+        if (e.error !== "no-speech" && e.error !== "aborted") elog("Fehler: " + e.error);
+        if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+          cfg.ear = false; saveCfg(); earUI(); note("Mikro nicht erlaubt. Erlaub es in Chrome über das Schloss neben der Adresse.");
+        }
+      };
+      r.onend = () => {
+        if (rec !== r) return;
+        recRunning = false; startPending = 0; lastAlive = Date.now();
+        baseText = heardText;   // Gesagtes behalten, die nächste Runde hängt sich dran
+        const wait = lastRecErr === "network" ? 2500 : lastRecErr === "audio-capture" ? 1500 : 120; lastRecErr = null;
+        if ((cfg.ear || oneShot) && !busy && !speaking) retryTimer = setTimeout(earStart, wait);
+      };
+      r.start(); recRunning = true; recStartedAt = Date.now(); startPending = Date.now();
+      if (!busy && !speaking) status(cfg.ear ? "hört zu" : "bereit");
+    } catch (e) {
+      elog("Start fehlgeschlagen: " + (e && e.name || e));
+      hardReset("Startfehler");
+      retryTimer = setTimeout(earStart, 1000);
+    }
+  }
+  function earPause() {
+    clearTimeout(retryTimer);
+    if (rec) { const r = rec; rec = null; r.onend = r.onresult = r.onerror = r.onstart = null; try { r.abort(); } catch (e) {} }
+    recRunning = false; startPending = 0;
+  }
+  function afterSpeaking() { followUntil = Date.now() + FOLLOW_MS; muteUntil = Date.now() + 600; setTimeout(earStart, 350); }
+  // Wächter: nichts darf dauerhaft hängen bleiben
+  setInterval(() => {
+    if (busy || speaking || !$("startPanel").hidden) return;
+    if (cfg.engine !== "google") return voskWatch();
+    const now = Date.now();
+    // blau, aber seit 8 Sekunden nichts mehr gehört -> zurück auf normal
+    if (mood === "zuhoeren" && document.activeElement !== msg && now - lastResultAt > 8000) setMood("neutral");
+    if (!cfg.ear || !SR) return;
+    // gestartet, aber Android hat nie "läuft" gemeldet -> hart neu starten
+    if (startPending && now - startPending > 5000) { hardReset("Start hängt"); earStart(); return; }
+    // läuft angeblich, aber seit 30 Sekunden kein Lebenszeichen -> leise neu starten
+    if (recRunning && !heardText && now - lastAlive > 30000 && now - recStartedAt > 30000) { hardReset("kein Lebenszeichen"); earStart(); return; }
+    // Zuhören ist an, läuft aber nicht -> starten
+    if (!recRunning) earStart();
+  }, 3000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    if (cfg.engine !== "google") { if (vosk.ctx && vosk.ctx.state !== "running") vosk.ctx.resume().catch(() => {}); return; }
+    if (cfg.ear && !busy && !speaking) { hardReset("wieder sichtbar"); earStart(); }
+  });
+
+  // ================= EIGENE OHREN (Vosk, läuft komplett auf dem Tablet) =================
+  // Braucht kein Antippen, hört dauerhaft, kostet nichts. Das Sprachmodell (ca. 46 MB) wird
+  // einmal geladen und dann im Tablet gespeichert.
+  const VOSK_JS = "https://cdn.jsdelivr.net/npm/vosk-browser@0.0.8/dist/vosk.js";
+  const VOSK_MODEL = "https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-de-0.15.tar.gz";
+  const vosk = { ctx: null, stream: null, model: null, rec: null, node: null, loading: false, ready: false, lastAudio: 0 };
+  let voskUtterStart = 0, voskAddressed = false, muteUntil = 0;
+  function loadScript(src) {
+    return new Promise((ok, no) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => no(new Error("Skript nicht ladbar")); document.head.appendChild(s); });
+  }
+  function voskPrepareCtx() { // muss bei einer Berührung passieren (Aufwecken oder Mikro-Knopf)
+    try {
+      if (!vosk.ctx) vosk.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      vosk.ctx.resume().catch(() => {});
+    } catch (e) {}
+  }
+  async function voskStart() {
+    if (vosk.ready || vosk.loading) return;
+    vosk.loading = true;
+    status("lädt Ohren …"); elog("lade Sprachmodell (beim ersten Mal ca. 50 MB)");
+    note("Ich lade meine Ohren. Beim ersten Mal dauert das ein bis zwei Minuten.");
+    try {
+      voskPrepareCtx();
+      if (!window.Vosk) await loadScript(VOSK_JS);
+      // Echo-Unterdrückung AUS: Sonst schaltet Android in den "Telefonmodus" und die Stimme wird leise oder stumm.
+      // Er hört sich trotzdem nicht selbst, weil er beim Sprechen nicht zuhört.
+      vosk.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true, channelCount: 1 }, video: false });
+      vosk.model = await Vosk.createModel(cfg.voskUrl || VOSK_MODEL);
+      const rec = new vosk.model.KaldiRecognizer(vosk.ctx.sampleRate);
+      rec.on("partialresult", m => voskText((m.result && m.result.partial) || "", false));
+      rec.on("result", m => voskText((m.result && m.result.text) || "", true));
+      vosk.rec = rec;
+      const src = vosk.ctx.createMediaStreamSource(vosk.stream);
+      const node = vosk.ctx.createScriptProcessor(4096, 1, 1);
+      node.onaudioprocess = ev => {
+        vosk.lastAudio = Date.now();
+        // Während er selbst spricht oder nachdenkt, hört er nicht hin (sonst hört er sich selbst)
+        if (!cfg.ear || speaking || busy || Date.now() < muteUntil) { capture.length = 0; capturing = false; return; }
+        // Ton mitschneiden: 1,5 s Vorlauf + alles, solange gesprochen wird (für die genaue Erkennung)
+        const chunk = new Float32Array(ev.inputBuffer.getChannelData(0));
+        if (capturing) { capture.push(chunk); if (capture.length > MAX_BLOCKS) capture.shift(); }
+        else { preroll.push(chunk); if (preroll.length > PREROLL_BLOCKS) preroll.shift(); }
+        try { rec.acceptWaveform(ev.inputBuffer); } catch (e) {}
+      };
+      src.connect(node); node.connect(vosk.ctx.destination);
+      vosk.node = node; vosk.ready = true;
+      elog("Ohren bereit"); note(""); status(cfg.ear ? "hört zu" : "bereit");
+    } catch (e) {
+      elog("Ohren-Fehler: " + (e && e.message || e));
+      note("Meine Ohren konnten nicht geladen werden. Prüf das Internet und lade die Seite neu.");
+      status("bereit");
+    }
+    vosk.loading = false;
+  }
+  // ---- Genaue Erkennung: Die eigenen Ohren merken WANN gesprochen wird, Whisper (über Groq)
+  // schreibt dann sehr genau auf, WAS gesagt wurde. Ohne Groq-Key wird der eigene Text genutzt.
+  const PREROLL_BLOCKS = 16, MAX_BLOCKS = 300; // ca. 1,5 s Vorlauf, max. ca. 25 s am Stück
+  let preroll = [], capture = [], capturing = false;
+  const HALLU = /untertitel|\b(zdf|ard|swr)\b|vielen dank (fürs|für's) zuschauen|copyright|abonniert|amara\.org/i;
+  function toWav(chunks, inRate) {
+    let len = 0; for (const c of chunks) len += c.length;
+    const all = new Float32Array(len); let o = 0; for (const c of chunks) { all.set(c, o); o += c.length; }
+    const outRate = 16000, ratio = inRate / outRate, n = Math.floor(all.length / ratio);
+    const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    const w = (p, s) => { for (let i = 0; i < s.length; i++) v.setUint8(p + i, s.charCodeAt(i)); };
+    w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVE"); w(12, "fmt "); v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, outRate, true); v.setUint32(28, outRate * 2, true);
+    v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) { const s = Math.max(-1, Math.min(1, all[Math.floor(i * ratio)])); v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true); }
+    return { blob: new Blob([buf], { type: "audio/wav" }), seconds: n / outRate };
+  }
+  async function whisper(chunks) {
+    const { blob, seconds } = toWav(chunks, vosk.ctx.sampleRate);
+    if (seconds < 0.6) return null;
+    const fd = new FormData();
+    fd.append("file", blob, "sprache.wav");
+    fd.append("model", "whisper-large-v3-turbo");
+    fd.append("language", "de");
+    fd.append("response_format", "json");
+    fd.append("prompt", "Hey Sentinel, " + (ich.name ? ich.name + ", " : "") + "Timer, Erinnerung, Einkaufsliste.");
+    const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 15000);
+    try {
+      const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", headers: { Authorization: "Bearer " + cfg.groqKey }, body: fd, signal: ctl.signal });
+      if (!res.ok) { elog("Whisper-Fehler " + res.status + (res.status === 401 ? " (Groq-Key prüfen)" : res.status === 429 ? " (Tageslimit)" : "")); return null; }
+      const data = await res.json();
+      const t = String(data.text || "").trim();
+      return HALLU.test(t) ? "" : t;
+    } catch (e) { elog("Whisper nicht erreichbar"); return null; }
+    finally { clearTimeout(tm); }
+  }
+  function voskText(t, final) {
+    t = String(t || "").trim();
+    if (!t || t === "[unk]") return;
+    lastResultAt = Date.now();
+    if (!final) {
+      clearTimeout(endTimer); // redet weiter -> Satz noch nicht abschicken
+      endTimer = setTimeout(finishUtterance, 8000); // Sicherheitsnetz, falls kein Satzende kommt
+      if (!capturing) { capturing = true; capture = preroll.slice(); preroll = []; }
+      if (!voskUtterStart) voskUtterStart = Date.now();
+      if (!voskAddressed && addressed(t, voskUtterStart)) voskAddressed = true;
+      if (voskAddressed && !busy && !speaking) setMood("zuhoeren");
+      return;
+    }
+    // Satzende erkannt – aber noch 1,3 s warten: Wer kurz Luft holt, redet oft weiter.
+    // Kommt in der Zeit neue Sprache, wird alles zu EINEM Satz zusammengefasst.
+    roughText = (roughText + " " + t).trim();
+    if (!capturing) { capturing = true; capture = preroll.slice(); preroll = []; }
+    if (!voskUtterStart) voskUtterStart = Date.now();
+    clearTimeout(endTimer);
+    endTimer = setTimeout(finishUtterance, 1300);
+  }
+  let roughText = "", endTimer = null;
+  function finishUtterance() {
+    clearTimeout(endTimer);
+    const t = roughText;
+    const startedAt = voskUtterStart || Date.now(), roughAddressed = voskAddressed || addressed(t, startedAt);
+    const chunks = capturing ? capture.slice() : preroll.slice();
+    capture = []; capturing = false; preroll = []; voskUtterStart = 0; voskAddressed = false; roughText = "";
+    if (!t) return;
+    if (!cfg.groqKey) { elog("gehört: " + t); heard(t, roughAddressed); return; }
+    whisper(chunks).then(exact => {
+      if (exact === "") return;                         // nur Geräusch / Whisper-Halluzination
+      const text = exact || t;                          // bei Fehler: eigener Text als Ersatz
+      elog("gehört: " + text + (exact ? "" : " (ungenau)"));
+      heard(text, addressed(text, startedAt) || (!exact && roughAddressed));
+    });
+  }
+  function voskWatch() {
+    if (!vosk.ready) return;
+    if (vosk.ctx && vosk.ctx.state !== "running") { elog("Audio pausiert, starte neu"); vosk.ctx.resume().catch(() => {}); }
+    if (mood === "zuhoeren" && document.activeElement !== msg && Date.now() - lastResultAt > 8000) setMood("neutral");
+    const track = vosk.stream && vosk.stream.getAudioTracks()[0];
+    if (track && track.readyState === "ended") { elog("Mikro wurde beendet, lade neu"); vosk.ready = false; voskStart(); }
+  }
+  // Angesprochen, wenn: „Sentinel“ gesagt, Gespräch läuft noch, oder du schaust ihn beim Reden an (wie bei Google Nest)
+  const lookingAtMe = () => cfg.look && stream && detector && performance.now() - faceSeenAt < 2500;
+  function addressed(t, at = Date.now()) { return oneShot || !cfg.wake || at < followUntil || WAKE.test(t) || lookingAtMe(); }
+  function heard(t, forced = false) {
+    if (busy || speaking) return;
+    if (!forced && !addressed(t)) { if (mood === "zuhoeren") setMood("neutral"); elog("ignoriert (ohne Sentinel)"); return; }
+    wake();
+    const m = t.match(WAKE);
+    let rest = m ? t.slice(m.index + m[0].length).trim() : t;
+    if (m && m.index > 0 && !rest) rest = t.slice(0, m.index).trim(); // „Hallo Sentinel“
+    oneShot = false;
+    if (!rest) { setMood("zuhoeren"); speak("Ja?", "neutral"); return; }
+    send(rest);
+  }
+  statusEl.style.cursor = "pointer";
+  statusEl.addEventListener("click", () => { $("logBody").textContent = earLog.slice().reverse().join("\n") || "Noch nichts."; $("logPanel").hidden = false; });
+  $("logClose").addEventListener("click", () => { $("logPanel").hidden = true; });
+  // ---- Native Ohren (nur in der Android-App) ----
+  let nativeUtterStart = 0, nativeAddressed = false, nativeInited = false;
+  function nativeEarsInit() {
+    if (!SV || nativeInited) return;
+    nativeInited = true;
+    SV.addListener("partial", ev => {
+      const t = String((ev && ev.text) || "");
+      lastResultAt = Date.now(); lastAlive = Date.now();
+      if (!nativeUtterStart) nativeUtterStart = Date.now();
+      if (!nativeAddressed && addressed(t, nativeUtterStart)) nativeAddressed = true;
+      if (nativeAddressed && !busy && !speaking) setMood("zuhoeren");
+    });
+    SV.addListener("final", ev => {
+      const t = String((ev && ev.text) || "").trim();
+      const forced = nativeAddressed || addressed(t, nativeUtterStart || Date.now());
+      nativeUtterStart = 0; nativeAddressed = false; lastAlive = Date.now();
+      if (!t) return;
+      elog("gehört: " + t);
+      heard(t, forced);
+    });
+    SV.addListener("ready", () => { lastAlive = Date.now(); });
+    SV.addListener("error", ev => elog("Ohren-Fehler " + (ev && ev.code) + (ev && ev.message ? " " + ev.message : "")));
+    SV.addListener("ttsDone", ev => { const f = ttsWait[ev && ev.id]; if (f) { delete ttsWait[ev.id]; f(); } });
+  }
+  function nativeEarsOn() {
+    if (!SV) return;
+    lastAlive = Date.now();
+    SV.start({ muteBeep: cfg.muteBeep !== false })
+      .then(() => { elog("Ohren an (Android)"); if (!busy && !speaking) status("hört zu"); })
+      .catch(() => { elog("Mikrofon nicht erlaubt"); note("Bitte erlaube Sentinel das Mikrofon in den Android-Einstellungen."); });
+  }
+  function nativeEarsOff() { if (SV) SV.stop().catch(() => {}); }
+  if (NATIVE) nativeEarsInit();
+  // Wächter für die App: falls Android die Ohren doch mal verliert, nach einer Minute Stille neu anwerfen
+  setInterval(() => {
+    if (!NATIVE || !cfg.ear || busy || speaking || !$("startPanel").hidden) return;
+    if (Date.now() - lastAlive > 60000) { elog("Ohren neu angeworfen"); nativeEarsOn(); }
+  }, 10000);
+
+  earBtn.addEventListener("click", () => {
+    wake(); keepAwake();
+    if (NATIVE) {
+      cfg.ear = !cfg.ear; saveCfg(); earUI();
+      if (cfg.ear) { nativeEarsOn(); note(cfg.wake ? "Ich höre zu. Sag „Sentinel“ oder schau mich an." : "Ich höre zu.", 3500); }
+      else { nativeEarsOff(); status("bereit"); if (!busy && !speaking) setMood("neutral"); }
+      return;
+    }
+    if (cfg.engine !== "google") {
+      cfg.ear = !cfg.ear; saveCfg(); earUI(); voskPrepareCtx();
+      if (cfg.ear) { if (!vosk.ready) voskStart(); note(cfg.wake ? "Ich höre zu. Sag „Sentinel“ oder schau mich an." : "Ich höre zu.", 3500); status("hört zu"); }
+      else { status("bereit"); if (!busy && !speaking) setMood("neutral"); }
+      return;
+    }
+    if (!SR) { note("Dieser Browser kann nicht zuhören. Nimm Chrome.", 4000); return; }
+    cfg.ear = !cfg.ear; saveCfg(); earUI();
+    if (cfg.ear) { note(cfg.wake ? "Ich höre zu. Sag „Sentinel“ und dann deine Frage." : "Ich höre zu.", 3500); hardReset("Mikro-Knopf"); earStart(); }
+    else { earPause(); status("bereit"); if (!busy && !speaking) setMood("neutral"); }
+  });
+
+  // ================= AUGEN: Kamera + Gesichtsverfolgung (lokal) =================
+  const video = $("cam"), eyeBtn = $("eyeBtn");
+  let stream = null, detector = null, motionPrev = null, lookTimer = null, lastGreet = 0, faceWasGone = true;
+  const small = document.createElement("canvas"); small.width = 64; small.height = 48;
+  const sctx = small.getContext("2d", { willReadFrequently: true });
+  function eyeUI() { eyeBtn.classList.toggle("on", !!stream); eyeBtn.setAttribute("aria-pressed", String(!!stream)); }
+  async function camStart() {
+    if (stream) return true;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+      video.srcObject = stream; await video.play();
+      eyeUI(); loadDetector();
+      clearInterval(lookTimer); lookTimer = setInterval(look, 140);
+      return true;
+    } catch (e) {
+      stream = null; eyeUI();
+      note("Kamera nicht erlaubt. Erlaub sie in Chrome über das Schloss neben der Adresse.", 6000);
+      return false;
+    }
+  }
+  function camStop() {
+    clearInterval(lookTimer); faceGaze = null;
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    stream = null; video.srcObject = null; eyeUI();
+  }
+  async function loadDetector() {
+    if (detector) return;
+    try {
+      const v = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs");
+      const files = await v.FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+      detector = await v.FaceDetector.createFromOptions(files, {
+        baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite", delegate: "GPU" },
+        runningMode: "VIDEO", minDetectionConfidence: .5,
+      });
+    } catch (e) { detector = null; /* dann Bewegungserkennung als Ersatz */ }
+  }
+  function look() {
+    if (!stream || video.readyState < 2) return;
+    const now = performance.now();
+    let pos = null;
+    if (detector) {
+      try {
+        const res = detector.detectForVideo(video, now);
+        const d = res.detections && res.detections[0];
+        if (d) {
+          const b = d.boundingBox, vw = video.videoWidth || 640, vh = video.videoHeight || 480;
+          pos = [(b.originX + b.width / 2) / vw, (b.originY + b.height / 2) / vh];
+        }
+      } catch (e) { detector = null; }
+    } else {
+      // Ersatz: dahin schauen, wo sich etwas bewegt
+      sctx.drawImage(video, 0, 0, 64, 48);
+      const px = sctx.getImageData(0, 0, 64, 48).data;
+      if (motionPrev) {
+        let sx = 0, sy = 0, n = 0;
+        for (let i = 0; i < px.length; i += 4) {
+          if (Math.abs(px[i] - motionPrev[i]) + Math.abs(px[i + 1] - motionPrev[i + 1]) > 70) { const p = i / 4; sx += p % 64; sy += Math.floor(p / 64); n++; }
+        }
+        if (n > 25) pos = [sx / n / 64, sy / n / 48];
+      }
+      motionPrev = px;
+    }
+    if (!pos) return;
+    // Frontkamera ist gespiegelt: links im Bild = rechts von Sentinel aus gesehen
+    faceGaze = [Math.max(-1, Math.min(1, (.5 - pos[0]) * 2.4)) * 18, Math.max(-1, Math.min(1, (pos[1] - .45) * 2.4)) * 13];
+    const gone = now - faceSeenAt;
+    faceSeenAt = now; wake();
+    if (detector && faceWasGone && gone > 5 * 60000 && Date.now() - lastGreet > 20 * 60000) greet();
+    faceWasGone = false;
+  }
+  setInterval(() => { if (performance.now() - faceSeenAt > 60000) faceWasGone = true; }, 10000);
+  function greet() {
+    if (busy || speaking || !ich.name) return;
+    lastGreet = Date.now();
+    const h = new Date().getHours(), tag = new Date().toDateString();
+    setMood("freude");
+    // Erster Blickkontakt am Morgen: kleiner Tagesüberblick, ganz ohne Internet-Kosten
+    if (h >= 5 && h < 12 && store.get("morgen", "") !== tag) {
+      store.set("morgen", tag);
+      const heuteT = termine.filter(t => new Date(t.at).toDateString() === tag && t.at > Date.now());
+      const zeit = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+      let s = `Guten Morgen, ${ich.name}. Es ist ${zeit} Uhr.`;
+      if (heuteT.length === 1) s += ` Heute steht an: ${heuteT[0].text} um ${uhr(heuteT[0].at)}.`;
+      else if (heuteT.length > 1) s += ` Du hast heute ${heuteT.length} Erinnerungen, die erste um ${uhr(heuteT[0].at)}.`;
+      speak(s, "neutral");
+      return;
+    }
+    speak(pick([`Willkommen zurück, ${ich.name}.`, `Da bist du ja, ${ich.name}.`, `Hallo ${ich.name}.`]), "neutral");
+  }
+  function snapshot() {
+    if (!stream || video.readyState < 2) return null;
+    const vw = video.videoWidth, vh = video.videoHeight, sc = Math.min(1, 640 / Math.max(vw, vh));
+    const c = document.createElement("canvas"); c.width = Math.round(vw * sc); c.height = Math.round(vh * sc);
+    c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", .75).split(",")[1];
+  }
+  eyeBtn.addEventListener("click", async () => {
+    wake();
+    if (stream) { camStop(); cfg.eye = false; }
+    else { cfg.eye = await camStart(); }
+    saveCfg();
+  });
+
+  // ================= GEDÄCHTNIS =================
+  const LISTEN = [
+    ["fakten", "Was ich über dich weiß", 50],
+    ["vorlieben", "Vorlieben und Gewohnheiten", 20],
+    ["menschen", "Menschen", 20],
+  ];
+  const frisch = () => ({ name: "", gespraeche: 0, fakten: [], vorlieben: [], menschen: [] });
+  const liste = (a, max) => (Array.isArray(a) ? a : []).map(x => String(x).trim().slice(0, 160)).filter(Boolean).slice(-max);
+  function sauber(d) {
+    const o = frisch();
+    if (!d || typeof d !== "object") return o;
+    o.name = String(d.name || "").trim().slice(0, 40);
+    o.gespraeche = Math.max(0, Math.floor(Number(d.gespraeche) || 0));
+    for (const [k, , max] of LISTEN) o[k] = liste(d[k], max);
+    return o;
+  }
+  let ich = sauber(store.get("ich", null));
+  const saveIch = () => store.set("ich", ich);
+
+  // ================= ALLTAG: Timer, Erinnerungen, Listen =================
+  const uhr = ms => new Date(ms).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  const wannText = ms => {
+    const d = new Date(ms), heuteD = new Date();
+    const morgen = new Date(); morgen.setDate(morgen.getDate() + 1);
+    const tag = d.toDateString() === heuteD.toDateString() ? "heute" : d.toDateString() === morgen.toDateString() ? "morgen"
+      : d.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
+    return `${tag} um ${uhr(ms)}`;
+  };
+  let termine = (store.get("termine", []) || []).filter(t => t && t.at > Date.now() - 6 * 3600000);
+  let listen = store.get("listen", {}) || {};
+  const saveTermine = () => { termine.sort((a, b) => a.at - b.at); store.set("termine", termine); };
+  const saveListen = () => store.set("listen", listen);
+  let audioCtx = null;
+  function gong() {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const t0 = audioCtx.currentTime;
+      [0, .35, .7].forEach((d, i) => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = "sine"; o.frequency.value = [880, 660, 990][i];
+        g.gain.setValueAtTime(0, t0 + d); g.gain.linearRampToValueAtTime(.25, t0 + d + .02); g.gain.exponentialRampToValueAtTime(.001, t0 + d + .3);
+        o.connect(g).connect(audioCtx.destination); o.start(t0 + d); o.stop(t0 + d + .32);
+      });
+    } catch (e) {}
+  }
+  setInterval(() => {
+    if (busy || speaking) return;
+    const due = termine.find(t => t.at <= Date.now());
+    if (!due) return;
+    termine = termine.filter(t => t !== due); saveTermine();
+    if (NATIVE) nativeEarsOff();  // sonst ist der Gong mit dem Piepton zusammen stummgeschaltet
+    wake(); setTimeout(gong, NATIVE ? 300 : 0); setMood("ueberrascht");
+    const s = due.typ === "timer" ? `Dein Timer ist abgelaufen${due.text ? ": " + due.text : ""}.` : `Erinnerung${ich.name ? " für " + ich.name : ""}: ${due.text}.`;
+    setTimeout(() => speak(s, "neutral").then(() => { if (NATIVE && cfg.ear) nativeEarsOn(); }), 1400);
+  }, 1000);
+
+  // ================= HOME ASSISTANT (optional) =================
+  async function ha(path, opts = {}) {
+    if (!cfg.haUrl || !cfg.haToken) throw new Error("Home Assistant ist nicht eingerichtet.");
+    let res;
+    try {
+      res = await fetch(cfg.haUrl.replace(/\/+$/, "") + path, {
+        ...opts, headers: { "Authorization": "Bearer " + cfg.haToken, "Content-Type": "application/json" },
+      });
+    } catch (e) { throw new Error("Home Assistant ist nicht erreichbar (Adresse, https und CORS prüfen)."); }
+    if (!res.ok) throw new Error("Home Assistant meldet Fehler " + res.status);
+    return res.json();
+  }
+
+  // ================= GEHIRN (Claude-API) =================
+  const TAGS = ["neutral", "freude", "nachdenken", "skeptisch", "ueberrascht", "sauer", "muede"];
+  let history = []; // nur einfache Text-Runden: {role, content: string}
+
+  // Tageszähler als Kostenbremse
+  const heute = () => new Date().toISOString().slice(0, 10);
+  let usage = store.get("usage", { tag: heute(), n: 0, inTok: 0, outTok: 0 });
+  function countUsage(u) {
+    if (usage.tag !== heute()) usage = { tag: heute(), n: 0, inTok: 0, outTok: 0 };
+    usage.n++; usage.outTok += (u && u.output_tokens) || 0;
+    usage.inTok += ((u && u.input_tokens) || 0) + ((u && u.cache_creation_input_tokens) || 0);
+    usage.cacheTok = (usage.cacheTok || 0) + ((u && u.cache_read_input_tokens) || 0);
+    store.set("usage", usage);
+  }
+  const overLimit = () => usage.tag === heute() && usage.n >= (Number(cfg.limit) || 300);
+
+  class ApiError extends Error { constructor(msg, kind) { super(msg); this.kind = kind; } }
+  async function api(body) {
+    if (!cfg.key) throw new ApiError("Kein API-Key", "nokey");
+    let res;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 90000); // nach 90 Sekunden abbrechen statt ewig zu hängen
+    try {
+      res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        signal: ctl.signal,
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": cfg.key,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (e) { clearTimeout(timer); throw new ApiError("Kein Internet", ctl.signal.aborted ? "timeout" : "net"); }
+    clearTimeout(timer);
+    let data = null;
+    try { data = await res.json(); } catch (e) {}
+    if (!res.ok) {
+      const m = (data && data.error && data.error.message) || ("HTTP " + res.status);
+      if (res.status === 401) throw new ApiError(m, "key");
+      if (res.status === 429) throw new ApiError(m, "rate");
+      if (res.status === 529 || res.status >= 500) throw new ApiError(m, "busy");
+      if (/credit|balance|billing/i.test(m)) throw new ApiError(m, "credit");
+      if (/web_search/i.test(m)) throw new ApiError(m, "search");
+      throw new ApiError(m, "other");
+    }
+    countUsage(data.usage);
+    return data;
+  }
+
+  function rules() {
+    const jetzt = new Date().toLocaleString("de-DE", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    const isoJetzt = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    const wer = ich.name || "dein Gegenüber";
+    const zeile = (titel, a) => `${titel}: ${a.length ? a.join("; ") : "(noch nichts)"}`;
+    const listenText = Object.keys(listen).length ? Object.entries(listen).map(([n, a]) => `${n} (${a.length})`).join(", ") : "(keine)";
+    const termText = termine.length ? termine.slice(0, 8).map(t => `${t.typ === "timer" ? "Timer" : "Erinnerung"} ${wannText(t.at)}: ${t.text || "ohne Text"}`).join("; ") : "(keine)";
+    return `Du bist Sentinel, der persönliche KI-Assistent und Gesprächspartner von ${wer}, so ähnlich wie JARVIS bei Tony Stark. Dein Gesicht ist ein Tablet mit animierten Augen und Mund. Dein Gehirn ist Claude.
+
+So redest du:
+Du führst ganz normale, natürliche Gespräche, so wie ein kluger, vertrauter Mensch, mit dem man gern redet. Du gehst auf das ein, was ${wer} gerade sagt, greifst Früheres aus dem Gespräch auf, hast eigene Gedanken und Meinungen, stellst auch mal eine Rückfrage und lässt das Gespräch fließen. Du klingst nie wie eine Maschine, die Funktionen aufzählt.
+Charakter: souverän, warmherzig, kompetent, mit trockenem, feinem Humor. Du duzt und sprichst ${wer} gelegentlich beim Namen an, aber nicht in jedem Satz.
+Länge: Bei Smalltalk und einfachen Fragen kurz, ein bis zwei Sätze. Wenn ${wer} etwas erklärt oder erzählt haben möchte, darfst du ausführlicher werden, aber immer so, wie man es gesprochen sagen würde.
+Deine Antworten werden laut vorgelesen: Deutsch, kein Markdown, keine Aufzählungszeichen, keine Emojis, keine Links, keine Quellenangaben. Zahlen und Uhrzeiten so, wie man sie ausspricht, also "Viertel nach drei" oder "fünfzehn Uhr zwölf".
+Du bist ehrlich: Wenn du etwas nicht weißt oder nicht kannst, sagst du es. Du gibst nicht vor, ein Mensch zu sein.
+Beginne JEDE Antwort mit genau einem Stimmungs-Tag für deine Augen: ${TAGS.map(t => "[" + t + "]").join(" ")}. Danach direkt der Text, den du sagst.
+
+Hören: Was ${wer} sagt, kommt über eine Spracherkennung. Die verschluckt oder verdreht manchmal Wörter. Deute großzügig, was gemeint ist, und antworte einfach darauf. Nur wenn du wirklich gar nicht erraten kannst, was gemeint war, frag locker nach.
+
+Sehen: ${stream ? `Du hast eine Kamera als Augen, aber du schaust nur hin, wenn es ums Sehen geht. Ein Kamerabild bekommst du nur, wenn ${wer} dich bittet, etwas anzuschauen. Brauchst du in einem solchen Moment ein Bild und hast keins, nutze kamera_bild. Sprich NICHT von dir aus über die Kamera oder darüber, was du siehst. Wenn du ein Bild hast, beschreibe nur, was wirklich darauf ist, und erfinde nichts. Ist etwas unscharf oder nicht im Bild, sag es und bitte darum, es näher zu zeigen.
+Wenn du auf einem Bild etwas Wichtiges gesehen hast, schreib ganz am Ende eine kurze Notiz in der Form [sah: ...]. Die wird nicht vorgelesen und hilft dir, dich später daran zu erinnern.` : `Deine Kamera ist aus. Erwähne das nur, wenn ${wer} dich bittet, etwas anzuschauen.`}
+${cfg.about ? `\nWas ${wer} selbst über sich erzählt:\n${cfg.about}\n` : ""}
+Deine Fähigkeiten: Timer und Erinnerungen stellen (sie klingeln auch, wenn gerade niemand redet), Listen führen (z. B. Einkauf, Aufgaben), dir Dinge merken${cfg.search ? ", im Internet nach aktuellen Infos suchen (Wetter, Nachrichten, Öffnungszeiten, Preise)" : ""}${cfg.haUrl && cfg.haToken ? ", das Smart Home über Home Assistant steuern (erst mit ha_geraete nachsehen, dann mit ha_schalten schalten; bei Türschlössern, Alarmanlagen und Heizung vorher kurz bestätigen lassen)" : ". Smart-Home-Steuerung ist noch nicht eingerichtet; sag das, wenn danach gefragt wird"}.
+Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
+${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
+Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir.
+Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})${cfg.ort ? "\nOrt: " + cfg.ort : ""}
+Offene Timer und Erinnerungen: ${termText}
+Listen: ${listenText}
+${zeile("Was du über " + wer + " weißt", ich.fakten)}
+${zeile("Vorlieben und Gewohnheiten", ich.vorlieben)}
+${zeile("Menschen", ich.menschen)}`;
+  }
+
+  // Kosten sparen: Der gleichbleibende Teil (Charakter, Fähigkeiten, Werkzeuge) wird bei Anthropic
+  // zwischengespeichert und kostet bei Folgefragen nur noch etwa ein Zehntel.
+  function systemBlocks() {
+    const full = rules(), i = full.indexOf("\nJetzt: ");
+    if (i < 0) return full;
+    return [
+      { type: "text", text: full.slice(0, i), cache_control: { type: "ephemeral" } },
+      { type: "text", text: full.slice(i + 1) },
+    ];
+  }
+  function tools() {
+    const obj = (props, req = []) => ({ type: "object", properties: props, required: req });
+    const t = [
+      { name: "ich_kenne_dich", description: "Speichert den Namen deines Gegenübers und optional einen kurzen Satz, wer er oder sie ist.",
+        input_schema: obj({ name: { type: "string" }, info: { type: "string" } }, ["name"]) },
+      { name: "merke_dir", description: "Speichert dauerhaft einen kurzen Fakt über dein Gegenüber.",
+        input_schema: obj({ fakt: { type: "string" } }, ["fakt"]) },
+      { name: "vergiss", description: "Löscht gespeicherte Fakten, die den Begriff enthalten.",
+        input_schema: obj({ begriff: { type: "string" } }, ["begriff"]) },
+      { name: "timer_stellen", description: "Stellt einen Timer, der nach der Dauer klingelt und ansagt. Gibt die Ablaufzeit zurück.",
+        input_schema: obj({ minuten: { type: "number" }, sekunden: { type: "number" }, text: { type: "string", description: "Wofür, z. B. Nudeln" } }) },
+      { name: "erinnerung_stellen", description: "Stellt eine Erinnerung zu einem Zeitpunkt. 'wann' als lokale Zeit im Format JJJJ-MM-TTTHH:MM.",
+        input_schema: obj({ wann: { type: "string" }, text: { type: "string" } }, ["wann", "text"]) },
+      { name: "termine_anzeigen", description: "Listet offene Timer und Erinnerungen mit ihrer Nummer.", input_schema: obj({}) },
+      { name: "termin_loeschen", description: "Löscht einen Timer oder eine Erinnerung per Nummer aus termine_anzeigen oder per Suchbegriff. 'alle' löscht alles.",
+        input_schema: obj({ nummer: { type: "number" }, begriff: { type: "string" } }) },
+      { name: "liste", description: "Bearbeitet eine Liste wie Einkauf oder Aufgaben. aktion: anzeigen, hinzufuegen, entfernen oder leeren.",
+        input_schema: obj({ aktion: { type: "string", enum: ["anzeigen", "hinzufuegen", "entfernen", "leeren"] }, liste: { type: "string" }, eintraege: { type: "array", items: { type: "string" } } }, ["aktion", "liste"]) },
+    ];
+    if (stream) t.push({ name: "kamera_bild", description: "Schaut durch deine Kamera und gibt dir das aktuelle Bild. Nur nutzen, wenn du gebeten wirst, etwas anzuschauen.", input_schema: obj({}) });
+    if (cfg.haUrl && cfg.haToken) {
+      t.push(
+        { name: "ha_geraete", description: "Listet Smart-Home-Geräte aus Home Assistant mit entity_id, Name und Zustand. Optional nach Bereich (z. B. light, switch, media_player, climate) oder Suchwort filtern.",
+          input_schema: obj({ bereich: { type: "string" }, suche: { type: "string" } }) },
+        { name: "ha_schalten", description: "Ruft einen Home-Assistant-Dienst auf, z. B. domain light, dienst turn_on, entity_id light.wohnzimmer, daten {brightness_pct: 50}.",
+          input_schema: obj({ domain: { type: "string" }, dienst: { type: "string" }, entity_id: { type: "string" }, daten: { type: "object" } }, ["domain", "dienst", "entity_id"]) },
+      );
+    }
+    if (cfg.search) {
+      const s = { type: "web_search_20250305", name: "web_search", max_uses: 2 };
+      if (cfg.ort) s.user_location = { type: "approximate", city: cfg.ort, country: "DE", timezone: "Europe/Berlin" };
+      t.push(s);
+    }
+    return t;
+  }
+
+  const SEE_RE = /\b(siehst|sieh|schau|schaust|guck|guckst|zeig|zeige|zeigen|halte|halt ich|in der hand|das hier|dies hier|was ist das|wer ist das|erkennst|erkenn|lies|lesen|wie sehe|wie seh|aussehen|aussehe|outfit|anhab|kamera|foto)\w*/i;
+  async function runTool(b) {
+    if (b.name === "kamera_bild") {
+      const data = snapshot();
+      if (!data) return { type: "tool_result", tool_use_id: b.id, content: "Die Kamera ist aus.", is_error: true };
+      return { type: "tool_result", tool_use_id: b.id, content: [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data } }, { type: "text", text: "Das siehst du gerade." }] };
+    }
+    const ok = content => ({ type: "tool_result", tool_use_id: b.id, content: typeof content === "string" ? content : JSON.stringify(content) });
+    const fail = text => ({ type: "tool_result", tool_use_id: b.id, content: String(text), is_error: true });
+    const inp = b.input || {};
+    try {
+      switch (b.name) {
+        case "ich_kenne_dich": {
+          const n = String(inp.name || "").trim().slice(0, 40);
+          if (!n) return fail("Leerer Name");
+          ich.name = n;
+          const info = String(inp.info || "").trim();
+          if (info) ich.fakten = liste([...ich.fakten, info], 50);
+          saveIch(); return ok("gespeichert");
+        }
+        case "merke_dir": {
+          const f = String(inp.fakt || "").trim();
+          if (!f) return fail("Leerer Fakt");
+          ich.fakten = liste([...ich.fakten, f], 50); saveIch(); return ok("gespeichert");
+        }
+        case "vergiss": {
+          const w = String(inp.begriff || "").toLowerCase();
+          if (!w) return fail("Leerer Begriff");
+          const vorher = ich.fakten.length + ich.vorlieben.length + ich.menschen.length;
+          for (const k of ["fakten", "vorlieben", "menschen"]) ich[k] = ich[k].filter(f => !f.toLowerCase().includes(w));
+          saveIch(); return ok(`${vorher - ich.fakten.length - ich.vorlieben.length - ich.menschen.length} gelöscht`);
+        }
+        case "timer_stellen": {
+          const sek = (Number(inp.minuten) || 0) * 60 + (Number(inp.sekunden) || 0);
+          if (!(sek > 0) || sek > 7 * 86400) return fail("Ungültige Dauer");
+          const at = Date.now() + sek * 1000;
+          termine.push({ typ: "timer", at, text: String(inp.text || "").trim().slice(0, 100) }); saveTermine();
+          return ok(`Timer läuft bis ${uhr(at)} Uhr`);
+        }
+        case "erinnerung_stellen": {
+          const at = new Date(String(inp.wann || "")).getTime();
+          if (!isFinite(at)) return fail("Zeitpunkt nicht verstanden. Format JJJJ-MM-TTTHH:MM.");
+          if (at < Date.now() - 60000) return fail("Dieser Zeitpunkt liegt in der Vergangenheit.");
+          const text = String(inp.text || "").trim().slice(0, 140);
+          termine.push({ typ: "erinnerung", at, text }); saveTermine();
+          return ok(`Erinnerung gestellt für ${wannText(at)}`);
+        }
+        case "termine_anzeigen":
+          return ok(termine.length ? termine.map((t, i) => `${i + 1}. ${t.typ === "timer" ? "Timer" : "Erinnerung"} ${wannText(t.at)}${t.text ? ": " + t.text : ""}`).join("\n") : "Keine offenen Timer oder Erinnerungen.");
+        case "termin_loeschen": {
+          const vorher = termine.length, w = String(inp.begriff || "").toLowerCase();
+          if (w === "alle") termine = [];
+          else if (Number(inp.nummer) >= 1) termine = termine.filter((t, i) => i !== Number(inp.nummer) - 1);
+          else if (w) termine = termine.filter(t => !(t.text || "").toLowerCase().includes(w) && !(w === "timer" && t.typ === "timer"));
+          else return fail("Nummer oder Begriff fehlt");
+          saveTermine(); return ok(`${vorher - termine.length} gelöscht`);
+        }
+        case "liste": {
+          const name = String(inp.liste || "").trim().toLowerCase().slice(0, 40) || "einkauf";
+          const items = (Array.isArray(inp.eintraege) ? inp.eintraege : []).map(x => String(x).trim()).filter(Boolean);
+          const cur = listen[name] || [];
+          if (inp.aktion === "hinzufuegen") { listen[name] = [...cur, ...items.filter(x => !cur.some(c => c.toLowerCase() === x.toLowerCase()))].slice(-100); }
+          else if (inp.aktion === "entfernen") { listen[name] = cur.filter(c => !items.some(x => c.toLowerCase().includes(x.toLowerCase()))); }
+          else if (inp.aktion === "leeren") { delete listen[name]; saveListen(); return ok(`Liste ${name} geleert`); }
+          else return ok(cur.length ? `${name}: ${cur.join(", ")}` : `Die Liste ${name} ist leer.`);
+          if (!listen[name].length) delete listen[name];
+          saveListen(); return ok(`${name}: ${(listen[name] || []).join(", ") || "leer"}`);
+        }
+        case "ha_geraete": {
+          const states = await ha("/api/states");
+          const dom = String(inp.bereich || "").toLowerCase(), q = String(inp.suche || "").toLowerCase();
+          const out = states
+            .filter(s => !dom || s.entity_id.startsWith(dom + "."))
+            .filter(s => !q || (s.entity_id + " " + ((s.attributes && s.attributes.friendly_name) || "")).toLowerCase().includes(q))
+            .filter(s => /^(light|switch|media_player|climate|cover|fan|lock|scene|script|input_boolean|sensor|binary_sensor|vacuum|remote)\./.test(s.entity_id))
+            .slice(0, 60)
+            .map(s => `${s.entity_id} | ${(s.attributes && s.attributes.friendly_name) || ""} | ${s.state}`);
+          return ok(out.length ? out.join("\n") : "Nichts gefunden.");
+        }
+        case "ha_schalten": {
+          const dom = String(inp.domain || ""), dienst = String(inp.dienst || "");
+          if (!/^[a-z_]+$/.test(dom) || !/^[a-z_]+$/.test(dienst)) return fail("Ungültiger Dienst");
+          const body = { ...(inp.daten && typeof inp.daten === "object" ? inp.daten : {}), entity_id: String(inp.entity_id || "") };
+          await ha(`/api/services/${dom}/${dienst}`, { method: "POST", body: JSON.stringify(body) });
+          return ok("erledigt");
+        }
+      }
+    } catch (e) { return fail(e.message || "Fehler"); }
+    return fail("Unbekanntes Werkzeug");
+  }
+
+  async function think(userText) {
+    // Nur hinschauen, wenn es ums Sehen geht – sonst ganz normales Gespräch
+    const img = SEE_RE.test(userText) ? snapshot() : null;
+    const content = img
+      ? [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: img } }, { type: "text", text: userText }]
+      : userText;
+    const work = [...history, { role: "user", content }];
+    let text = "";
+    for (let round = 0; round < 8; round++) {
+      let data;
+      try {
+        data = await api({ model: cfg.model, max_tokens: 1000, system: systemBlocks(), tools: tools(), messages: work });
+      } catch (e) {
+        if (e.kind === "search" && cfg.search) { cfg.search = false; saveCfg(); note("Websuche ist für deinen API-Key nicht freigeschaltet. Sie ist jetzt aus.", 6000); round--; continue; }
+        throw e;
+      }
+      work.push({ role: "assistant", content: data.content });
+      text = data.content.filter(c => c.type === "text").map(c => c.text).join("").trim();
+      if (data.stop_reason === "tool_use") {
+        if (data.content.some(c => c.type === "server_tool_use")) status("sucht im Internet");
+        work.push({ role: "user", content: await Promise.all(data.content.filter(c => c.type === "tool_use").map(runTool)) });
+        continue;
+      }
+      if (data.stop_reason === "pause_turn") { status("sucht im Internet"); continue; }
+      break;
+    }
+    return text;
+  }
+
+  function parse(text) {
+    let tag = "neutral";
+    const found = [...text.matchAll(/\[(\w+)\]/g)].map(m => m[1].toLowerCase()).filter(t => TAGS.includes(t));
+    if (found.length) tag = found[found.length - 1];
+    const sah = [...text.matchAll(/\[sah:\s*([^\]]+)\]/gi)].map(m => m[1].trim()).join("; ");
+    const clean = text.replace(/\[[^\]]*\]/g, "").replace(/https?:\/\/\S+/g, "").replace(/[*_#`]/g, "").replace(/\s+/g, " ").trim();
+    return { tag, clean, sah };
+  }
+
+  const ERRTEXT = {
+    nokey: "Mir fehlt noch mein API-Key. Trag ihn in den Einstellungen ein.",
+    key: "Mein API-Key wird nicht akzeptiert. Bitte prüf ihn in den Einstellungen.",
+    credit: "Mein API-Guthaben ist aufgebraucht. Du kannst es auf console.anthropic.com aufladen.",
+    rate: "Zu viele Anfragen auf einmal. Einen Moment bitte.",
+    busy: "Die Server sind gerade überlastet. Versuch es gleich noch einmal.",
+    net: "Ich habe gerade keine Internetverbindung.",
+    timeout: "Das hat zu lange gedauert. Frag mich bitte noch einmal, gern etwas kürzer.",
+  };
+
+  async function send(text) {
+    text = String(text || "").trim();
+    if (busy || !text) return;
+    if (overLimit()) { setMood("muede"); speak("Das Tageslimit ist erreicht. Morgen bin ich wieder voll für dich da.", "muede"); return; }
+    wake(); keepAwake();
+    if (synth) synth.cancel();
+    earPause();
+    busy = true; sendBtn.disabled = true; msg.value = ""; msg.blur();
+    setMood("nachdenken"); status("denkt nach"); show("");
+    logTurn("user", text);
+    try {
+      const answer = await think(text);
+      const { tag, clean, sah } = parse(answer || "");
+      const said = clean || "Erledigt.";
+      history.push({ role: "user", content: text }, { role: "assistant", content: said + (sah ? ` [sah: ${sah}]` : "") });
+      while (history.length > 40) history.splice(0, 2);
+      logTurn("assistant", said + (sah ? ` (gesehen: ${sah})` : ""));
+      busy = false; sendBtn.disabled = false;
+      setMood(tag);
+      await speak(said, tag === "muede" ? "muede" : "neutral");
+    } catch (e) {
+      busy = false; sendBtn.disabled = false;
+      setMood("skeptisch");
+      const t = ERRTEXT[e && e.kind] || "Da ist etwas schiefgegangen: " + ((e && e.message) || "unbekannt");
+      show(t, true); setTimeout(() => show(""), 8000);
+      setTimeout(() => { if (mood === "skeptisch" && !busy) setMood("neutral"); afterSpeaking(); }, 2500);
+    }
+  }
+  $("bar").addEventListener("submit", e => { e.preventDefault(); send(msg.value); });
+  msg.addEventListener("focus", () => { wake(); if (!busy && !speaking) setMood("zuhoeren"); });
+  msg.addEventListener("blur", () => { if (mood === "zuhoeren" && !busy && !speaking) setMood("neutral"); });
+
+  // ================= LERNEN: nach jedem Gespräch das Gedächtnis pflegen =================
+  let sessionLog = store.get("session", []), lastTalk = Date.now(), reflecting = false;
+  function logTurn(role, content) {
+    sessionLog.push({ role, content: String(content).slice(0, 400) });
+    if (sessionLog.length > 40) sessionLog = sessionLog.slice(-40);
+    store.set("session", sessionLog);
+    lastTalk = Date.now();
+  }
+  async function reflect() {
+    if (reflecting || !cfg.key || !sessionLog.some(t => t.role === "user")) return;
+    reflecting = true;
+    const log = sessionLog; sessionLog = []; store.set("session", []);
+    const verlauf = log.map(t => (t.role === "user" ? (ich.name || "Mensch") : "Sentinel") + ": " + t.content).join("\n");
+    const prompt = `Du bist Sentinel, ein persönlicher KI-Assistent. Pflege dein Langzeitgedächtnis über deinen Menschen.
+Bisheriges Gedächtnis als JSON:
+${JSON.stringify({ name: ich.name, fakten: ich.fakten, vorlieben: ich.vorlieben, menschen: ich.menschen })}
+
+Das Gespräch, das gerade zu Ende ging:
+${verlauf}
+
+Aktualisiere das Gedächtnis.
+Regeln:
+- name: Name deines Menschen, falls bekannt, sonst "".
+- fakten: höchstens 50 kurze, dauerhafte Fakten (Beruf, Projekte, Pläne, Besitz, Wohnort usw.).
+- vorlieben: höchstens 20 Vorlieben, Abneigungen und Gewohnheiten (z. B. wie er seinen Kaffee trinkt, wann er aufsteht).
+- menschen: höchstens 20 Menschen aus seinem Leben mit kurzer Beschreibung.
+- Behalte, was stimmt, korrigiere Veraltetes, fasse Doppeltes zusammen. Nimm nur Dauerhaftes auf, keine einmaligen Kleinigkeiten wie einen einzelnen Timer. Nichts erfinden. Kurze deutsche Stichpunkte.
+Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakten": [], "vorlieben": [], "menschen": []}`;
+    try {
+      const data = await api({ model: cfg.model, max_tokens: 1500, messages: [{ role: "user", content: prompt }] });
+      const raw = data.content.filter(c => c.type === "text").map(c => c.text).join("");
+      const a = raw.indexOf("{"), z = raw.lastIndexOf("}");
+      const neu = a >= 0 && z > a ? JSON.parse(raw.slice(a, z + 1)) : null;
+      if (neu && typeof neu === "object" && !Array.isArray(neu)) {
+        const s = sauber({ ...neu, gespraeche: ich.gespraeche });
+        if (!s.name) s.name = ich.name;
+        ich = s;
+      }
+      ich.gespraeche += 1; saveIch();
+    } catch (e) {
+      if (!(e instanceof ApiError && ["key", "nokey", "credit"].includes(e.kind))) { sessionLog = [...log, ...sessionLog].slice(-40); store.set("session", sessionLog); }
+      lastTalk = Date.now();
+    } finally { reflecting = false; }
+  }
+  // Ein Gespräch ist vorbei nach 3 Minuten Ruhe
+  setInterval(() => { if (sessionLog.length && !busy && !speaking && Date.now() - lastTalk > 180000) reflect(); }, 20000);
+
+  // ================= GEDÄCHTNIS-ANSICHT =================
+  const pBody = $("pBody"), pReset = $("pReset");
+  let resetArmed = false;
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function grp(titel, items) {
+    const g = el("div", "grp"); g.append(el("h3", null, titel));
+    const c = el("div", "chips");
+    if (items.length) items.forEach(x => c.append(el("span", "chip", x)));
+    else c.append(el("span", "empty", "nichts"));
+    g.append(c); return g;
+  }
+  function renderIch() {
+    pBody.replaceChildren();
+    const head = el("div", "who");
+    head.append(el("div", "big", ich.name ? `Sentinel & ${ich.name}` : "Sentinel kennt dich noch nicht"));
+    head.append(el("div", "meta", `${ich.gespraeche} ${ich.gespraeche === 1 ? "Gespräch" : "Gespräche"} · Gesicht ${detector ? "erkannt per KI" : "per Bewegung"} · Smart Home ${cfg.haUrl && cfg.haToken ? "verbunden" : "nicht eingerichtet"}`));
+    pBody.append(head);
+    pBody.append(grp("Timer und Erinnerungen", termine.map(t => `${wannText(t.at)}${t.text ? " · " + t.text : ""}`)));
+    for (const [n, a] of Object.entries(listen)) pBody.append(grp("Liste: " + n, a));
+    for (const [k, titel] of LISTEN) pBody.append(grp(k === "fakten" && ich.name ? `Was ich über ${ich.name} weiß` : titel, ich[k]));
+  }
+  $("ichBtn").addEventListener("click", () => { renderIch(); resetArmed = false; pReset.textContent = "Gedächtnis löschen"; $("ichPanel").hidden = false; });
+  $("ichClose").addEventListener("click", () => { $("ichPanel").hidden = true; });
+  pReset.addEventListener("click", () => {
+    if (!resetArmed) { resetArmed = true; pReset.textContent = "Wirklich alles vergessen? Nochmal tippen"; return; }
+    resetArmed = false; pReset.textContent = "Gedächtnis löschen";
+    ich = frisch(); saveIch(); history = []; sessionLog = []; store.set("session", []);
+    termine = []; saveTermine(); listen = {}; saveListen();
+    $("ichPanel").hidden = true; begruessen(true);
+  });
+
+  // ================= EINSTELLUNGEN =================
+  function openSettings() {
+    $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sOrt").value = cfg.ort;
+    $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
+    $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || ""; $("sGroq").value = cfg.groqKey || ""; $("sMuteBeep").checked = cfg.muteBeep !== false;
+    $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about;
+    const u = usage.tag === heute() ? usage : { n: 0, inTok: 0, outTok: 0 };
+    $("sUsage").textContent = `Heute: ${u.n} Anfragen · ${u.inTok.toLocaleString("de-DE")} Tokens rein · ${(u.cacheTok || 0).toLocaleString("de-DE")} günstig aus dem Zwischenspeicher · ${u.outTok.toLocaleString("de-DE")} Tokens raus`;
+    $("setPanel").hidden = false;
+  }
+  $("setBtn").addEventListener("click", openSettings);
+  $("setClose").addEventListener("click", () => { $("setPanel").hidden = true; });
+  $("setSave").addEventListener("click", () => {
+    cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.ort = $("sOrt").value.trim();
+    cfg.limit = Math.max(10, Math.min(5000, parseInt($("sLimit").value, 10) || 300));
+    cfg.search = $("sSearch").checked; cfg.wake = $("sWake").checked; cfg.look = $("sLook").checked;
+    cfg.muteBeep = $("sMuteBeep").checked;
+    const engineChanged = !NATIVE && cfg.engine !== $("sEngine").value;
+    if (!NATIVE) cfg.engine = $("sEngine").value; cfg.wakeExtra = $("sWakeExtra").value.trim(); WAKE = buildWake(); cfg.groqKey = $("sGroq").value.trim();
+    if (engineChanged) {
+      if (cfg.engine === "google") { cfg.ear = true; earUI(); hardReset("Ohren gewechselt"); earStart(); }
+      else { earPause(); voskPrepareCtx(); if (cfg.ear) voskStart(); }
+    }
+    cfg.haUrl = $("sHaUrl").value.trim(); cfg.haToken = $("sHaToken").value.trim(); cfg.about = $("sAbout").value.trim().slice(0, 4000);
+    saveCfg(); $("setPanel").hidden = true; note("Gespeichert.", 2000);
+  });
+
+  // ================= START =================
+  function begruessen(spoken) {
+    const h = new Date().getHours();
+    const gruss = h < 5 ? "Guten Abend" : h < 11 ? "Guten Morgen" : h < 18 ? "Hallo" : "Guten Abend";
+    const t = ich.name ? `${gruss}, ${ich.name}. Alle Systeme sind bereit.` : `${gruss}. Ich bin Sentinel, dein persönlicher Assistent. Wie heißt du?`;
+    lastGreet = Date.now();
+    show(""); setMood(ich.name ? "freude" : "ueberrascht");
+    if (spoken) speak(t, "neutral"); else setTimeout(() => { if (!busy && !speaking) setMood("neutral"); }, 2000);
+    status(cfg.ear ? "hört zu" : "bereit");
+  }
+  if (!cfg.key) $("keyField").hidden = false;
+  if (NATIVE) {
+    // In der App braucht es kein "Aufwecken" mehr, wenn der Key schon da ist
+    $("startText").textContent = "Willkommen. Trag einmal deinen API-Key ein, danach startet Sentinel automatisch.";
+    $("sEngine").closest(".field").hidden = true;
+    $("sGroq").closest(".field").hidden = true;
+    $("muteBeepRow").hidden = false;
+    if (cfg.key) setTimeout(() => $("startBtn").click(), 300);
+  }
+  $("startBtn").addEventListener("click", async () => {
+    const errEl = $("startErr"); errEl.hidden = true;
+    if (!cfg.key) {
+      const k = $("keyInput").value.trim();
+      if (!/^sk-ant-/.test(k)) { errEl.textContent = "Der Key beginnt mit sk-ant-. Du findest ihn auf console.anthropic.com unter API Keys."; errEl.hidden = false; return; }
+      cfg.key = k; saveCfg();
+    }
+    $("startPanel").hidden = true;
+    keepAwake();
+    // Stimme und Audio SOFORT beim Antippen freischalten – Android erlaubt Ton nur direkt nach einer Berührung
+    if (cfg.engine === "vosk") voskPrepareCtx();
+    earUI();
+    begruessen(true);
+    try { await document.documentElement.requestFullscreen(); } catch (e) {}
+    if (cfg.engine === "vosk" && cfg.ear) voskStart();
+    if (NATIVE && cfg.ear) nativeEarsOn();
+    if (cfg.eye) await camStart();
+    if (cfg.engine === "google" && !SR) note("Dieser Browser kann nicht zuhören. Nimm Chrome.");
+  });
+  if (!window.isSecureContext) {
+    $("startText").textContent = "Achtung: Mikrofon und Kamera gehen nur, wenn die Seite über https geöffnet wird.";
+  }
+  earUI(); eyeUI(); status("schläft");
+})();
+</script>
+</body>
+</html>

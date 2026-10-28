@@ -189,9 +189,10 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       <input id="sWakeExtra" type="text" autocomplete="off" placeholder="z. B. sende nil, zentner">
     </div>
     <label class="check"><input id="sWake" type="checkbox"> Nur antworten, wenn „Sentinel“ gesagt wird</label>
+    <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint">Sentinel Version 11</div>
+    <div class="hint" id="verHint">Sentinel Version 13</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -228,6 +229,16 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   // Umstieg auf v3: Sonnet als Standard-Gehirn für natürlichere Gespräche
   if (!cfg.v3) { if (cfg.model === "claude-haiku-5-5") cfg.model = "claude-sonnet-5-5"; cfg.v3 = true; saveCfg(); }
   if (typeof cfg.about !== "string") cfg.about = "";
+  // v12: zurück zur Google-Erkennung – die versteht am besten. Antippen weckt die Ohren zuverlässig.
+  if (!cfg.v12) { cfg.engine = "google"; cfg.ear = true; cfg.v12 = true; saveCfg(); }
+
+  // ================= ANDROID-APP? =================
+  // In der echten App gibt es native Ohren und Stimme: dauerhaft zuhören ohne Antippen, wie Alexa.
+  const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  const SV = NATIVE ? ((window.Capacitor.Plugins && window.Capacitor.Plugins.SentinelVoice) ||
+                       (window.Capacitor.registerPlugin && window.Capacitor.registerPlugin("SentinelVoice"))) : null;
+  if (NATIVE) cfg.engine = "native";
+  const ttsWait = {};
 
   // ================= GESICHT =================
   const cv = $("face"), ctx = cv.getContext("2d"), S = cv.width / 240;
@@ -386,6 +397,13 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   }
   cv.addEventListener("pointerdown", e => {
     pointTo(e);
+    // Antippen = "Ich will mit dir reden": Ohren frisch starten (Android erlaubt das nur direkt nach einer Berührung)
+    // und die nächsten 15 Sekunden ohne "Sentinel" zuhören.
+    if (NATIVE && cfg.ear && !busy && !speaking) { followUntil = Date.now() + FOLLOW_MS; nativeEarsOn(); setMood("zuhoeren"); }
+    if (cfg.engine === "google" && SR && !busy && !speaking) {
+      cfg.ear = true; earUI(); followUntil = Date.now() + FOLLOW_MS;
+      hardReset("Antippen"); earStart(); setMood("zuhoeren"); status("hört zu");
+    }
     press = { x: e.clientX, y: e.clientY, t: performance.now(), dist: 0, stroked: false, long: false };
     press.timer = setTimeout(() => {
       if (!press || press.dist > 25) return;
@@ -420,7 +438,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       const ex = 120 + side * 42 + gaze[0], ey = 104 + gaze[1];
       if (Math.abs(x - ex) < 32 && Math.abs(y - ey) < 38) { pokedEye = side; react("aua", "aua"); return; }
     }
-    if (!busy && !speaking) tempMood("freude", 1300);
+    // kurzes Antippen: einfach zuhören (blaue Augen), nicht mehr freuen
   });
   cv.addEventListener("pointercancel", () => { if (press) clearTimeout(press.timer); press = null; });
 
@@ -467,6 +485,15 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
         if (id !== speakId) return resolve();
         speaking = false; setMood(afterMood); status("bereit"); afterSpeaking(); resolve();
       };
+      if (NATIVE && SV && text) {
+        // App: Android-Sprachausgabe. Die Ohren pausieren dabei automatisch und hören danach weiter.
+        const uid = "u" + id;
+        ttsWait[uid] = done;
+        speaking = true; status("spricht");
+        SV.speak({ text: String(text), id: uid, rate: 1.05 }).catch(done);
+        setTimeout(done, 8000 + String(text).length * 120); // Sicherheitsnetz
+        return;
+      }
       if (!synth || !text) { setMood(afterMood); afterSpeaking(); return resolve(); }
       try {
         earPause();
@@ -772,8 +799,53 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   statusEl.style.cursor = "pointer";
   statusEl.addEventListener("click", () => { $("logBody").textContent = earLog.slice().reverse().join("\n") || "Noch nichts."; $("logPanel").hidden = false; });
   $("logClose").addEventListener("click", () => { $("logPanel").hidden = true; });
+  // ---- Native Ohren (nur in der Android-App) ----
+  let nativeUtterStart = 0, nativeAddressed = false, nativeInited = false;
+  function nativeEarsInit() {
+    if (!SV || nativeInited) return;
+    nativeInited = true;
+    SV.addListener("partial", ev => {
+      const t = String((ev && ev.text) || "");
+      lastResultAt = Date.now(); lastAlive = Date.now();
+      if (!nativeUtterStart) nativeUtterStart = Date.now();
+      if (!nativeAddressed && addressed(t, nativeUtterStart)) nativeAddressed = true;
+      if (nativeAddressed && !busy && !speaking) setMood("zuhoeren");
+    });
+    SV.addListener("final", ev => {
+      const t = String((ev && ev.text) || "").trim();
+      const forced = nativeAddressed || addressed(t, nativeUtterStart || Date.now());
+      nativeUtterStart = 0; nativeAddressed = false; lastAlive = Date.now();
+      if (!t) return;
+      elog("gehört: " + t);
+      heard(t, forced);
+    });
+    SV.addListener("ready", () => { lastAlive = Date.now(); });
+    SV.addListener("error", ev => elog("Ohren-Fehler " + (ev && ev.code) + (ev && ev.message ? " " + ev.message : "")));
+    SV.addListener("ttsDone", ev => { const f = ttsWait[ev && ev.id]; if (f) { delete ttsWait[ev.id]; f(); } });
+  }
+  function nativeEarsOn() {
+    if (!SV) return;
+    lastAlive = Date.now();
+    SV.start({ muteBeep: cfg.muteBeep !== false })
+      .then(() => { elog("Ohren an (Android)"); if (!busy && !speaking) status("hört zu"); })
+      .catch(() => { elog("Mikrofon nicht erlaubt"); note("Bitte erlaube Sentinel das Mikrofon in den Android-Einstellungen."); });
+  }
+  function nativeEarsOff() { if (SV) SV.stop().catch(() => {}); }
+  if (NATIVE) nativeEarsInit();
+  // Wächter für die App: falls Android die Ohren doch mal verliert, nach einer Minute Stille neu anwerfen
+  setInterval(() => {
+    if (!NATIVE || !cfg.ear || busy || speaking || !$("startPanel").hidden) return;
+    if (Date.now() - lastAlive > 60000) { elog("Ohren neu angeworfen"); nativeEarsOn(); }
+  }, 10000);
+
   earBtn.addEventListener("click", () => {
     wake(); keepAwake();
+    if (NATIVE) {
+      cfg.ear = !cfg.ear; saveCfg(); earUI();
+      if (cfg.ear) { nativeEarsOn(); note(cfg.wake ? "Ich höre zu. Sag „Sentinel“ oder schau mich an." : "Ich höre zu.", 3500); }
+      else { nativeEarsOff(); status("bereit"); if (!busy && !speaking) setMood("neutral"); }
+      return;
+    }
     if (cfg.engine !== "google") {
       cfg.ear = !cfg.ear; saveCfg(); earUI(); voskPrepareCtx();
       if (cfg.ear) { if (!vosk.ready) voskStart(); note(cfg.wake ? "Ich höre zu. Sag „Sentinel“ oder schau mich an." : "Ich höre zu.", 3500); status("hört zu"); }
@@ -939,9 +1011,10 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     const due = termine.find(t => t.at <= Date.now());
     if (!due) return;
     termine = termine.filter(t => t !== due); saveTermine();
-    wake(); gong(); setMood("ueberrascht");
+    if (NATIVE) nativeEarsOff();  // sonst ist der Gong mit dem Piepton zusammen stummgeschaltet
+    wake(); setTimeout(gong, NATIVE ? 300 : 0); setMood("ueberrascht");
     const s = due.typ === "timer" ? `Dein Timer ist abgelaufen${due.text ? ": " + due.text : ""}.` : `Erinnerung${ich.name ? " für " + ich.name : ""}: ${due.text}.`;
-    setTimeout(() => speak(s, "neutral"), 1100);
+    setTimeout(() => speak(s, "neutral").then(() => { if (NATIVE && cfg.ear) nativeEarsOn(); }), 1400);
   }, 1000);
 
   // ================= HOME ASSISTANT (optional) =================
@@ -1341,7 +1414,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   function openSettings() {
     $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sOrt").value = cfg.ort;
     $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
-    $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || ""; $("sGroq").value = cfg.groqKey || "";
+    $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || ""; $("sGroq").value = cfg.groqKey || ""; $("sMuteBeep").checked = cfg.muteBeep !== false;
     $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about;
     const u = usage.tag === heute() ? usage : { n: 0, inTok: 0, outTok: 0 };
     $("sUsage").textContent = `Heute: ${u.n} Anfragen · ${u.inTok.toLocaleString("de-DE")} Tokens rein · ${(u.cacheTok || 0).toLocaleString("de-DE")} günstig aus dem Zwischenspeicher · ${u.outTok.toLocaleString("de-DE")} Tokens raus`;
@@ -1353,8 +1426,9 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.ort = $("sOrt").value.trim();
     cfg.limit = Math.max(10, Math.min(5000, parseInt($("sLimit").value, 10) || 300));
     cfg.search = $("sSearch").checked; cfg.wake = $("sWake").checked; cfg.look = $("sLook").checked;
-    const engineChanged = cfg.engine !== $("sEngine").value;
-    cfg.engine = $("sEngine").value; cfg.wakeExtra = $("sWakeExtra").value.trim(); WAKE = buildWake(); cfg.groqKey = $("sGroq").value.trim();
+    cfg.muteBeep = $("sMuteBeep").checked;
+    const engineChanged = !NATIVE && cfg.engine !== $("sEngine").value;
+    if (!NATIVE) cfg.engine = $("sEngine").value; cfg.wakeExtra = $("sWakeExtra").value.trim(); WAKE = buildWake(); cfg.groqKey = $("sGroq").value.trim();
     if (engineChanged) {
       if (cfg.engine === "google") { cfg.ear = true; earUI(); hardReset("Ohren gewechselt"); earStart(); }
       else { earPause(); voskPrepareCtx(); if (cfg.ear) voskStart(); }
@@ -1374,6 +1448,14 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     status(cfg.ear ? "hört zu" : "bereit");
   }
   if (!cfg.key) $("keyField").hidden = false;
+  if (NATIVE) {
+    // In der App braucht es kein "Aufwecken" mehr, wenn der Key schon da ist
+    $("startText").textContent = "Willkommen. Trag einmal deinen API-Key ein, danach startet Sentinel automatisch.";
+    $("sEngine").closest(".field").hidden = true;
+    $("sGroq").closest(".field").hidden = true;
+    $("muteBeepRow").hidden = false;
+    if (cfg.key) setTimeout(() => $("startBtn").click(), 300);
+  }
   $("startBtn").addEventListener("click", async () => {
     const errEl = $("startErr"); errEl.hidden = true;
     if (!cfg.key) {
@@ -1384,11 +1466,12 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     $("startPanel").hidden = true;
     keepAwake();
     // Stimme und Audio SOFORT beim Antippen freischalten – Android erlaubt Ton nur direkt nach einer Berührung
-    if (cfg.engine !== "google") voskPrepareCtx();
+    if (cfg.engine === "vosk") voskPrepareCtx();
     earUI();
     begruessen(true);
     try { await document.documentElement.requestFullscreen(); } catch (e) {}
-    if (cfg.engine !== "google" && cfg.ear) voskStart();
+    if (cfg.engine === "vosk" && cfg.ear) voskStart();
+    if (NATIVE && cfg.ear) nativeEarsOn();
     if (cfg.eye) await camStart();
     if (cfg.engine === "google" && !SR) note("Dieser Browser kann nicht zuhören. Nimm Chrome.");
   });

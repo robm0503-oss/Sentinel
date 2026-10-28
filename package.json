@@ -1,0 +1,11 @@
+{
+  "name": "sentinel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sentinel – KI-Kumpel mit Gesicht, Android-App",
+  "dependencies": {
+    "@capacitor/android": "7.6.9",
+    "@capacitor/cli": "7.6.9",
+    "@capacitor/core": "7.6.9"
+  }
+}

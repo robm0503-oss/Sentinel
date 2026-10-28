@@ -1,0 +1,8 @@
+{
+  "appId": "de.robsen.sentinel",
+  "appName": "Sentinel",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#000000"
+  }
+}
