@@ -193,7 +193,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 16</div>
+    <div class="hint" id="verHint">Sentinel Version 17</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -802,12 +802,13 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   statusEl.addEventListener("click", () => { $("logBody").textContent = earLog.slice().reverse().join("\n") || "Noch nichts."; $("logPanel").hidden = false; });
   $("logClose").addEventListener("click", () => { $("logPanel").hidden = true; });
   // ---- Native Ohren (nur in der Android-App) ----
-  let nativeUtterStart = 0, nativeAddressed = false, nativeInited = false, nativeReadyOnce = false, lastReady = 0, lastSpeechLog = 0;
+  let nativeUtterStart = 0, nativeAddressed = false, nativeInited = false, nativeReadyOnce = false, lastReady = 0, lastSpeechLog = 0, lastPartialLog = 0;
   function nativeEarsInit() {
     if (!SV || nativeInited) return;
     nativeInited = true;
     SV.addListener("partial", ev => {
       const t = String((ev && ev.text) || "");
+      if (Date.now() - lastPartialLog > 4000) { lastPartialLog = Date.now(); elog("… " + t); }
       lastResultAt = Date.now(); lastAlive = Date.now();
       if (!nativeUtterStart) nativeUtterStart = Date.now();
       if (!nativeAddressed && addressed(t, nativeUtterStart)) nativeAddressed = true;
@@ -815,6 +816,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     });
     SV.addListener("final", ev => {
       const t = String((ev && ev.text) || "").trim();
+      if (!t) elog("Ohren: Satz zu Ende, aber leer");
       const forced = nativeAddressed || addressed(t, nativeUtterStart || Date.now());
       nativeUtterStart = 0; nativeAddressed = false; lastAlive = Date.now();
       if (!t) return;
@@ -824,7 +826,16 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     SV.addListener("ready", () => { if (!nativeReadyOnce) { nativeReadyOnce = true; elog("Ohren bereit – ich höre"); } lastAlive = Date.now(); lastReady = Date.now(); });
     SV.addListener("speechStart", () => { lastAlive = Date.now(); if (Date.now() - lastSpeechLog > 15000) { lastSpeechLog = Date.now(); elog("höre Sprache …"); } });
     const ERRNAME = { 1: "Netzwerk-Zeitüberschreitung", 2: "kein Netzwerk", 3: "Mikrofon-Problem", 4: "Server-Fehler", 5: "Erkenner-Fehler", 7: "nichts verstanden", 8: "Erkenner beschäftigt, warte kurz", 9: "Mikrofon nicht erlaubt", 11: "Erkenner überlastet" };
-    SV.addListener("error", ev => elog("Ohren: " + (ERRNAME[ev && ev.code] || ("Fehler " + (ev && ev.code))) + (ev && ev.message ? " " + ev.message : "")));
+    let lastQuiet = 0;
+    SV.addListener("error", ev => {
+      const c = ev && ev.code;
+      if (c === 6 || c === 7) { // Stille / nichts verstanden – passiert ständig, nur ab und zu melden
+        if (Date.now() - lastQuiet > 30000) { lastQuiet = Date.now(); elog(c === 7 ? "Ohren: Sprache gehört, aber nichts verstanden" : "Ohren: Stille"); }
+        if (c === 7 && Date.now() - lastSpeechLog < 15000) elog("Ohren: nichts verstanden (Satz verloren)");
+        return;
+      }
+      elog("Ohren: " + (ERRNAME[c] || ("Fehler " + c)) + (ev && ev.message ? " " + ev.message : ""));
+    });
     SV.addListener("ttsDone", ev => { const f = ttsWait[ev && ev.id]; if (f) { delete ttsWait[ev.id]; f(); } });
   }
   function nativeEarsOn() {

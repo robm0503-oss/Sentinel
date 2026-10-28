@@ -184,7 +184,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
     @Override
     public void onResults(Bundle b) {
         String t = first(b);
-        if (t != null && !t.isEmpty()) notifyListeners("final", new JSObject().put("text", t));
+        notifyListeners("final", new JSObject().put("text", t == null ? "" : t));
         listening = false;
         destroyRecognizer();
         restart(250);
@@ -193,9 +193,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
     @Override
     public void onError(int error) {
         listening = false;
-        if (error != SpeechRecognizer.ERROR_NO_MATCH && error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
-            notifyListeners("error", new JSObject().put("code", error));
-        }
+        notifyListeners("error", new JSObject().put("code", error));
         destroyRecognizer();
         switch (error) {
             case SpeechRecognizer.ERROR_NO_MATCH:
