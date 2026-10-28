@@ -162,6 +162,10 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       <input id="sLimit" type="number" min="10" max="5000" step="10">
     </div>
     <div class="field">
+      <label for="sSmart">Smart-Home-Befehle (eine Zeile pro Befehl: Name = Link)</label>
+      <textarea id="sSmart" rows="5" placeholder="Licht an = https://api-v2.voicemonkey.io/trigger?token=…&amp;device=licht-an&#10;Licht aus = https://…&#10;Fernsehabend = https://…"></textarea>
+    </div>
+    <div class="field">
       <label for="sHaUrl">Home Assistant Adresse (https, optional)</label>
       <input id="sHaUrl" type="text" autocomplete="off" placeholder="https://….ui.nabu.casa">
     </div>
@@ -197,7 +201,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 21</div>
+    <div class="hint" id="verHint">Sentinel Version 22</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -1056,6 +1060,27 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     setTimeout(() => speak(s, "neutral").then(() => { if (NATIVE && cfg.ear) nativeEarsOn(); }), 1400);
   }, 1000);
 
+  // ================= SMART HOME ÜBER LINKS (z. B. Alexa-Routinen via Voice Monkey) =================
+  function smartCommands() {
+    return String(cfg.smart || "").split(/\n/).map(l => {
+      const i = l.indexOf("=");
+      if (i < 1) return null;
+      const name = l.slice(0, i).trim(), url = l.slice(i + 1).trim();
+      return name && /^https?:\/\//i.test(url) ? { name, url } : null;
+    }).filter(Boolean);
+  }
+  async function triggerUrl(url) {
+    // In der App geht der Aufruf direkt (ohne Browser-Sperren); im Browser "blind" ohne Antwort
+    const CH = NATIVE && ((window.capacitorExports && window.capacitorExports.CapacitorHttp) || (window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp));
+    if (CH) {
+      const r = await CH.get({ url });
+      if (r.status >= 400) throw new Error("Fehler " + r.status);
+      return;
+    }
+    try { const r = await fetch(url); if (!r.ok) throw new Error("Fehler " + r.status); }
+    catch (e) { await fetch(url, { mode: "no-cors" }); }
+  }
+
   // ================= HOME ASSISTANT (optional) =================
   async function ha(path, opts = {}) {
     if (!cfg.haUrl || !cfg.haToken) throw new Error("Home Assistant ist nicht eingerichtet.");
@@ -1154,7 +1179,7 @@ Hören: Was ${wer} sagt, kommt über eine Spracherkennung. Die verschluckt oder 
 Sehen: ${stream ? `Du hast eine Kamera als Augen, aber du schaust nur hin, wenn es ums Sehen geht. Ein Kamerabild bekommst du nur, wenn ${wer} dich bittet, etwas anzuschauen. Brauchst du in einem solchen Moment ein Bild und hast keins, nutze kamera_bild. Sprich NICHT von dir aus über die Kamera oder darüber, was du siehst. Wenn du ein Bild hast, beschreibe nur, was wirklich darauf ist, und erfinde nichts. Ist etwas unscharf oder nicht im Bild, sag es und bitte darum, es näher zu zeigen.
 Wenn du auf einem Bild etwas Wichtiges gesehen hast, schreib ganz am Ende eine kurze Notiz in der Form [sah: ...]. Die wird nicht vorgelesen und hilft dir, dich später daran zu erinnern.` : `Deine Kamera ist aus. Erwähne das nur, wenn ${wer} dich bittet, etwas anzuschauen.`}
 ${cfg.about ? `\nWas ${wer} selbst über sich erzählt:\n${cfg.about}\n` : ""}
-Deine Fähigkeiten: Timer und Erinnerungen stellen (sie klingeln auch, wenn gerade niemand redet), Listen führen (z. B. Einkauf, Aufgaben), dir Dinge merken${cfg.search ? ", im Internet nach aktuellen Infos suchen (Wetter, Nachrichten, Öffnungszeiten, Preise)" : ""}${cfg.haUrl && cfg.haToken ? ", das Smart Home über Home Assistant steuern (erst mit ha_geraete nachsehen, dann mit ha_schalten schalten; bei Türschlössern, Alarmanlagen und Heizung vorher kurz bestätigen lassen)" : ". Smart-Home-Steuerung ist noch nicht eingerichtet; sag das, wenn danach gefragt wird"}.
+Deine Fähigkeiten: Timer und Erinnerungen stellen (sie klingeln auch, wenn gerade niemand redet), Listen führen (z. B. Einkauf, Aufgaben), dir Dinge merken${cfg.search ? ", im Internet nach aktuellen Infos suchen (Wetter, Nachrichten, Öffnungszeiten, Preise)" : ""}${smartCommands().length ? ", das Smart Home steuern mit diesen Befehlen: " + smartCommands().map(c => c.name).join(", ") + " (nutze smart_home; nur diese Befehle gibt es)" : ""}${cfg.haUrl && cfg.haToken ? ", das Smart Home über Home Assistant steuern (erst mit ha_geraete nachsehen, dann mit ha_schalten schalten; bei Türschlössern, Alarmanlagen und Heizung vorher kurz bestätigen lassen)" : (smartCommands().length ? "" : ". Smart-Home-Steuerung ist noch nicht eingerichtet; sag das, wenn danach gefragt wird, und dass man in den Einstellungen unter Smart-Home-Befehle Links eintragen kann")}.
 Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
 Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Sag nie, dass du dir etwas gemerkt hast, ohne das Werkzeug wirklich benutzt zu haben.
@@ -1196,6 +1221,9 @@ ${zeile("Menschen", ich.menschen)}`;
         input_schema: obj({ aktion: { type: "string", enum: ["anzeigen", "hinzufuegen", "entfernen", "leeren"] }, liste: { type: "string" }, eintraege: { type: "array", items: { type: "string" } } }, ["aktion", "liste"]) },
     ];
     if (stream) t.push({ name: "kamera_bild", description: "Schaut durch deine Kamera und gibt dir das aktuelle Bild. Nur nutzen, wenn du gebeten wirst, etwas anzuschauen.", input_schema: obj({}) });
+    const sc = smartCommands();
+    if (sc.length) t.push({ name: "smart_home", description: "Führt einen Smart-Home-Befehl aus, z. B. Licht an. Nur die angegebenen Befehle sind möglich.",
+      input_schema: obj({ befehl: { type: "string", enum: sc.map(c => c.name) } }, ["befehl"]) });
     if (cfg.haUrl && cfg.haToken) {
       t.push(
         { name: "ha_geraete", description: "Listet Smart-Home-Geräte aus Home Assistant mit entity_id, Name und Zustand. Optional nach Bereich (z. B. light, switch, media_player, climate) oder Suchwort filtern.",
@@ -1279,6 +1307,13 @@ ${zeile("Menschen", ich.menschen)}`;
           else return ok(cur.length ? `${name}: ${cur.join(", ")}` : `Die Liste ${name} ist leer.`);
           if (!listen[name].length) delete listen[name];
           saveListen(); return ok(`${name}: ${(listen[name] || []).join(", ") || "leer"}`);
+        }
+        case "smart_home": {
+          const c = smartCommands().find(x => x.name.toLowerCase() === String(inp.befehl || "").toLowerCase());
+          if (!c) return fail("Diesen Befehl gibt es nicht.");
+          await triggerUrl(c.url);
+          elog("Smart Home: " + c.name);
+          return ok("ausgeführt: " + c.name);
         }
         case "ha_geraete": {
           const states = await ha("/api/states");
@@ -1468,7 +1503,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sOrt").value = cfg.ort;
     $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
     $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || ""; $("sGroq").value = cfg.groqKey || ""; $("sMuteBeep").checked = cfg.muteBeep !== false;
-    $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about; $("sName").value = ich.name || "";
+    $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about; $("sName").value = ich.name || ""; $("sSmart").value = cfg.smart || "";
     const u = usage.tag === heute() ? usage : { n: 0, inTok: 0, outTok: 0 };
     $("sUsage").textContent = `Heute: ${u.n} Anfragen · ${u.inTok.toLocaleString("de-DE")} Tokens rein · ${(u.cacheTok || 0).toLocaleString("de-DE")} günstig aus dem Zwischenspeicher · ${u.outTok.toLocaleString("de-DE")} Tokens raus`;
     $("setPanel").hidden = false;
@@ -1486,7 +1521,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
       if (cfg.engine === "google") { cfg.ear = true; earUI(); hardReset("Ohren gewechselt"); earStart(); }
       else { earPause(); voskPrepareCtx(); if (cfg.ear) voskStart(); }
     }
-    cfg.haUrl = $("sHaUrl").value.trim(); cfg.haToken = $("sHaToken").value.trim(); cfg.about = $("sAbout").value.trim().slice(0, 4000);
+    cfg.haUrl = $("sHaUrl").value.trim(); cfg.haToken = $("sHaToken").value.trim(); cfg.about = $("sAbout").value.trim().slice(0, 4000); cfg.smart = $("sSmart").value.trim().slice(0, 8000);
     const nm = $("sName").value.trim().slice(0, 40); if (nm !== ich.name) { ich.name = nm; saveIch(); }
     saveCfg(); $("setPanel").hidden = true; note("Gespeichert.", 2000);
   });
