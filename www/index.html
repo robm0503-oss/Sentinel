@@ -197,7 +197,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 20</div>
+    <div class="hint" id="verHint">Sentinel Version 21</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -905,12 +905,15 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     try {
       stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
       video.srcObject = stream; await video.play();
-      eyeUI(); loadDetector();
+      eyeUI(); loadDetector(); elog("Kamera an");
       clearInterval(lookTimer); lookTimer = setInterval(look, 140);
       return true;
     } catch (e) {
       stream = null; eyeUI();
-      note("Kamera nicht erlaubt. Erlaub sie in Chrome über das Schloss neben der Adresse.", 6000);
+      elog("Kamera-Fehler: " + (e && e.name) + " " + (e && e.message || ""));
+      if (e && e.name === "NotReadableError") note("Die Kamera wird gerade von einer anderen App benutzt.", 6000);
+      else if (NATIVE) note("Kamera nicht erlaubt. Android-Einstellungen → Apps → Sentinel → Berechtigungen → Kamera → Zulassen.", 8000);
+      else note("Kamera nicht erlaubt. Erlaub sie in Chrome über das Schloss neben der Adresse.", 6000);
       return false;
     }
   }
