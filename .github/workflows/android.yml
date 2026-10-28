@@ -35,7 +35,14 @@ jobs:
       - name: App bauen
         run: |
           chmod +x android/gradlew
-          cd android && ./gradlew assembleDebug --no-daemon
+          cd android
+          set -o pipefail
+          ./gradlew assembleDebug --no-daemon 2>&1 | tee ../build.log
+
+      - name: Fehler anzeigen
+        if: failure()
+        run: |
+          grep -E "error:|What went wrong|Caused by|FAILURE|\.java:[0-9]+|build\.gradle" -A3 build.log | head -60 | while IFS= read -r l; do echo "::error::$l"; done
 
       - name: APK umbenennen
         run: cp android/app/build/outputs/apk/debug/app-debug.apk Sentinel.apk
