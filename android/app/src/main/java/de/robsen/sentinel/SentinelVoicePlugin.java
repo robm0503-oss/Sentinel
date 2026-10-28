@@ -72,6 +72,9 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
 
     // ---------------- Ohren ----------------
 
+    private long busyBackoff = 1000;
+    private final Runnable listenRunnable = this::listen;
+
     @PluginMethod
     public void start(PluginCall call) {
         muteBeep = call.getBoolean("muteBeep", true);
@@ -80,7 +83,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
             return;
         }
         wanted = true;
-        main.post(this::listen);
+        if (!listening && !speaking) restart(100);
         call.resolve();
     }
 
@@ -88,7 +91,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
     private void micCallback(PluginCall call) {
         if (getPermissionState("mic") == PermissionState.GRANTED) {
             wanted = true;
-            main.post(this::listen);
+            restart(100);
             call.resolve();
         } else {
             call.reject("Mikrofon nicht erlaubt");
@@ -99,7 +102,8 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
     public void stop(PluginCall call) {
         wanted = false;
         main.post(() -> {
-            if (recognizer != null) recognizer.cancel();
+            main.removeCallbacks(listenRunnable);
+            destroyRecognizer();
             listening = false;
             unmuteBeep();
         });
@@ -132,38 +136,39 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         return recognizerIntent;
     }
 
+    // Jede Zuhör-Runde bekommt einen frischen Erkenner. Das vermeidet "Fehler 8 – Erkenner beschäftigt",
+    // den manche Tablets werfen, wenn man denselben Erkenner sofort wieder startet.
     private void listen() {
         if (!wanted || speaking || listening) return;
         try {
-            if (recognizer == null) {
-                recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
-                recognizer.setRecognitionListener(this);
-            }
+            destroyRecognizer();
+            recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
+            recognizer.setRecognitionListener(this);
             muteBeepIfWanted();
             recognizer.startListening(intent());
             listening = true;
         } catch (Exception e) {
             listening = false;
             notifyListeners("error", new JSObject().put("code", -1).put("message", String.valueOf(e.getMessage())));
-            recreate(1000);
+            restart(1500);
+        }
+    }
+
+    private void destroyRecognizer() {
+        if (recognizer != null) {
+            try { recognizer.cancel(); } catch (Exception ignored) {}
+            try { recognizer.destroy(); } catch (Exception ignored) {}
+            recognizer = null;
         }
     }
 
     private void restart(long delayMs) {
         listening = false;
-        main.postDelayed(this::listen, delayMs);
+        main.removeCallbacks(listenRunnable);
+        main.postDelayed(listenRunnable, delayMs);
     }
 
-    private void recreate(long delayMs) {
-        listening = false;
-        main.post(() -> {
-            if (recognizer != null) { try { recognizer.destroy(); } catch (Exception ignored) {} }
-            recognizer = null;
-        });
-        main.postDelayed(this::listen, delayMs);
-    }
-
-    @Override public void onReadyForSpeech(Bundle params) { notifyListeners("ready", new JSObject()); }
+    @Override public void onReadyForSpeech(Bundle params) { busyBackoff = 1000; notifyListeners("ready", new JSObject()); }
     @Override public void onBeginningOfSpeech() { notifyListeners("speechStart", new JSObject()); }
     @Override public void onRmsChanged(float rmsdB) {}
     @Override public void onBufferReceived(byte[] buffer) {}
@@ -180,7 +185,9 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
     public void onResults(Bundle b) {
         String t = first(b);
         if (t != null && !t.isEmpty()) notifyListeners("final", new JSObject().put("text", t));
-        restart(80);
+        listening = false;
+        destroyRecognizer();
+        restart(250);
     }
 
     @Override
@@ -189,21 +196,23 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         if (error != SpeechRecognizer.ERROR_NO_MATCH && error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
             notifyListeners("error", new JSObject().put("code", error));
         }
+        destroyRecognizer();
         switch (error) {
             case SpeechRecognizer.ERROR_NO_MATCH:
             case SpeechRecognizer.ERROR_SPEECH_TIMEOUT:
-                restart(60); break;                       // einfach weiter zuhören
-            case SpeechRecognizer.ERROR_RECOGNIZER_BUSY:
-            case SpeechRecognizer.ERROR_CLIENT:
-                recreate(600); break;                     // Erkenner neu bauen
+                restart(250); break;                       // einfach weiter zuhören
+            case SpeechRecognizer.ERROR_RECOGNIZER_BUSY:   // 8: kurz warten, jedes Mal etwas länger
+                restart(busyBackoff);
+                busyBackoff = Math.min(busyBackoff * 2, 8000);
+                break;
             case SpeechRecognizer.ERROR_NETWORK:
             case SpeechRecognizer.ERROR_NETWORK_TIMEOUT:
             case SpeechRecognizer.ERROR_SERVER:
-                recreate(2500); break;                    // Internet-Schluckauf
+                restart(2500); break;                      // Internet-Schluckauf
             case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS:
                 wanted = false; unmuteBeep(); break;
             default:
-                recreate(1000);
+                restart(1200);
         }
     }
 
@@ -249,7 +258,8 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         }
         main.post(() -> {
             speaking = true;
-            if (recognizer != null) recognizer.cancel();   // beim Sprechen nicht zuhören
+            main.removeCallbacks(listenRunnable);
+            destroyRecognizer();                            // beim Sprechen nicht zuhören
             listening = false;
             unmuteBeep();                                   // Ton an, sonst hört man ihn nicht
             tts.setSpeechRate(rate);
@@ -270,7 +280,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
     private void afterSpeak(String id) {
         speaking = false;
         notifyListeners("ttsDone", new JSObject().put("id", id));
-        main.postDelayed(this::listen, 250);              // danach direkt wieder zuhören
+        if (wanted) restart(350);                         // danach direkt wieder zuhören
     }
 
     @PluginMethod
@@ -311,7 +321,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
     @Override
     protected void handleOnResume() {
         super.handleOnResume();
-        if (wanted) main.postDelayed(this::listen, 400);
+        if (wanted) restart(500);
     }
 
     @Override
@@ -325,7 +335,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         super.handleOnDestroy();
         wanted = false;
         unmuteBeep();
-        if (recognizer != null) { try { recognizer.destroy(); } catch (Exception ignored) {} }
+        destroyRecognizer();
         if (tts != null) tts.shutdown();
     }
 }

@@ -192,7 +192,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 13</div>
+    <div class="hint" id="verHint">Sentinel Version 14</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -820,7 +820,8 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       heard(t, forced);
     });
     SV.addListener("ready", () => { lastAlive = Date.now(); });
-    SV.addListener("error", ev => elog("Ohren-Fehler " + (ev && ev.code) + (ev && ev.message ? " " + ev.message : "")));
+    const ERRNAME = { 1: "Netzwerk-Zeitüberschreitung", 2: "kein Netzwerk", 3: "Mikrofon-Problem", 4: "Server-Fehler", 5: "Erkenner-Fehler", 7: "nichts verstanden", 8: "Erkenner beschäftigt, warte kurz", 9: "Mikrofon nicht erlaubt", 11: "Erkenner überlastet" };
+    SV.addListener("error", ev => elog("Ohren: " + (ERRNAME[ev && ev.code] || ("Fehler " + (ev && ev.code))) + (ev && ev.message ? " " + ev.message : "")));
     SV.addListener("ttsDone", ev => { const f = ttsWait[ev && ev.id]; if (f) { delete ttsWait[ev.id]; f(); } });
   }
   function nativeEarsOn() {
