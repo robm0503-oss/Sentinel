@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <title>Sentinel</title>
-<!-- Sentinel Haus-System v3 -->
+<!-- Sentinel Haus-System v6 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
@@ -175,6 +175,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check"><input id="sSearch" type="checkbox"> Im Internet suchen dürfen</label>
     <label class="check"><input id="sWake" type="checkbox"> Nur antworten, wenn „Sentinel“ gesagt wird</label>
     <div class="hint" id="sUsage"></div>
+    <div class="hint">Sentinel Version 6</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -477,7 +478,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   // Ganze Sätze sammeln: Android liefert oft Wortfetzen oder wiederholt Teile.
   // Erst wenn du ca. 1,5 Sekunden nichts mehr sagst, geht der komplette Satz raus.
   const PAUSE_MS = 1500;
-  let heardText = "", flushTimer = null;
+  let heardText = "", flushTimer = null, utterStart = 0, utterAddressed = false, lastResultAt = 0, recStartedAt = 0;
   function joinResults(results) {
     const parts = [];
     for (let i = 0; i < results.length; i++) {
@@ -492,20 +493,26 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   }
   function flushHeard() {
     clearTimeout(flushTimer);
-    const t = heardText; heardText = "";
+    const t = heardText, forced = utterAddressed;
+    heardText = ""; utterAddressed = false; utterStart = 0;
     if (!t) return;
     earPause();                 // frisch neu starten, damit Altes nicht im nächsten Satz landet
-    heard(t);
+    heard(t, forced);
     if (!busy && !speaking) setTimeout(earStart, 200);
   }
   function earStart() {
     if (!SR || recRunning || busy || speaking || !(cfg.ear || oneShot)) return;
     try {
-      heardText = "";
+      heardText = ""; utterAddressed = false; utterStart = 0;
       rec = new SR(); rec.lang = "de-DE"; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
       rec.onresult = e => {
         heardText = joinResults(e.results);
-        if (heardText && addressed(heardText) && !busy && !speaking) setMood("zuhoeren");
+        if (!heardText) return;
+        lastResultAt = Date.now();
+        if (!utterStart) utterStart = Date.now();
+        // Zählt, wann du ANGEFANGEN hast zu reden – lange Sätze fallen so nicht aus dem Gesprächsfenster
+        if (!utterAddressed && addressed(heardText, utterStart)) utterAddressed = true;
+        if (utterAddressed && !busy && !speaking) setMood("zuhoeren");
         clearTimeout(flushTimer);
         flushTimer = setTimeout(flushHeard, PAUSE_MS);
       };
@@ -521,7 +528,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
         const wait = lastRecErr === "network" ? 2500 : 250; lastRecErr = null;
         if ((cfg.ear || oneShot) && !busy && !speaking) setTimeout(earStart, wait);
       };
-      rec.start(); recRunning = true;
+      rec.start(); recRunning = true; recStartedAt = Date.now();
       if (!busy && !speaking) status(cfg.ear ? "hört zu" : "bereit");
     } catch (e) { recRunning = false; }
   }
@@ -530,10 +537,20 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     recRunning = false;
   }
   function afterSpeaking() { followUntil = Date.now() + FOLLOW_MS; setTimeout(earStart, 350); }
-  function addressed(t) { return oneShot || !cfg.wake || Date.now() < followUntil || WAKE.test(t); }
-  function heard(t) {
+  // Wächter: nichts darf dauerhaft hängen bleiben
+  setInterval(() => {
+    if (busy || speaking || !$("startPanel").hidden) return;
+    // blau, aber seit 8 Sekunden nichts mehr gehört -> zurück auf normal
+    if (mood === "zuhoeren" && document.activeElement !== msg && Date.now() - lastResultAt > 8000) setMood("neutral");
+    // Zuhören ist an, läuft aber nicht mehr -> neu starten
+    if (cfg.ear && SR && !recRunning) { earStart(); return; }
+    // Android beendet das Zuhören manchmal still, ohne Bescheid zu sagen -> alle 20 Sekunden Ruhe frisch starten
+    if (cfg.ear && SR && recRunning && !heardText && Date.now() - Math.max(recStartedAt, lastResultAt) > 20000) { earPause(); earStart(); }
+  }, 4000);
+  function addressed(t, at = Date.now()) { return oneShot || !cfg.wake || at < followUntil || WAKE.test(t); }
+  function heard(t, forced = false) {
     if (busy || speaking) return;
-    if (!addressed(t)) return;
+    if (!forced && !addressed(t)) { if (mood === "zuhoeren") setMood("neutral"); return; }
     wake();
     const m = t.match(WAKE);
     let rest = m ? t.slice(m.index + m[0].length).trim() : t;
