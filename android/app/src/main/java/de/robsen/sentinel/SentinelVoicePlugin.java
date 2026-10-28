@@ -256,7 +256,10 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
             call.resolve();
             return;
         }
+        final long guardMs = Math.max(8000, text.length() * 150L);
         main.post(() -> {
+            main.removeCallbacks(speakGuard);
+            main.postDelayed(speakGuard, guardMs);   // falls Android nie "fertig" meldet
             speaking = true;
             main.removeCallbacks(listenRunnable);
             destroyRecognizer();                            // beim Sprechen nicht zuhören
@@ -277,7 +280,12 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         call.resolve();
     }
 
+    private final Runnable speakGuard = () -> {
+        if (speaking) { try { tts.stop(); } catch (Exception ignored) {} afterSpeak("guard"); }
+    };
+
     private void afterSpeak(String id) {
+        main.removeCallbacks(speakGuard);
         speaking = false;
         notifyListeners("ttsDone", new JSObject().put("id", id));
         if (wanted) restart(350);                         // danach direkt wieder zuhören

@@ -193,7 +193,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 15</div>
+    <div class="hint" id="verHint">Sentinel Version 16</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -491,6 +491,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
         const uid = "u" + id;
         ttsWait[uid] = done;
         speaking = true; status("spricht");
+        ttsWait[uid] = () => { done(); if (cfg.ear) nativeEarsOn(); };
         SV.speak({ text: String(text), id: uid, rate: 1.05 }).catch(done);
         setTimeout(done, 8000 + String(text).length * 120); // Sicherheitsnetz
         return;
@@ -801,7 +802,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   statusEl.addEventListener("click", () => { $("logBody").textContent = earLog.slice().reverse().join("\n") || "Noch nichts."; $("logPanel").hidden = false; });
   $("logClose").addEventListener("click", () => { $("logPanel").hidden = true; });
   // ---- Native Ohren (nur in der Android-App) ----
-  let nativeUtterStart = 0, nativeAddressed = false, nativeInited = false;
+  let nativeUtterStart = 0, nativeAddressed = false, nativeInited = false, nativeReadyOnce = false, lastReady = 0, lastSpeechLog = 0;
   function nativeEarsInit() {
     if (!SV || nativeInited) return;
     nativeInited = true;
@@ -820,7 +821,8 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       elog("gehört: " + t);
       heard(t, forced);
     });
-    SV.addListener("ready", () => { lastAlive = Date.now(); });
+    SV.addListener("ready", () => { if (!nativeReadyOnce) { nativeReadyOnce = true; elog("Ohren bereit – ich höre"); } lastAlive = Date.now(); lastReady = Date.now(); });
+    SV.addListener("speechStart", () => { lastAlive = Date.now(); if (Date.now() - lastSpeechLog > 15000) { lastSpeechLog = Date.now(); elog("höre Sprache …"); } });
     const ERRNAME = { 1: "Netzwerk-Zeitüberschreitung", 2: "kein Netzwerk", 3: "Mikrofon-Problem", 4: "Server-Fehler", 5: "Erkenner-Fehler", 7: "nichts verstanden", 8: "Erkenner beschäftigt, warte kurz", 9: "Mikrofon nicht erlaubt", 11: "Erkenner überlastet" };
     SV.addListener("error", ev => elog("Ohren: " + (ERRNAME[ev && ev.code] || ("Fehler " + (ev && ev.code))) + (ev && ev.message ? " " + ev.message : "")));
     SV.addListener("ttsDone", ev => { const f = ttsWait[ev && ev.id]; if (f) { delete ttsWait[ev.id]; f(); } });
@@ -838,7 +840,10 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   // Wächter für die App: falls Android die Ohren doch mal verliert, nach einer Minute Stille neu anwerfen
   setInterval(() => {
     if (!NATIVE || !cfg.ear || busy || speaking || !$("startPanel").hidden) return;
-    if (Date.now() - lastAlive > 60000) { elog("Ohren neu angeworfen"); nativeEarsOn(); }
+    if (Date.now() - lastReady > 20000) {
+      SV.status().then(st => elog(`Ohren-Status: soll=${st.wanted} hört=${st.listening} spricht=${st.speaking} Erkennung da=${st.available}`)).catch(() => {});
+      nativeEarsOn(); lastReady = Date.now();
+    }
   }, 10000);
 
   earBtn.addEventListener("click", () => {
