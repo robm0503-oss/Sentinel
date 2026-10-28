@@ -1,5 +1,7 @@
 apply plugin: 'com.android.application'
 
+def sentinelBuild = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
+
 android {
     namespace "de.robsen.sentinel"
     compileSdk rootProject.ext.compileSdkVersion
@@ -8,8 +10,8 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // Jede neue Version bekommt eine höhere Nummer, damit Android sie als Update annimmt
-        versionCode (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger() + 100
-        versionName "1." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
+        versionCode sentinelBuild + 100
+        versionName "1." + sentinelBuild
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
