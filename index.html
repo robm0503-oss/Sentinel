@@ -174,8 +174,9 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     </div>
     <label class="check"><input id="sSearch" type="checkbox"> Im Internet suchen dürfen</label>
     <label class="check"><input id="sWake" type="checkbox"> Nur antworten, wenn „Sentinel“ gesagt wird</label>
+    <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint">Sentinel Version 7</div>
+    <div class="hint">Sentinel Version 8</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -207,7 +208,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     get(k, d) { try { const v = localStorage.getItem("sentinel." + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem("sentinel." + k, JSON.stringify(v)); } catch (e) {} },
   };
-  const cfg = Object.assign({ key: "", model: "claude-haiku-5-5", ort: "", limit: 300, search: true, wake: true, ear: true, eye: true, haUrl: "", haToken: "" }, store.get("cfg", {}));
+  const cfg = Object.assign({ key: "", model: "claude-haiku-5-5", ort: "", limit: 300, search: true, wake: true, look: true, ear: true, eye: true, haUrl: "", haToken: "" }, store.get("cfg", {}));
   const saveCfg = () => store.set("cfg", cfg);
   // Umstieg auf v3: Sonnet als Standard-Gehirn für natürlichere Gespräche
   if (!cfg.v3) { if (cfg.model === "claude-haiku-5-5") cfg.model = "claude-sonnet-5-5"; cfg.v3 = true; saveCfg(); }
@@ -478,7 +479,8 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
 
   // ================= OHREN: Dauerhören mit Weckwort =================
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const WAKE = /\b(sentinel|sentinell|sentinal|sentenel|sentinels|centinel|sendinel|sentiment|senti nell?)\b[\s,.!?:]*/i;
+  // „Sentinel“ und typische Verhörer der Google-Spracherkennung
+  const WAKE = /\b(sentinel+s?|sentinal|sentenel|sentenell|centinel+|sendinel+|zentinel+|santinel+|setinel+|sentin|sentiment|sentimental|senti ?nel+|sendi ?nel+|send in el|sent in el|zenti ?nel+)\b[\s,.!?:]*/i;
   const FOLLOW_MS = 15000; // so lange darf man nach seiner Antwort ohne "Sentinel" weiterreden
   let rec = null, recRunning = false, lastRecErr = null, followUntil = 0, oneShot = false;
   const earBtn = $("earBtn");
@@ -487,9 +489,10 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   // Erst wenn du ca. 1,5 Sekunden nichts mehr sagst, geht der komplette Satz raus.
   const PAUSE_MS = 1500;
   let heardText = "", flushTimer = null, utterStart = 0, utterAddressed = false, lastResultAt = 0, recStartedAt = 0;
-  function joinResults(results) {
+  let resIdx = 0, resLen = 0; // schon verarbeitete Ergebnisse der laufenden Runde überspringen
+  function joinResults(results, from = 0) {
     const parts = [];
-    for (let i = 0; i < results.length; i++) {
+    for (let i = from; i < results.length; i++) {
       const t = ((results[i][0] && results[i][0].transcript) || "").trim();
       if (!t) continue;
       const last = parts[parts.length - 1];
@@ -512,7 +515,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   function flushHeard() {
     clearTimeout(flushTimer);
     const t = heardText, forced = utterAddressed;
-    heardText = ""; baseText = ""; utterAddressed = false; utterStart = 0;
+    heardText = ""; baseText = ""; utterAddressed = false; utterStart = 0; resIdx = resLen;
     if (!t) return;
     elog("gehört: " + t);
     heard(t, forced);
@@ -527,13 +530,15 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     if (!SR || recRunning || busy || speaking || !(cfg.ear || oneShot)) return;
     if (document.visibilityState !== "visible") return;
     try {
-      const r = new SR(); rec = r;
-      r.lang = "de-DE"; r.continuous = false; r.interimResults = true; r.maxAlternatives = 1;
+      const r = new SR(); rec = r; resIdx = 0; resLen = 0;
+      r.lang = "de-DE"; r.continuous = true; r.interimResults = true; r.maxAlternatives = 1;
       r.onstart = () => { if (rec !== r) return; startPending = 0; lastAlive = Date.now(); };
+      r.onsoundstart = r.onspeechstart = r.onaudiostart = () => { if (rec === r) lastAlive = Date.now(); };
       r.onresult = e => {
         if (rec !== r) return;
         lastAlive = Date.now();
-        const cur = joinResults(e.results);
+        resLen = e.results.length;
+        const cur = joinResults(e.results, resIdx);
         if (!cur) return;
         heardText = (baseText + " " + cur).trim();
         lastResultAt = Date.now();
@@ -582,15 +587,17 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     if (!cfg.ear || !SR) return;
     // gestartet, aber Android hat nie "läuft" gemeldet -> hart neu starten
     if (startPending && now - startPending > 5000) { hardReset("Start hängt"); earStart(); return; }
-    // läuft angeblich, aber seit 15 Sekunden kein Lebenszeichen -> hart neu starten
-    if (recRunning && !heardText && now - lastAlive > 15000 && now - recStartedAt > 15000) { hardReset("kein Lebenszeichen"); earStart(); return; }
+    // läuft angeblich, aber seit 30 Sekunden kein Lebenszeichen -> leise neu starten
+    if (recRunning && !heardText && now - lastAlive > 30000 && now - recStartedAt > 30000) { hardReset("kein Lebenszeichen"); earStart(); return; }
     // Zuhören ist an, läuft aber nicht -> starten
     if (!recRunning) earStart();
   }, 3000);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && cfg.ear && !busy && !speaking) { hardReset("wieder sichtbar"); earStart(); }
   });
-  function addressed(t, at = Date.now()) { return oneShot || !cfg.wake || at < followUntil || WAKE.test(t); }
+  // Angesprochen, wenn: „Sentinel“ gesagt, Gespräch läuft noch, oder du schaust ihn beim Reden an (wie bei Google Nest)
+  const lookingAtMe = () => cfg.look && stream && detector && performance.now() - faceSeenAt < 2500;
+  function addressed(t, at = Date.now()) { return oneShot || !cfg.wake || at < followUntil || WAKE.test(t) || lookingAtMe(); }
   function heard(t, forced = false) {
     if (busy || speaking) return;
     if (!forced && !addressed(t)) { if (mood === "zuhoeren") setMood("neutral"); elog("ignoriert (ohne Sentinel)"); return; }
@@ -1167,7 +1174,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   // ================= EINSTELLUNGEN =================
   function openSettings() {
     $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sOrt").value = cfg.ort;
-    $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake;
+    $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
     $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about;
     const u = usage.tag === heute() ? usage : { n: 0, inTok: 0, outTok: 0 };
     $("sUsage").textContent = `Heute: ${u.n} Anfragen · ${u.inTok.toLocaleString("de-DE")} Tokens rein · ${(u.cacheTok || 0).toLocaleString("de-DE")} günstig aus dem Zwischenspeicher · ${u.outTok.toLocaleString("de-DE")} Tokens raus`;
@@ -1178,7 +1185,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   $("setSave").addEventListener("click", () => {
     cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.ort = $("sOrt").value.trim();
     cfg.limit = Math.max(10, Math.min(5000, parseInt($("sLimit").value, 10) || 300));
-    cfg.search = $("sSearch").checked; cfg.wake = $("sWake").checked;
+    cfg.search = $("sSearch").checked; cfg.wake = $("sWake").checked; cfg.look = $("sLook").checked;
     cfg.haUrl = $("sHaUrl").value.trim(); cfg.haToken = $("sHaToken").value.trim(); cfg.about = $("sAbout").value.trim().slice(0, 4000);
     saveCfg(); $("setPanel").hidden = true; note("Gespeichert.", 2000);
   });
