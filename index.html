@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <title>Sentinel</title>
+<script src="capacitor.js"></script>
 <!-- Sentinel Haus-System v6 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -192,7 +193,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 14</div>
+    <div class="hint" id="verHint">Sentinel Version 15</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -235,8 +236,8 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   // ================= ANDROID-APP? =================
   // In der echten App gibt es native Ohren und Stimme: dauerhaft zuhören ohne Antippen, wie Alexa.
   const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
-  const SV = NATIVE ? ((window.Capacitor.Plugins && window.Capacitor.Plugins.SentinelVoice) ||
-                       (window.Capacitor.registerPlugin && window.Capacitor.registerPlugin("SentinelVoice"))) : null;
+  const SV = NATIVE ? ((window.Capacitor.registerPlugin && window.Capacitor.registerPlugin("SentinelVoice")) ||
+                       (window.Capacitor.Plugins && window.Capacitor.Plugins.SentinelVoice) || null) : null;
   if (NATIVE) cfg.engine = "native";
   const ttsWait = {};
 
@@ -825,7 +826,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     SV.addListener("ttsDone", ev => { const f = ttsWait[ev && ev.id]; if (f) { delete ttsWait[ev.id]; f(); } });
   }
   function nativeEarsOn() {
-    if (!SV) return;
+    if (!SV) { elog("Ohren-Modul fehlt"); return; }
     lastAlive = Date.now();
     SV.start({ muteBeep: cfg.muteBeep !== false })
       .then(() => { elog("Ohren an (Android)"); if (!busy && !speaking) status("hört zu"); })
@@ -833,6 +834,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   }
   function nativeEarsOff() { if (SV) SV.stop().catch(() => {}); }
   if (NATIVE) nativeEarsInit();
+  elog("Start: " + (NATIVE ? "Android-App" : "Browser") + (NATIVE ? (SV ? ", Ohren-Modul gefunden" : ", Ohren-Modul FEHLT") : ""));
   // Wächter für die App: falls Android die Ohren doch mal verliert, nach einer Minute Stille neu anwerfen
   setInterval(() => {
     if (!NATIVE || !cfg.ear || busy || speaking || !$("startPanel").hidden) return;
