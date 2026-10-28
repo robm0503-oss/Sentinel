@@ -181,13 +181,17 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       </select>
     </div>
     <div class="field">
+      <label for="sGroq">Groq-Key für genaue Spracherkennung (Whisper, kostenlos)</label>
+      <input id="sGroq" type="password" autocomplete="off" placeholder="gsk_…">
+    </div>
+    <div class="field">
       <label for="sWakeExtra">Weckwort-Varianten (mit Komma)</label>
       <input id="sWakeExtra" type="text" autocomplete="off" placeholder="z. B. sende nil, zentner">
     </div>
     <label class="check"><input id="sWake" type="checkbox"> Nur antworten, wenn „Sentinel“ gesagt wird</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint">Sentinel Version 9</div>
+    <div class="hint">Sentinel Version 10</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -652,7 +656,11 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       node.onaudioprocess = ev => {
         vosk.lastAudio = Date.now();
         // Während er selbst spricht oder nachdenkt, hört er nicht hin (sonst hört er sich selbst)
-        if (!cfg.ear || speaking || busy || Date.now() < muteUntil) return;
+        if (!cfg.ear || speaking || busy || Date.now() < muteUntil) { capture.length = 0; capturing = false; return; }
+        // Ton mitschneiden: 1,5 s Vorlauf + alles, solange gesprochen wird (für die genaue Erkennung)
+        const chunk = new Float32Array(ev.inputBuffer.getChannelData(0));
+        if (capturing) { capture.push(chunk); if (capture.length > MAX_BLOCKS) capture.shift(); }
+        else { preroll.push(chunk); if (preroll.length > PREROLL_BLOCKS) preroll.shift(); }
         try { rec.acceptWaveform(ev.inputBuffer); } catch (e) {}
       };
       src.connect(node); node.connect(vosk.ctx.destination);
@@ -665,20 +673,63 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     }
     vosk.loading = false;
   }
+  // ---- Genaue Erkennung: Die eigenen Ohren merken WANN gesprochen wird, Whisper (über Groq)
+  // schreibt dann sehr genau auf, WAS gesagt wurde. Ohne Groq-Key wird der eigene Text genutzt.
+  const PREROLL_BLOCKS = 16, MAX_BLOCKS = 300; // ca. 1,5 s Vorlauf, max. ca. 25 s am Stück
+  let preroll = [], capture = [], capturing = false;
+  const HALLU = /untertitel|\b(zdf|ard|swr)\b|vielen dank (fürs|für's) zuschauen|copyright|abonniert|amara\.org/i;
+  function toWav(chunks, inRate) {
+    let len = 0; for (const c of chunks) len += c.length;
+    const all = new Float32Array(len); let o = 0; for (const c of chunks) { all.set(c, o); o += c.length; }
+    const outRate = 16000, ratio = inRate / outRate, n = Math.floor(all.length / ratio);
+    const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    const w = (p, s) => { for (let i = 0; i < s.length; i++) v.setUint8(p + i, s.charCodeAt(i)); };
+    w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVE"); w(12, "fmt "); v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, outRate, true); v.setUint32(28, outRate * 2, true);
+    v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) { const s = Math.max(-1, Math.min(1, all[Math.floor(i * ratio)])); v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true); }
+    return { blob: new Blob([buf], { type: "audio/wav" }), seconds: n / outRate };
+  }
+  async function whisper(chunks) {
+    const { blob, seconds } = toWav(chunks, vosk.ctx.sampleRate);
+    if (seconds < 0.6) return null;
+    const fd = new FormData();
+    fd.append("file", blob, "sprache.wav");
+    fd.append("model", "whisper-large-v3-turbo");
+    fd.append("language", "de");
+    fd.append("response_format", "json");
+    fd.append("prompt", "Hey Sentinel, " + (ich.name ? ich.name + ", " : "") + "Timer, Erinnerung, Einkaufsliste.");
+    const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 15000);
+    try {
+      const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", headers: { Authorization: "Bearer " + cfg.groqKey }, body: fd, signal: ctl.signal });
+      if (!res.ok) { elog("Whisper-Fehler " + res.status + (res.status === 401 ? " (Groq-Key prüfen)" : res.status === 429 ? " (Tageslimit)" : "")); return null; }
+      const data = await res.json();
+      const t = String(data.text || "").trim();
+      return HALLU.test(t) ? "" : t;
+    } catch (e) { elog("Whisper nicht erreichbar"); return null; }
+    finally { clearTimeout(tm); }
+  }
   function voskText(t, final) {
     t = String(t || "").trim();
     if (!t || t === "[unk]") return;
     lastResultAt = Date.now();
     if (!final) {
+      if (!capturing) { capturing = true; capture = preroll.slice(); preroll = []; }
       if (!voskUtterStart) voskUtterStart = Date.now();
       if (!voskAddressed && addressed(t, voskUtterStart)) voskAddressed = true;
       if (voskAddressed && !busy && !speaking) setMood("zuhoeren");
       return;
     }
-    const forced = voskAddressed || addressed(t, voskUtterStart || Date.now());
-    voskUtterStart = 0; voskAddressed = false;
-    elog("gehört: " + t);
-    heard(t, forced);
+    const startedAt = voskUtterStart || Date.now(), roughAddressed = voskAddressed;
+    const chunks = capturing ? capture.slice() : preroll.slice();
+    capture = []; capturing = false; preroll = []; voskUtterStart = 0; voskAddressed = false;
+    if (!cfg.groqKey) { elog("gehört: " + t); heard(t, roughAddressed || addressed(t, startedAt)); return; }
+    whisper(chunks).then(exact => {
+      if (exact === "") return;                         // nur Geräusch / Whisper-Halluzination
+      const text = exact || t;                          // bei Fehler: eigener Text als Ersatz
+      elog("gehört: " + text + (exact ? "" : " (ungenau)"));
+      heard(text, addressed(text, startedAt) || (!exact && roughAddressed));
+    });
   }
   function voskWatch() {
     if (!vosk.ready) return;
@@ -1273,7 +1324,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   function openSettings() {
     $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sOrt").value = cfg.ort;
     $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
-    $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || "";
+    $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || ""; $("sGroq").value = cfg.groqKey || "";
     $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about;
     const u = usage.tag === heute() ? usage : { n: 0, inTok: 0, outTok: 0 };
     $("sUsage").textContent = `Heute: ${u.n} Anfragen · ${u.inTok.toLocaleString("de-DE")} Tokens rein · ${(u.cacheTok || 0).toLocaleString("de-DE")} günstig aus dem Zwischenspeicher · ${u.outTok.toLocaleString("de-DE")} Tokens raus`;
@@ -1286,7 +1337,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     cfg.limit = Math.max(10, Math.min(5000, parseInt($("sLimit").value, 10) || 300));
     cfg.search = $("sSearch").checked; cfg.wake = $("sWake").checked; cfg.look = $("sLook").checked;
     const engineChanged = cfg.engine !== $("sEngine").value;
-    cfg.engine = $("sEngine").value; cfg.wakeExtra = $("sWakeExtra").value.trim(); WAKE = buildWake();
+    cfg.engine = $("sEngine").value; cfg.wakeExtra = $("sWakeExtra").value.trim(); WAKE = buildWake(); cfg.groqKey = $("sGroq").value.trim();
     if (engineChanged) {
       if (cfg.engine === "google") { cfg.ear = true; earUI(); hardReset("Ohren gewechselt"); earStart(); }
       else { earPause(); voskPrepareCtx(); if (cfg.ear) voskStart(); }
