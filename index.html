@@ -175,8 +175,16 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check"><input id="sSearch" type="checkbox"> Im Internet suchen dürfen</label>
     <label class="check"><input id="sWake" type="checkbox"> Nur antworten, wenn „Sentinel“ gesagt wird</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint">Sentinel Version 6</div>
+    <div class="hint">Sentinel Version 7</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
+  </div>
+</div>
+
+<!-- Diagnose -->
+<div class="panel" id="logPanel" hidden>
+  <div class="sheet">
+    <div class="phead"><h2>Ohren-Protokoll</h2><button class="ghost" id="logClose" type="button">Schließen</button></div>
+    <pre id="logBody" style="margin:0;white-space:pre-wrap;font:.8rem var(--mono);color:var(--muted)"></pre>
   </div>
 </div>
 
@@ -491,23 +499,43 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     }
     return parts.join(" ").replace(/\s+/g, " ").trim();
   }
+  // Diagnose-Protokoll: Tipp auf die Statuszeile oben links zeigt, was die Ohren gerade machen
+  const earLog = [];
+  function elog(t) {
+    earLog.push(new Date().toLocaleTimeString("de-DE") + " " + t);
+    if (earLog.length > 40) earLog.shift();
+    if (!$("logPanel").hidden) $("logBody").textContent = earLog.slice().reverse().join("\n");
+  }
+  // Android kann nur kurze Zuhör-Runden zuverlässig. Deshalb: viele kurze Runden hintereinander,
+  // der Text wird über die Runden hinweg gesammelt, bis du 1,5 Sekunden Pause machst.
+  let baseText = "", startPending = 0, lastAlive = 0, retryTimer = null;
   function flushHeard() {
     clearTimeout(flushTimer);
     const t = heardText, forced = utterAddressed;
-    heardText = ""; utterAddressed = false; utterStart = 0;
+    heardText = ""; baseText = ""; utterAddressed = false; utterStart = 0;
     if (!t) return;
-    earPause();                 // frisch neu starten, damit Altes nicht im nächsten Satz landet
+    elog("gehört: " + t);
     heard(t, forced);
-    if (!busy && !speaking) setTimeout(earStart, 200);
+  }
+  function hardReset(why) {
+    elog("Neustart der Ohren (" + why + ")");
+    if (rec) { rec.onend = rec.onresult = rec.onerror = rec.onstart = null; try { rec.abort(); } catch (e) {} }
+    rec = null; recRunning = false; startPending = 0;
   }
   function earStart() {
+    clearTimeout(retryTimer);
     if (!SR || recRunning || busy || speaking || !(cfg.ear || oneShot)) return;
+    if (document.visibilityState !== "visible") return;
     try {
-      heardText = ""; utterAddressed = false; utterStart = 0;
-      rec = new SR(); rec.lang = "de-DE"; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
-      rec.onresult = e => {
-        heardText = joinResults(e.results);
-        if (!heardText) return;
+      const r = new SR(); rec = r;
+      r.lang = "de-DE"; r.continuous = false; r.interimResults = true; r.maxAlternatives = 1;
+      r.onstart = () => { if (rec !== r) return; startPending = 0; lastAlive = Date.now(); };
+      r.onresult = e => {
+        if (rec !== r) return;
+        lastAlive = Date.now();
+        const cur = joinResults(e.results);
+        if (!cur) return;
+        heardText = (baseText + " " + cur).trim();
         lastResultAt = Date.now();
         if (!utterStart) utterStart = Date.now();
         // Zählt, wann du ANGEFANGEN hast zu reden – lange Sätze fallen so nicht aus dem Gesprächsfenster
@@ -516,41 +544,56 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
         clearTimeout(flushTimer);
         flushTimer = setTimeout(flushHeard, PAUSE_MS);
       };
-      rec.onerror = e => {
+      r.onerror = e => {
+        if (rec !== r) return;
         lastRecErr = e.error;
+        if (e.error !== "no-speech" && e.error !== "aborted") elog("Fehler: " + e.error);
         if (e.error === "not-allowed" || e.error === "service-not-allowed") {
           cfg.ear = false; saveCfg(); earUI(); note("Mikro nicht erlaubt. Erlaub es in Chrome über das Schloss neben der Adresse.");
         }
       };
-      rec.onend = () => {
-        recRunning = false;
-        if (heardText) { flushHeard(); return; }
-        const wait = lastRecErr === "network" ? 2500 : 250; lastRecErr = null;
-        if ((cfg.ear || oneShot) && !busy && !speaking) setTimeout(earStart, wait);
+      r.onend = () => {
+        if (rec !== r) return;
+        recRunning = false; startPending = 0; lastAlive = Date.now();
+        baseText = heardText;   // Gesagtes behalten, die nächste Runde hängt sich dran
+        const wait = lastRecErr === "network" ? 2500 : lastRecErr === "audio-capture" ? 1500 : 120; lastRecErr = null;
+        if ((cfg.ear || oneShot) && !busy && !speaking) retryTimer = setTimeout(earStart, wait);
       };
-      rec.start(); recRunning = true; recStartedAt = Date.now();
+      r.start(); recRunning = true; recStartedAt = Date.now(); startPending = Date.now();
       if (!busy && !speaking) status(cfg.ear ? "hört zu" : "bereit");
-    } catch (e) { recRunning = false; }
+    } catch (e) {
+      elog("Start fehlgeschlagen: " + (e && e.name || e));
+      hardReset("Startfehler");
+      retryTimer = setTimeout(earStart, 1000);
+    }
   }
   function earPause() {
-    if (rec) { rec.onend = null; rec.onresult = null; if (recRunning) { try { rec.abort(); } catch (e) {} } }
-    recRunning = false;
+    clearTimeout(retryTimer);
+    if (rec) { const r = rec; rec = null; r.onend = r.onresult = r.onerror = r.onstart = null; try { r.abort(); } catch (e) {} }
+    recRunning = false; startPending = 0;
   }
   function afterSpeaking() { followUntil = Date.now() + FOLLOW_MS; setTimeout(earStart, 350); }
   // Wächter: nichts darf dauerhaft hängen bleiben
   setInterval(() => {
     if (busy || speaking || !$("startPanel").hidden) return;
+    const now = Date.now();
     // blau, aber seit 8 Sekunden nichts mehr gehört -> zurück auf normal
-    if (mood === "zuhoeren" && document.activeElement !== msg && Date.now() - lastResultAt > 8000) setMood("neutral");
-    // Zuhören ist an, läuft aber nicht mehr -> neu starten
-    if (cfg.ear && SR && !recRunning) { earStart(); return; }
-    // Android beendet das Zuhören manchmal still, ohne Bescheid zu sagen -> alle 20 Sekunden Ruhe frisch starten
-    if (cfg.ear && SR && recRunning && !heardText && Date.now() - Math.max(recStartedAt, lastResultAt) > 20000) { earPause(); earStart(); }
-  }, 4000);
+    if (mood === "zuhoeren" && document.activeElement !== msg && now - lastResultAt > 8000) setMood("neutral");
+    if (!cfg.ear || !SR) return;
+    // gestartet, aber Android hat nie "läuft" gemeldet -> hart neu starten
+    if (startPending && now - startPending > 5000) { hardReset("Start hängt"); earStart(); return; }
+    // läuft angeblich, aber seit 15 Sekunden kein Lebenszeichen -> hart neu starten
+    if (recRunning && !heardText && now - lastAlive > 15000 && now - recStartedAt > 15000) { hardReset("kein Lebenszeichen"); earStart(); return; }
+    // Zuhören ist an, läuft aber nicht -> starten
+    if (!recRunning) earStart();
+  }, 3000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && cfg.ear && !busy && !speaking) { hardReset("wieder sichtbar"); earStart(); }
+  });
   function addressed(t, at = Date.now()) { return oneShot || !cfg.wake || at < followUntil || WAKE.test(t); }
   function heard(t, forced = false) {
     if (busy || speaking) return;
-    if (!forced && !addressed(t)) { if (mood === "zuhoeren") setMood("neutral"); return; }
+    if (!forced && !addressed(t)) { if (mood === "zuhoeren") setMood("neutral"); elog("ignoriert (ohne Sentinel)"); return; }
     wake();
     const m = t.match(WAKE);
     let rest = m ? t.slice(m.index + m[0].length).trim() : t;
@@ -559,11 +602,14 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     if (!rest) { setMood("zuhoeren"); speak("Ja?", "neutral"); return; }
     send(rest);
   }
+  statusEl.style.cursor = "pointer";
+  statusEl.addEventListener("click", () => { $("logBody").textContent = earLog.slice().reverse().join("\n") || "Noch nichts."; $("logPanel").hidden = false; });
+  $("logClose").addEventListener("click", () => { $("logPanel").hidden = true; });
   earBtn.addEventListener("click", () => {
     wake(); keepAwake();
     if (!SR) { note("Dieser Browser kann nicht zuhören. Nimm Chrome.", 4000); return; }
     cfg.ear = !cfg.ear; saveCfg(); earUI();
-    if (cfg.ear) { note(cfg.wake ? "Ich höre zu. Sag „Sentinel“ und dann deine Frage." : "Ich höre zu.", 3500); earStart(); }
+    if (cfg.ear) { note(cfg.wake ? "Ich höre zu. Sag „Sentinel“ und dann deine Frage." : "Ich höre zu.", 3500); hardReset("Mikro-Knopf"); earStart(); }
     else { earPause(); status("bereit"); if (!busy && !speaking) setMood("neutral"); }
   });
 
