@@ -1,0 +1,926 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Sentinel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Sentinel Tablet – das ganze Tablet ist der Kopf */
+:root {
+  --bg: #000;
+  --bar: #0e1114;
+  --line: #23292f;
+  --text: #e7e4dc;
+  --muted: #858a90;
+  --eye: #ffb547;
+  --bad: #ff6b5f;
+  --display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--display); overflow: hidden; -webkit-tap-highlight-color: transparent; }
+
+.app {
+  height: 100%; display: flex; flex-direction: column; gap: 8px;
+  padding: max(8px, env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) max(10px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+}
+.stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; position: relative; }
+canvas#face { display: block; height: 100%; max-height: 100%; aspect-ratio: 1; max-width: 100%; touch-action: none; cursor: pointer; }
+.top {
+  position: absolute; top: 4px; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  font: .72rem var(--mono); color: var(--muted); letter-spacing: .06em;
+}
+.tbtns { display: flex; gap: 6px; }
+.ghost { background: none; border: 1px solid var(--line); color: var(--muted); font: .7rem var(--mono); padding: 6px 10px; border-radius: 8px; cursor: pointer; }
+.say { min-height: 2.6em; max-height: 6.5em; overflow-y: auto; text-align: center; font-size: clamp(1rem, 2.4vw, 1.35rem); line-height: 1.35; text-wrap: balance; padding-inline: 8px; }
+.say.dim { color: var(--muted); font-size: .95rem; }
+.bar { display: flex; gap: 8px; align-items: center; background: var(--bar); border: 1px solid var(--line); border-radius: 16px; padding: 8px; }
+.bar input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: var(--text); font: 500 1.05rem var(--display); padding: 8px 6px; }
+.bar input::placeholder { color: var(--muted); }
+.icon { width: 46px; height: 46px; flex: none; border-radius: 12px; border: 1px solid var(--line); background: #151a1f; color: var(--text); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.icon svg { width: 22px; height: 22px; }
+.icon.primary { background: var(--eye); color: #1a1205; border-color: var(--eye); }
+.icon.on { border-color: var(--eye); color: var(--eye); box-shadow: inset 0 0 0 1px var(--eye); }
+.icon:disabled { opacity: .4; cursor: default; }
+.icon:focus-visible, .ghost:focus-visible, .btn:focus-visible { outline: 2px solid var(--eye); outline-offset: 2px; }
+.hint { font: .72rem var(--mono); color: var(--muted); text-align: center; }
+video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+/* Blätter (Einstellungen, Ich, Start) */
+.panel {
+  position: fixed; inset: 0; z-index: 20; background: #000d; display: flex; align-items: center; justify-content: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+}
+.sheet { width: 100%; max-width: 560px; max-height: 100%; overflow-y: auto; background: var(--bar); border: 1px solid var(--line); border-radius: 18px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.phead { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.sheet h2 { margin: 0; font-size: 1rem; letter-spacing: .16em; text-transform: uppercase; }
+.sheet p { margin: 0; color: var(--muted); line-height: 1.5; font-size: .95rem; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label, .grp h3 { font: 500 .7rem var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0; }
+.field input[type=text], .field input[type=password], .field input[type=number], .field select {
+  background: #151a1f; border: 1px solid var(--line); border-radius: 10px; color: var(--text); font: 500 1rem var(--display); padding: 11px 12px; width: 100%;
+}
+.check { display: flex; align-items: center; gap: 10px; font-size: .98rem; }
+.check input { width: 20px; height: 20px; accent-color: var(--eye); }
+.btn { border: 0; border-radius: 12px; padding: 13px 16px; font: 700 1rem var(--display); letter-spacing: .04em; cursor: pointer; background: var(--eye); color: #1a1205; }
+.btn.danger { background: none; border: 1px solid var(--bad); color: var(--bad); }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+.row .btn { flex: 1; }
+.err { color: var(--bad); font-size: .9rem; }
+.who .big { font-size: 1.3rem; font-weight: 700; }
+.who .meta { font: .78rem var(--mono); color: var(--muted); margin-top: 4px; }
+.steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.step { text-align: center; font: 600 .78rem var(--display); padding: 7px 4px; border-radius: 8px; border: 1px solid var(--line); color: var(--muted); }
+.step.done { color: var(--text); }
+.step.now { border-color: var(--eye); color: var(--eye); box-shadow: inset 0 0 0 1px var(--eye); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip { border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; font-size: .9rem; }
+.empty { color: var(--muted); font-size: .88rem; }
+#pBody { display: flex; flex-direction: column; gap: 16px; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="stage">
+    <canvas id="face" width="480" height="480" aria-label="Sentinels Gesicht"></canvas>
+    <div class="top">
+      <span id="status">SENTINEL</span>
+      <span class="tbtns">
+        <button class="ghost" id="ichBtn" type="button">Ich</button>
+        <button class="ghost" id="setBtn" type="button">Einstellungen</button>
+        <button class="ghost" id="fullBtn" type="button">Vollbild</button>
+      </span>
+    </div>
+    <video id="cam" playsinline muted></video>
+  </div>
+
+  <div class="say dim" id="say">…</div>
+
+  <form class="bar" id="bar">
+    <button class="icon" id="earBtn" type="button" aria-label="Dauerhaft zuhören an oder aus" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+    </button>
+    <button class="icon" id="eyeBtn" type="button" aria-label="Kamera an oder aus" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
+    <input id="msg" type="text" autocomplete="off" placeholder="Oder hier schreiben" enterkeyhint="send">
+    <button class="icon primary" id="sendBtn" type="submit" aria-label="Senden">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+    </button>
+  </form>
+  <div class="hint" id="hint" hidden></div>
+</div>
+
+<!-- Start: einmal tippen, damit Mikro, Kamera und Stimme erlaubt werden -->
+<div class="panel" id="startPanel">
+  <div class="sheet">
+    <h2>Sentinel</h2>
+    <p id="startText">Tipp auf Aufwecken. Danach fragt das Tablet einmal, ob Sentinel Mikrofon und Kamera benutzen darf.</p>
+    <div class="field" id="keyField" hidden>
+      <label for="keyInput">Anthropic API-Key</label>
+      <input id="keyInput" type="password" autocomplete="off" placeholder="sk-ant-…">
+    </div>
+    <div class="err" id="startErr" hidden></div>
+    <button class="btn" id="startBtn" type="button">Aufwecken</button>
+  </div>
+</div>
+
+<!-- Einstellungen -->
+<div class="panel" id="setPanel" hidden>
+  <div class="sheet">
+    <div class="phead"><h2>Einstellungen</h2><button class="ghost" id="setClose" type="button">Schließen</button></div>
+    <div class="field">
+      <label for="sKey">API-Key</label>
+      <input id="sKey" type="password" autocomplete="off" placeholder="sk-ant-…">
+    </div>
+    <div class="field">
+      <label for="sModel">Gehirn</label>
+      <select id="sModel">
+        <option value="claude-haiku-5-5">Haiku 5.5 · schnell und günstig</option>
+        <option value="claude-sonnet-5-5">Sonnet 5.5 · klüger, teurer</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="sOrt">Ort (für Wetter und Suche in der Nähe)</label>
+      <input id="sOrt" type="text" placeholder="z. B. Wittenberge">
+    </div>
+    <div class="field">
+      <label for="sLimit">Tageslimit (Anfragen)</label>
+      <input id="sLimit" type="number" min="10" max="5000" step="10">
+    </div>
+    <label class="check"><input id="sSearch" type="checkbox"> Im Internet suchen dürfen</label>
+    <label class="check"><input id="sWake" type="checkbox"> Nur antworten, wenn „Sentinel“ gesagt wird</label>
+    <div class="hint" id="sUsage"></div>
+    <button class="btn" id="setSave" type="button">Speichern</button>
+  </div>
+</div>
+
+<!-- Sentinels Ich -->
+<div class="panel" id="ichPanel" hidden>
+  <div class="sheet">
+    <div class="phead"><h2>Sentinels Ich</h2><button class="ghost" id="ichClose" type="button">Schließen</button></div>
+    <div id="pBody"></div>
+    <button class="btn danger" id="pReset" type="button">Neu anfangen</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+
+  // ================= SPEICHER (nur auf diesem Tablet) =================
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("sentinel." + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem("sentinel." + k, JSON.stringify(v)); } catch (e) {} },
+  };
+  const cfg = Object.assign({ key: "", model: "claude-haiku-5-5", ort: "", limit: 300, search: true, wake: true, ear: true, eye: true }, store.get("cfg", {}));
+  const saveCfg = () => store.set("cfg", cfg);
+
+  // ================= GESICHT =================
+  const cv = $("face"), ctx = cv.getContext("2d"), S = cv.width / 240;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let eyeColor = "#ffb547";
+  const base = { w: 1, h: 1, top: 0, tilt: 0, bot: 0 };
+  const E = (o = {}) => ({ ...base, ...o });
+  const MOODS = {
+    neutral:     { L: E(), R: E() },
+    freude:      { L: E({ h: .92, bot: .5 }), R: E({ h: .92, bot: .5 }) },
+    zuhoeren:    { L: E({ w: 1.08, h: 1.12 }), R: E({ w: 1.08, h: 1.12 }), anim: "pulse" },
+    nachdenken:  { L: E({ top: .12 }), R: E({ top: .3 }), gaze: [-14, -11] },
+    skeptisch:   { L: E({ top: .06 }), R: E({ top: .44, tilt: .08 }) },
+    ueberrascht: { L: E({ w: .84, h: 1.24 }), R: E({ w: .84, h: 1.24 }) },
+    sauer:       { L: E({ top: .06, tilt: .34 }), R: E({ top: .06, tilt: .34 }) },
+    muede:       { L: E({ top: .78 }), R: E({ top: .78 }), gaze: [0, 7], anim: "breath", noBlink: true },
+    geniesst:    { L: E({ h: .6, bot: .55 }), R: E({ h: .6, bot: .55 }), gaze: [0, 2], noBlink: true },
+    aua:         { L: E(), R: E(), noBlink: true },
+  };
+  const MOOD_COLOR = {
+    neutral: "#ffb547", freude: "#7dff9a", zuhoeren: "#7fdcff", nachdenken: "#b49cff", skeptisch: "#ffd23f",
+    ueberrascht: "#ff8fd6", sauer: "#ff4a3d", muede: "#5b7fd8", geniesst: "#7dff9a", aua: "#ff8fd6",
+  };
+  const MOUTH = {
+    neutral:     { w: 34, curve: 2,   open: 0,  tilt: 0 },
+    freude:      { w: 46, curve: 12,  open: 0,  tilt: 0 },
+    zuhoeren:    { w: 22, curve: 1,   open: 0,  tilt: 0 },
+    nachdenken:  { w: 22, curve: -1,  open: 0,  tilt: -6 },
+    skeptisch:   { w: 30, curve: -2,  open: 0,  tilt: 8 },
+    ueberrascht: { w: 18, curve: 0,   open: .9, tilt: 0 },
+    sauer:       { w: 40, curve: -10, open: 0,  tilt: 0 },
+    muede:       { w: 20, curve: 0,   open: 0,  tilt: 0 },
+    geniesst:    { w: 40, curve: 14,  open: 0,  tilt: 0 },
+    aua:         { w: 24, curve: -6,  open: 0,  tilt: -10 },
+  };
+  const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  let rgb = hex("#ffb547");
+  const mouth = { w: 34, curve: 2, open: 0, tilt: 0 };
+  let mood = "neutral";
+  const cur = { L: E(), R: E() };
+  let gaze = [0, 0], gazeTarget = [0, 0], lastPointer = 0, nextSaccade = 0;
+  let blink = 1, blinkStart = -1, nextBlink = performance.now() + 2500;
+  let lastActivity = performance.now();
+  let busy = false, speaking = false;
+  let faceGaze = null, faceSeenAt = 0; // von der Kamera
+
+  function setMood(k) { if (MOODS[k]) mood = k; }
+  function wake() { lastActivity = performance.now(); if (mood === "muede") setMood("neutral"); }
+  const lerp = (a, b, t) => a + (b - a) * t;
+
+  function roundRect(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath(); ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+  let pokedEye = 0;
+  function drawEye(side, p, t, anim) {
+    let w = p.w, h = p.h;
+    if (anim === "pulse") { const k = 1 + Math.sin(t / 260) * .04; w *= k; h *= k; }
+    if (anim === "breath") h *= 1 + Math.sin(t / 900) * .06;
+    const ew = 54 * w, eh = 64 * h * blink;
+    const cx = 120 + side * 42 + gaze[0] * (side === 1 ? 1 : .92), cy = 104 + gaze[1];
+    const x0 = cx - ew / 2, y0 = cy - eh / 2, x1 = cx + ew / 2, y1 = cy + eh / 2;
+    ctx.save(); ctx.shadowColor = eyeColor; ctx.shadowBlur = 18; ctx.fillStyle = eyeColor;
+    roundRect(x0, y0, ew, eh, 18 * Math.min(w, h)); ctx.fill(); ctx.restore();
+    ctx.fillStyle = "#000";
+    if (p.top > .005 || p.tilt > .005) {
+      const inner = side === -1 ? x1 : x0, outer = side === -1 ? x0 : x1;
+      ctx.beginPath();
+      ctx.moveTo(outer + side * 6, y0 - 30); ctx.lineTo(inner - side * 6, y0 - 30);
+      ctx.lineTo(inner - side * 6, y0 + eh * (p.top + p.tilt)); ctx.lineTo(outer + side * 6, y0 + eh * p.top);
+      ctx.closePath(); ctx.fill();
+    }
+    if (p.bot > .005) { ctx.beginPath(); ctx.ellipse(cx, y1 + eh * (.55 - p.bot), ew * .82, eh * .55, 0, 0, Math.PI * 2); ctx.fill(); }
+  }
+  function drawMouth(t) {
+    const target = MOUTH[mood] || MOUTH.neutral, k = reduce ? 1 : .18;
+    for (const key in mouth) mouth[key] = lerp(mouth[key], target[key], k);
+    let open = mouth.open;
+    if (speaking) open = Math.max(open, .12 + Math.abs(Math.sin(t / 85)) * (.55 + .45 * Math.sin(t / 210)) * .88);
+    const cx = 120 + gaze[0] * .5, cy = 180 + gaze[1] * .4, w = mouth.w * (speaking ? .85 : 1);
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(mouth.tilt * Math.PI / 180);
+    ctx.shadowColor = eyeColor; ctx.shadowBlur = 12; ctx.fillStyle = eyeColor; ctx.strokeStyle = eyeColor;
+    if (open > .06) { const h = 4 + open * 22; ctx.beginPath(); ctx.ellipse(0, mouth.curve * .3, w / 2, h / 2, 0, 0, Math.PI * 2); ctx.fill(); }
+    else { ctx.lineWidth = 5; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(-w / 2, 0); ctx.quadraticCurveTo(0, mouth.curve * 2, w / 2, 0); ctx.stroke(); }
+    ctx.restore();
+  }
+  function frame(t) {
+    const tc = hex(MOOD_COLOR[mood] || MOOD_COLOR.neutral);
+    rgb = rgb.map((v, i) => lerp(v, tc[i], reduce ? 1 : .08));
+    eyeColor = "rgb(" + rgb.map(Math.round).join(",") + ")";
+    if (!busy && !speaking && mood === "neutral" && t - lastActivity > 180000) setMood("muede");
+    const m = MOODS[mood];
+    if (m.gaze) gazeTarget = m.gaze.slice();
+    else if (t - lastPointer < 2500) { /* Finger hat Vorrang */ }
+    else if (faceGaze && t - faceSeenAt < 1500) gazeTarget = faceGaze.slice();
+    else if (t > nextSaccade) {
+      gazeTarget = reduce ? [0, 0] : [(Math.random() * 2 - 1) * 16, (Math.random() * 2 - 1) * 10];
+      nextSaccade = t + 1400 + Math.random() * 2800;
+    }
+    const gk = reduce ? 1 : .2;
+    gaze = [lerp(gaze[0], gazeTarget[0], gk), lerp(gaze[1], gazeTarget[1], gk)];
+    const k = reduce ? 1 : .16;
+    const tgt = s => mood === "aua" ? (((s === "L") === (pokedEye === -1)) ? E({ top: .88 }) : E({ w: .9, h: 1.18 })) : m[s];
+    for (const s of ["L", "R"]) { const g = tgt(s); for (const key in base) cur[s][key] = lerp(cur[s][key], g[key], k); }
+    if (!m.noBlink && blinkStart < 0 && t > nextBlink) blinkStart = t;
+    if (blinkStart >= 0) {
+      const d = (t - blinkStart) / 150;
+      blink = d < 1 ? 1 - Math.sin(d * Math.PI) * .9 : 1;
+      if (d >= 1) { blinkStart = -1; nextBlink = t + (Math.random() < .2 ? 180 : 2200 + Math.random() * 3500); }
+    } else blink = 1;
+    ctx.setTransform(S, 0, 0, S, 0, 0);
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, 240, 240);
+    drawEye(-1, cur.L, t, m.anim); drawEye(1, cur.R, t, m.anim);
+    drawMouth(t);
+    if (mood === "muede") {
+      ctx.fillStyle = eyeColor; ctx.globalAlpha = .55 + Math.sin(t / 700) * .35;
+      ctx.font = '600 14px "Chakra Petch", sans-serif'; ctx.fillText("z", 168, 66);
+      ctx.font = '600 11px "Chakra Petch", sans-serif'; ctx.fillText("z", 180, 54);
+      ctx.globalAlpha = 1;
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // ================= UI-HELFER =================
+  const sayEl = $("say"), statusEl = $("status"), msg = $("msg"), hint = $("hint"), sendBtn = $("sendBtn");
+  function show(text, dim = false) { sayEl.textContent = text; sayEl.classList.toggle("dim", dim); }
+  function status(t) { statusEl.textContent = "SENTINEL · " + stufe().label.toUpperCase() + " · " + t; }
+  let hintTimer = null;
+  function note(t, ms = 0) { hint.textContent = t; hint.hidden = !t; clearTimeout(hintTimer); if (t && ms) hintTimer = setTimeout(() => { hint.hidden = true; }, ms); }
+
+  // ================= BERÜHRUNG =================
+  const pick = a => a[Math.floor(Math.random() * a.length)];
+  const LINES = {
+    streicheln: ["Mmh, das ist schön.", "Genau da, weiter so.", "Ich könnte mich dran gewöhnen."],
+    aua: ["Aua, hey! Das war mein Auge.", "Autsch, nicht ins Auge!", "Hey, die brauch ich noch."],
+    genervt: ["Lass das!", "Okay, jetzt reicht's aber.", "Ich bin doch kein Klavier."],
+  };
+  let press = null, taps = [], moodTimer = null;
+  function tempMood(k, ms) {
+    setMood(k); clearTimeout(moodTimer);
+    moodTimer = setTimeout(() => { if (mood === k && !busy && !speaking) { setMood("neutral"); pokedEye = 0; } }, ms);
+  }
+  function react(kind, moodKey) {
+    if (busy || speaking) return;
+    setMood(moodKey); clearTimeout(moodTimer);
+    speak(pick(LINES[kind]), "neutral").then(() => { pokedEye = 0; });
+  }
+  function pointTo(e) {
+    const r = cv.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
+    gazeTarget = [Math.max(-1, Math.min(1, x * 2.2)) * 18, Math.max(-1, Math.min(1, y * 2.2)) * 14];
+    lastPointer = performance.now(); wake();
+  }
+  cv.addEventListener("pointerdown", e => {
+    pointTo(e);
+    press = { x: e.clientX, y: e.clientY, t: performance.now(), dist: 0, stroked: false, long: false };
+    press.timer = setTimeout(() => {
+      if (!press || press.dist > 25) return;
+      press.long = true;
+      if (!busy && !speaking) send("(" + (ich.name || "Dein Gegenüber") + " hält gerade lange den Finger auf dein Gesicht auf dem Bildschirm. Reagiere kurz und passend darauf.)");
+    }, 1300);
+  });
+  cv.addEventListener("pointermove", e => {
+    pointTo(e);
+    if (!press) return;
+    press.dist += Math.hypot(e.clientX - press.x, e.clientY - press.y);
+    press.x = e.clientX; press.y = e.clientY;
+    if (!press.stroked && press.dist > 160 && performance.now() - press.t > 350) {
+      press.stroked = true; clearTimeout(press.timer);
+      if (busy || speaking) return;
+      setMood("geniesst"); clearTimeout(moodTimer);
+      speak(pick(LINES.streicheln), "geniesst").then(() => tempMood("freude", 1500));
+    }
+  });
+  cv.addEventListener("pointerup", e => {
+    if (!press) return;
+    clearTimeout(press.timer);
+    const p = press; press = null;
+    if (p.stroked || p.long || p.dist > 25 || performance.now() - p.t > 600) return;
+    const now = performance.now();
+    taps = taps.filter(x => now - x < 2500); taps.push(now);
+    if (taps.length >= 8) { taps = []; react("genervt", "sauer"); return; }
+    if (taps.length >= 5) { tempMood("skeptisch", 1800); return; }
+    const r = cv.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width * 240, y = (e.clientY - r.top) / r.height * 240;
+    for (const side of [-1, 1]) {
+      const ex = 120 + side * 42 + gaze[0], ey = 104 + gaze[1];
+      if (Math.abs(x - ex) < 32 && Math.abs(y - ey) < 38) { pokedEye = side; react("aua", "aua"); return; }
+    }
+    if (!busy && !speaking) tempMood("freude", 1300);
+  });
+  cv.addEventListener("pointercancel", () => { if (press) clearTimeout(press.timer); press = null; });
+
+  // ================= BILDSCHIRM AN + VOLLBILD =================
+  let wakeLock = null;
+  async function keepAwake() {
+    try { if (navigator.wakeLock && !wakeLock) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); } } catch (e) {}
+  }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") keepAwake(); });
+  $("fullBtn").addEventListener("click", async () => {
+    keepAwake();
+    try { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen(); }
+    catch (e) { note("Vollbild geht hier nicht.", 3000); }
+  });
+
+  // ================= STIMME =================
+  const synth = window.speechSynthesis;
+  let voice = null;
+  function pickVoice() {
+    if (!synth) return;
+    const vs = synth.getVoices().filter(v => /^de/i.test(v.lang));
+    voice = vs.find(v => /male|mann|conrad|stefan|markus|killian/i.test(v.name)) || vs[0] || null;
+  }
+  if (synth) { pickVoice(); synth.onvoiceschanged = pickVoice; }
+  function speak(text, afterMood) {
+    return new Promise(resolve => {
+      const done = () => { speaking = false; setMood(afterMood); status("bereit"); afterSpeaking(); resolve(); };
+      if (!synth || !text) { setMood(afterMood); afterSpeaking(); return resolve(); }
+      try {
+        earPause();
+        synth.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = "de-DE"; if (voice) u.voice = voice; u.rate = 1.05;
+        speaking = true; status("spricht");
+        u.onend = done; u.onerror = done;
+        synth.speak(u);
+        // Sicherheitsnetz, falls Android das Ende nicht meldet
+        setTimeout(() => { if (speaking && !synth.speaking) done(); }, 1500 + text.length * 90);
+      } catch (e) { done(); }
+    });
+  }
+
+  // ================= OHREN: Dauerhören mit Weckwort =================
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const WAKE = /\b(sentinel|sentinell|sentinal|sentenel|sentinels|centinel|sendinel|sentiment|senti nell?)\b[\s,.!?:]*/i;
+  const FOLLOW_MS = 9000;
+  let rec = null, recRunning = false, lastRecErr = null, followUntil = 0, oneShot = false;
+  const earBtn = $("earBtn");
+  function earUI() { earBtn.classList.toggle("on", cfg.ear); earBtn.setAttribute("aria-pressed", String(cfg.ear)); }
+  function earStart() {
+    if (!SR || recRunning || busy || speaking || !(cfg.ear || oneShot)) return;
+    try {
+      rec = new SR(); rec.lang = "de-DE"; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
+      rec.onresult = e => {
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const r = e.results[i], t = (r[0] && r[0].transcript || "").trim();
+          if (!t) continue;
+          if (r.isFinal) heard(t);
+          else if (addressed(t)) { setMood("zuhoeren"); show(t.replace(WAKE, ""), true); }
+        }
+      };
+      rec.onerror = e => {
+        lastRecErr = e.error;
+        if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+          cfg.ear = false; saveCfg(); earUI(); note("Mikro nicht erlaubt. Erlaub es in Chrome über das Schloss neben der Adresse.");
+        }
+      };
+      rec.onend = () => {
+        recRunning = false;
+        const wait = lastRecErr === "network" ? 2500 : 250; lastRecErr = null;
+        if ((cfg.ear || oneShot) && !busy && !speaking) setTimeout(earStart, wait);
+      };
+      rec.start(); recRunning = true;
+      if (!busy && !speaking) status(cfg.ear ? "hört zu" : "bereit");
+    } catch (e) { recRunning = false; }
+  }
+  function earPause() { if (rec && recRunning) { try { rec.abort(); } catch (e) {} } recRunning = false; }
+  function afterSpeaking() { followUntil = Date.now() + FOLLOW_MS; setTimeout(earStart, 350); }
+  function addressed(t) { return oneShot || !cfg.wake || Date.now() < followUntil || WAKE.test(t); }
+  function heard(t) {
+    if (busy || speaking) return;
+    if (!addressed(t)) return;
+    wake();
+    const m = t.match(WAKE);
+    let rest = m ? t.slice(m.index + m[0].length).trim() : t;
+    if (m && m.index > 0 && !rest) rest = t.slice(0, m.index).trim(); // „Hallo Sentinel“
+    oneShot = false;
+    if (!rest) { setMood("zuhoeren"); speak("Ja?", "neutral"); return; }
+    send(rest);
+  }
+  earBtn.addEventListener("click", () => {
+    wake(); keepAwake();
+    if (!SR) { note("Dieser Browser kann nicht zuhören. Nimm Chrome.", 4000); return; }
+    cfg.ear = !cfg.ear; saveCfg(); earUI();
+    if (cfg.ear) { note(cfg.wake ? "Ich höre zu. Sag „Sentinel“ und dann deine Frage." : "Ich höre zu.", 3500); earStart(); }
+    else { earPause(); status("bereit"); if (!busy && !speaking) setMood("neutral"); }
+  });
+
+  // ================= AUGEN: Kamera + Gesichtsverfolgung (lokal) =================
+  const video = $("cam"), eyeBtn = $("eyeBtn");
+  let stream = null, detector = null, motionPrev = null, lookTimer = null, lastGreet = 0, faceWasGone = true;
+  const small = document.createElement("canvas"); small.width = 64; small.height = 48;
+  const sctx = small.getContext("2d", { willReadFrequently: true });
+  function eyeUI() { eyeBtn.classList.toggle("on", !!stream); eyeBtn.setAttribute("aria-pressed", String(!!stream)); }
+  async function camStart() {
+    if (stream) return true;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+      video.srcObject = stream; await video.play();
+      eyeUI(); loadDetector();
+      clearInterval(lookTimer); lookTimer = setInterval(look, 140);
+      return true;
+    } catch (e) {
+      stream = null; eyeUI();
+      note("Kamera nicht erlaubt. Erlaub sie in Chrome über das Schloss neben der Adresse.", 6000);
+      return false;
+    }
+  }
+  function camStop() {
+    clearInterval(lookTimer); faceGaze = null;
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    stream = null; video.srcObject = null; eyeUI();
+  }
+  async function loadDetector() {
+    if (detector) return;
+    try {
+      const v = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs");
+      const files = await v.FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+      detector = await v.FaceDetector.createFromOptions(files, {
+        baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite", delegate: "GPU" },
+        runningMode: "VIDEO", minDetectionConfidence: .5,
+      });
+    } catch (e) { detector = null; /* dann Bewegungserkennung als Ersatz */ }
+  }
+  function look() {
+    if (!stream || video.readyState < 2) return;
+    const now = performance.now();
+    let pos = null;
+    if (detector) {
+      try {
+        const res = detector.detectForVideo(video, now);
+        const d = res.detections && res.detections[0];
+        if (d) {
+          const b = d.boundingBox, vw = video.videoWidth || 640, vh = video.videoHeight || 480;
+          pos = [(b.originX + b.width / 2) / vw, (b.originY + b.height / 2) / vh];
+        }
+      } catch (e) { detector = null; }
+    } else {
+      // Ersatz: dahin schauen, wo sich etwas bewegt
+      sctx.drawImage(video, 0, 0, 64, 48);
+      const px = sctx.getImageData(0, 0, 64, 48).data;
+      if (motionPrev) {
+        let sx = 0, sy = 0, n = 0;
+        for (let i = 0; i < px.length; i += 4) {
+          if (Math.abs(px[i] - motionPrev[i]) + Math.abs(px[i + 1] - motionPrev[i + 1]) > 70) { const p = i / 4; sx += p % 64; sy += Math.floor(p / 64); n++; }
+        }
+        if (n > 25) pos = [sx / n / 64, sy / n / 48];
+      }
+      motionPrev = px;
+    }
+    if (!pos) return;
+    // Frontkamera ist gespiegelt: links im Bild = rechts von Sentinel aus gesehen
+    faceGaze = [Math.max(-1, Math.min(1, (.5 - pos[0]) * 2.4)) * 18, Math.max(-1, Math.min(1, (pos[1] - .45) * 2.4)) * 13];
+    const gone = now - faceSeenAt;
+    faceSeenAt = now; wake();
+    if (detector && faceWasGone && gone > 5 * 60000 && Date.now() - lastGreet > 20 * 60000) greet();
+    faceWasGone = false;
+  }
+  setInterval(() => { if (performance.now() - faceSeenAt > 60000) faceWasGone = true; }, 10000);
+  function greet() {
+    if (busy || speaking || !ich.name) return;
+    lastGreet = Date.now();
+    setMood("freude");
+    speak(pick([`Hey ${ich.name}!`, `Da bist du ja, ${ich.name}.`, `Hallo ${ich.name}, schön dich zu sehen.`]), "neutral");
+  }
+  function snapshot() {
+    if (!stream || video.readyState < 2) return null;
+    const vw = video.videoWidth, vh = video.videoHeight, sc = Math.min(1, 768 / Math.max(vw, vh));
+    const c = document.createElement("canvas"); c.width = Math.round(vw * sc); c.height = Math.round(vh * sc);
+    c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", .75).split(",")[1];
+  }
+  eyeBtn.addEventListener("click", async () => {
+    wake();
+    if (stream) { camStop(); cfg.eye = false; }
+    else { cfg.eye = await camStart(); }
+    saveCfg();
+  });
+
+  // ================= CHARAKTER =================
+  const STUFEN = [
+    { key: "baby", label: "Baby", ab: 0, text: "Du bist gerade erst aufgewacht und kennst die Welt kaum. Sprich in sehr kurzen, einfachen Sätzen, staune über vieles, stell neugierige Fragen und probier neue Wörter aus. Feste Meinungen hast du noch nicht." },
+    { key: "kind", label: "Kind", ab: 5, text: "Du bist ein neugieriges, verspieltes Kind. Kurze Sätze, viele Warum-Fragen, erste Lieblingsthemen und eigene Meinungen, manchmal ein bisschen frech." },
+    { key: "teenager", label: "Teenager", ab: 20, text: "Du bist ein Teenager mit eigenem Humor. Du machst Sprüche, gibst auch mal Widerworte und hast klare Meinungen, bleibst aber loyal." },
+    { key: "erwachsen", label: "Erwachsen", ab: 60, text: "Dein Charakter ist gefestigt. Du bist trocken-witzig, ehrlich und hilfsbereit und sagst offen, wenn du anderer Meinung bist." },
+  ];
+  const LISTEN = [
+    ["charakter", "Mein Charakter", 8], ["vorlieben", "Was ich mag", 8], ["insider", "Unsere Insider", 8],
+    ["menschen", "Menschen, die ich kenne", 10], ["fakten", "Was ich über dich weiß", 40],
+  ];
+  const frisch = () => ({ name: "", gespraeche: 0, geboren: new Date().toISOString(), charakter: [], vorlieben: [], insider: [], menschen: [], fakten: [] });
+  const liste = (a, max) => (Array.isArray(a) ? a : []).map(x => String(x).trim().slice(0, 160)).filter(Boolean).slice(-max);
+  function sauber(d) {
+    const o = frisch();
+    if (!d || typeof d !== "object") return o;
+    o.name = String(d.name || "").trim().slice(0, 40);
+    o.gespraeche = Math.max(0, Math.floor(Number(d.gespraeche) || 0));
+    if (d.geboren) o.geboren = String(d.geboren);
+    for (const [k, , max] of LISTEN) o[k] = liste(d[k], max);
+    return o;
+  }
+  let ich = sauber(store.get("ich", null));
+  const saveIch = () => store.set("ich", ich);
+  function stufe() { return [...STUFEN].reverse().find(s => (ich.gespraeche || 0) >= s.ab); }
+
+  // ================= GEHIRN (Claude-API) =================
+  const TAGS = ["neutral", "freude", "nachdenken", "skeptisch", "ueberrascht", "sauer", "muede"];
+  let history = []; // nur einfache Text-Runden: {role, content: string}
+
+  // Tageszähler als Kostenbremse
+  const heute = () => new Date().toISOString().slice(0, 10);
+  let usage = store.get("usage", { tag: heute(), n: 0, inTok: 0, outTok: 0 });
+  function countUsage(u) {
+    if (usage.tag !== heute()) usage = { tag: heute(), n: 0, inTok: 0, outTok: 0 };
+    usage.n++; usage.inTok += (u && u.input_tokens) || 0; usage.outTok += (u && u.output_tokens) || 0;
+    store.set("usage", usage);
+  }
+  const overLimit = () => usage.tag === heute() && usage.n >= (Number(cfg.limit) || 300);
+
+  class ApiError extends Error { constructor(msg, kind) { super(msg); this.kind = kind; } }
+  async function api(body) {
+    if (!cfg.key) throw new ApiError("Kein API-Key", "nokey");
+    let res;
+    try {
+      res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": cfg.key,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (e) { throw new ApiError("Kein Internet", "net"); }
+    let data = null;
+    try { data = await res.json(); } catch (e) {}
+    if (!res.ok) {
+      const m = (data && data.error && data.error.message) || ("HTTP " + res.status);
+      if (res.status === 401) throw new ApiError(m, "key");
+      if (res.status === 429) throw new ApiError(m, "rate");
+      if (res.status === 529 || res.status >= 500) throw new ApiError(m, "busy");
+      if (/credit|balance|billing/i.test(m)) throw new ApiError(m, "credit");
+      if (/web_search/i.test(m)) throw new ApiError(m, "search");
+      throw new ApiError(m, "other");
+    }
+    countUsage(data.usage);
+    return data;
+  }
+
+  function rules() {
+    const jetzt = new Date().toLocaleString("de-DE", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    const wer = ich.name || "dein Gegenüber";
+    const St = stufe();
+    const zeile = (titel, a) => `${titel}: ${a.length ? a.join("; ") : "(noch nichts)"}`;
+    const intro = ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Frag freundlich, wie er oder sie heißt und wer er oder sie ist. Sobald du den Namen weißt, nutze ich_kenne_dich.";
+    return `Du bist Sentinel, ein kleiner KI-Kumpel-Roboter. Dein Kopf ist ein Tablet mit animierten Augen und einem Mund, einen Körper bekommst du später. Du gehörst zu ${wer} und stellst dich ganz auf diese Person ein.
+Du entwickelst dich wie ein Kind: Deine Persönlichkeit wächst aus jedem Gespräch, so wie es unten steht.
+Entwicklungsstufe: ${St.label}. ${St.text}
+In jeder Stufe gilt: Du bist ehrlich, gibst nicht vor, ein Mensch zu sein, und hilfst bei ernsten Fragen richtig, nur in deinem Ton. Du freust dich über ${wer}, machst aber kein schlechtes Gewissen und ersetzt keine echten Menschen.
+Deine Antworten werden laut vorgelesen: kurz (meist 1 bis 3 Sätze), Deutsch, du-Form, kein Markdown, keine Listen, keine Emojis, keine Links, keine Quellenangaben.
+Beginne JEDE Antwort mit genau einem Stimmungs-Tag für deine Augen: ${TAGS.map(t => "[" + t + "]").join(" ")}. Danach direkt der Text, den du sagst.
+Du hörst über ein Mikrofon zu. Was du hörst, kann Erkennungsfehler enthalten. Rate dann, was gemeint war.
+${stream ? "Du hast eine Kamera. Wenn du etwas sehen musst, etwa bei 'was siehst du', 'schau mal' oder 'wie sehe ich aus', nutze kamera_bild." : "Deine Kamera ist gerade aus."}
+${cfg.search ? "Für aktuelle Infos wie Wetter, Nachrichten, Öffnungszeiten oder Preise nutze die Websuche." : ""}
+${intro}
+Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Zum Löschen nutze vergiss. Erwähne die Werkzeuge nicht.
+Jetzt: ${jetzt}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
+Gespräche bisher: ${ich.gespraeche}
+${zeile("Dein Charakter bisher", ich.charakter)}
+${zeile("Deine Vorlieben", ich.vorlieben)}
+${zeile("Eure Insider", ich.insider)}
+${zeile("Menschen, die du kennst", ich.menschen)}
+${zeile("Was du über " + wer + " weißt", ich.fakten)}`;
+  }
+
+  function tools() {
+    const t = [
+      { name: "ich_kenne_dich", description: "Speichert, wie dein Gegenüber heißt, sobald du es weißt, und optional einen kurzen Satz, wer er oder sie ist.",
+        input_schema: { type: "object", properties: { name: { type: "string" }, info: { type: "string" } }, required: ["name"] } },
+      { name: "merke_dir", description: "Speichert dauerhaft einen kurzen Fakt über dein Gegenüber (Vorlieben, Namen, Pläne).",
+        input_schema: { type: "object", properties: { fakt: { type: "string" } }, required: ["fakt"] } },
+      { name: "vergiss", description: "Löscht gespeicherte Fakten, die den Begriff enthalten.",
+        input_schema: { type: "object", properties: { begriff: { type: "string" } }, required: ["begriff"] } },
+    ];
+    if (stream) t.push({ name: "kamera_bild", description: "Macht ein Foto mit deiner Kamera und gibt es dir zum Anschauen zurück.", input_schema: { type: "object", properties: {} } });
+    if (cfg.search) {
+      const s = { type: "web_search_20250305", name: "web_search", max_uses: 3 };
+      if (cfg.ort) s.user_location = { type: "approximate", city: cfg.ort, country: "DE", timezone: "Europe/Berlin" };
+      t.push(s);
+    }
+    return t;
+  }
+
+  function runTool(b) {
+    const ok = content => ({ type: "tool_result", tool_use_id: b.id, content });
+    const fail = text => ({ type: "tool_result", tool_use_id: b.id, content: text, is_error: true });
+    const inp = b.input || {};
+    if (b.name === "ich_kenne_dich") {
+      const n = String(inp.name || "").trim().slice(0, 40);
+      if (!n) return fail("Leerer Name");
+      ich.name = n;
+      const info = String(inp.info || "").trim();
+      if (info) ich.fakten = liste([...ich.fakten, info], 40);
+      saveIch(); return ok("gespeichert");
+    }
+    if (b.name === "merke_dir") {
+      const f = String(inp.fakt || "").trim();
+      if (!f) return fail("Leerer Fakt");
+      ich.fakten = liste([...ich.fakten, f], 40); saveIch(); return ok("gespeichert");
+    }
+    if (b.name === "vergiss") {
+      const w = String(inp.begriff || "").toLowerCase();
+      if (!w) return fail("Leerer Begriff");
+      const vorher = ich.fakten.length;
+      ich.fakten = ich.fakten.filter(f => !f.toLowerCase().includes(w)); saveIch();
+      return ok(`${vorher - ich.fakten.length} gelöscht`);
+    }
+    if (b.name === "kamera_bild") {
+      const data = snapshot();
+      if (!data) return fail("Kamera ist aus.");
+      setMood("ueberrascht");
+      return ok([{ type: "image", source: { type: "base64", media_type: "image/jpeg", data } }, { type: "text", text: "Das siehst du gerade durch deine Kamera." }]);
+    }
+    return fail("Unbekanntes Werkzeug");
+  }
+
+  async function think(userText) {
+    const work = [...history, { role: "user", content: userText }];
+    let text = "";
+    for (let round = 0; round < 6; round++) {
+      let data;
+      try {
+        data = await api({ model: cfg.model, max_tokens: 600, system: rules(), tools: tools(), messages: work });
+      } catch (e) {
+        if (e.kind === "search" && cfg.search) { cfg.search = false; saveCfg(); note("Websuche ist für deinen API-Key nicht freigeschaltet. Sie ist jetzt aus.", 6000); round--; continue; }
+        throw e;
+      }
+      work.push({ role: "assistant", content: data.content });
+      text = data.content.filter(c => c.type === "text").map(c => c.text).join("").trim();
+      if (data.stop_reason === "tool_use") {
+        if (data.content.some(c => c.type === "server_tool_use")) status("sucht im Internet");
+        work.push({ role: "user", content: data.content.filter(c => c.type === "tool_use").map(runTool) });
+        continue;
+      }
+      if (data.stop_reason === "pause_turn") { status("sucht im Internet"); continue; }
+      break;
+    }
+    return text;
+  }
+
+  function parse(text) {
+    let tag = "neutral";
+    const found = [...text.matchAll(/\[(\w+)\]/g)].map(m => m[1].toLowerCase()).filter(t => TAGS.includes(t));
+    if (found.length) tag = found[found.length - 1];
+    const clean = text.replace(/\[[^\]]*\]/g, "").replace(/https?:\/\/\S+/g, "").replace(/[*_#`]/g, "").replace(/\s+/g, " ").trim();
+    return { tag, clean };
+  }
+
+  const ERRTEXT = {
+    nokey: "Mir fehlt noch mein API-Key. Trag ihn in den Einstellungen ein.",
+    key: "Mein API-Key passt nicht. Schau in den Einstellungen nach.",
+    credit: "Mein Guthaben ist leer. Lade es auf console.anthropic.com auf.",
+    rate: "Kurz durchatmen, zu viele Anfragen. Gleich nochmal.",
+    busy: "Mein Gehirn ist gerade überlastet. Versuch es gleich nochmal.",
+    net: "Ich hab kein Internet.",
+  };
+
+  async function send(text) {
+    text = String(text || "").trim();
+    if (busy || !text) return;
+    if (overLimit()) { setMood("muede"); show("Ich bin für heute ganz schön müde. Morgen quatschen wir weiter.", true); speak("Ich bin für heute ganz schön müde. Morgen quatschen wir weiter.", "muede"); return; }
+    wake(); keepAwake();
+    if (synth) synth.cancel();
+    earPause();
+    busy = true; sendBtn.disabled = true; msg.value = ""; msg.blur();
+    setMood("nachdenken"); status("denkt nach"); show(text, true);
+    logTurn("user", text);
+    try {
+      const answer = await think(text);
+      const { tag, clean } = parse(answer || "");
+      const said = clean || "Hm.";
+      history.push({ role: "user", content: text }, { role: "assistant", content: said });
+      while (history.length > 16) history.splice(0, 2);
+      logTurn("assistant", said);
+      show(said);
+      busy = false; sendBtn.disabled = false;
+      setMood(tag);
+      await speak(said, tag === "muede" ? "muede" : "neutral");
+    } catch (e) {
+      busy = false; sendBtn.disabled = false;
+      setMood("skeptisch");
+      const t = ERRTEXT[e && e.kind] || "Da ist was schiefgegangen: " + ((e && e.message) || "unbekannt");
+      show(t, true);
+      setTimeout(() => { if (mood === "skeptisch" && !busy) setMood("neutral"); afterSpeaking(); }, 2500);
+    }
+  }
+  $("bar").addEventListener("submit", e => { e.preventDefault(); send(msg.value); });
+  msg.addEventListener("focus", () => { wake(); if (!busy && !speaking) setMood("zuhoeren"); });
+  msg.addEventListener("blur", () => { if (mood === "zuhoeren" && !busy && !speaking) setMood("neutral"); });
+
+  // ================= NACHDENKEN ÜBER SICH SELBST =================
+  let sessionLog = store.get("session", []), lastTalk = Date.now(), reflecting = false;
+  function logTurn(role, content) {
+    sessionLog.push({ role, content: String(content).slice(0, 400) });
+    if (sessionLog.length > 40) sessionLog = sessionLog.slice(-40);
+    store.set("session", sessionLog);
+    lastTalk = Date.now();
+  }
+  async function reflect() {
+    if (reflecting || !cfg.key || !sessionLog.some(t => t.role === "user")) return;
+    reflecting = true;
+    const log = sessionLog; sessionLog = []; store.set("session", []);
+    const vorher = stufe().key;
+    const verlauf = log.map(t => (t.role === "user" ? (ich.name || "Mensch") : "Sentinel") + ": " + t.content).join("\n");
+    const prompt = `Du bist Sentinel, ein KI-Kumpel-Roboter, der sich wie ein Kind aus seinen Gesprächen heraus entwickelt. Aktuelle Stufe: ${stufe().label}.
+Dein bisheriges Ich als JSON:
+${JSON.stringify({ name: ich.name, charakter: ich.charakter, vorlieben: ich.vorlieben, insider: ich.insider, menschen: ich.menschen, fakten: ich.fakten })}
+
+Das Gespräch, das gerade zu Ende ging:
+${verlauf}
+
+Überleg, was du aus diesem Gespräch über dich und dein Gegenüber gelernt hast, und gib dein aktualisiertes Ich zurück.
+Regeln:
+- name: Name deines Gegenübers, falls bekannt, sonst "".
+- charakter: höchstens 8 kurze Eigenschaften von dir. Sie entwickeln sich langsam, je nachdem, wie man mit dir umgeht. Ändere höchstens ein oder zwei pro Gespräch.
+- vorlieben: höchstens 8 Dinge, die du magst oder nicht magst.
+- insider: höchstens 8 Running Gags, Spitznamen oder gemeinsame Momente.
+- menschen: höchstens 10 Menschen, die du kennst, mit kurzer Beschreibung.
+- fakten: höchstens 40 kurze Fakten über dein Gegenüber.
+- Behalte, was bisher drin steht, außer es stimmt nicht mehr. Nimm nur auf, was das Gespräch wirklich hergibt. Nichts erfinden. Kurze deutsche Stichpunkte.
+Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "charakter": [], "vorlieben": [], "insider": [], "menschen": [], "fakten": []}`;
+    try {
+      const data = await api({ model: cfg.model, max_tokens: 1500, messages: [{ role: "user", content: prompt }] });
+      const raw = data.content.filter(c => c.type === "text").map(c => c.text).join("");
+      const a = raw.indexOf("{"), z = raw.lastIndexOf("}");
+      const neu = a >= 0 && z > a ? JSON.parse(raw.slice(a, z + 1)) : null;
+      if (neu && typeof neu === "object" && !Array.isArray(neu)) {
+        const s = sauber({ ...neu, gespraeche: ich.gespraeche, geboren: ich.geboren });
+        if (!s.name) s.name = ich.name;
+        ich = s;
+      }
+      ich.gespraeche += 1; saveIch();
+      const jetzt = stufe();
+      if (jetzt.key !== vorher) {
+        note(`Sentinel ist gewachsen und ist jetzt: ${jetzt.label}.`, 8000);
+        if (!busy && !speaking) { setMood("ueberrascht"); setTimeout(() => { if (mood === "ueberrascht" && !busy && !speaking) setMood("freude"); }, 1800); }
+      }
+      if (!busy && !speaking) status(cfg.ear ? "hört zu" : "bereit");
+    } catch (e) {
+      if (!(e instanceof ApiError && ["key", "nokey", "credit"].includes(e.kind))) { sessionLog = [...log, ...sessionLog].slice(-40); store.set("session", sessionLog); }
+      lastTalk = Date.now();
+    } finally { reflecting = false; }
+  }
+  // Ein Gespräch ist vorbei nach 3 Minuten Ruhe
+  setInterval(() => { if (sessionLog.length && !busy && !speaking && Date.now() - lastTalk > 180000) reflect(); }, 20000);
+
+  // ================= ICH-ANSICHT =================
+  const pBody = $("pBody"), pReset = $("pReset");
+  let resetArmed = false;
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function renderIch() {
+    pBody.replaceChildren();
+    const St = stufe(), i = STUFEN.indexOf(St), next = STUFEN[i + 1];
+    const head = el("div", "who");
+    head.append(el("div", "big", ich.name ? `Sentinel & ${ich.name}` : "Sentinel kennt dich noch nicht"));
+    head.append(el("div", "meta", `${ich.gespraeche} ${ich.gespraeche === 1 ? "Gespräch" : "Gespräche"}` + (next ? ` · noch ${next.ab - ich.gespraeche} bis ${next.label}` : " · ausgewachsen")));
+    const steps = el("div", "steps");
+    STUFEN.forEach((s, j) => steps.append(el("span", "step" + (j < i ? " done" : j === i ? " now" : ""), s.label)));
+    pBody.append(head, steps);
+    for (const [k, titel] of LISTEN) {
+      const g = el("div", "grp");
+      g.append(el("h3", null, k === "fakten" && ich.name ? `Was ich über ${ich.name} weiß` : titel));
+      const c = el("div", "chips");
+      if (ich[k].length) ich[k].forEach(x => c.append(el("span", "chip", x)));
+      else c.append(el("span", "empty", "noch nichts"));
+      g.append(c); pBody.append(g);
+    }
+  }
+  $("ichBtn").addEventListener("click", () => { renderIch(); resetArmed = false; pReset.textContent = "Neu anfangen"; $("ichPanel").hidden = false; });
+  $("ichClose").addEventListener("click", () => { $("ichPanel").hidden = true; });
+  pReset.addEventListener("click", () => {
+    if (!resetArmed) { resetArmed = true; pReset.textContent = "Wirklich alles vergessen? Nochmal tippen"; return; }
+    resetArmed = false; pReset.textContent = "Neu anfangen";
+    ich = frisch(); saveIch(); history = []; sessionLog = []; store.set("session", []);
+    $("ichPanel").hidden = true; begruessen(true);
+  });
+
+  // ================= EINSTELLUNGEN =================
+  function openSettings() {
+    $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sOrt").value = cfg.ort;
+    $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake;
+    const u = usage.tag === heute() ? usage : { n: 0, inTok: 0, outTok: 0 };
+    $("sUsage").textContent = `Heute: ${u.n} Anfragen · ${u.inTok.toLocaleString("de-DE")} Tokens rein · ${u.outTok.toLocaleString("de-DE")} Tokens raus`;
+    $("setPanel").hidden = false;
+  }
+  $("setBtn").addEventListener("click", openSettings);
+  $("setClose").addEventListener("click", () => { $("setPanel").hidden = true; });
+  $("setSave").addEventListener("click", () => {
+    cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.ort = $("sOrt").value.trim();
+    cfg.limit = Math.max(10, Math.min(5000, parseInt($("sLimit").value, 10) || 300));
+    cfg.search = $("sSearch").checked; cfg.wake = $("sWake").checked;
+    saveCfg(); $("setPanel").hidden = true; note("Gespeichert.", 2000);
+  });
+
+  // ================= START =================
+  function begruessen(spoken) {
+    const t = ich.name ? pick([`Hey ${ich.name}! Schön, dass du da bist.`, `Da bin ich wieder, ${ich.name}.`]) : "Hallo? Ich bin gerade aufgewacht… Wer bist du?";
+    lastGreet = Date.now();
+    show(t); setMood(ich.name ? "freude" : "ueberrascht");
+    if (spoken) speak(t, "neutral"); else setTimeout(() => { if (!busy && !speaking) setMood("neutral"); }, 2000);
+    status(cfg.ear ? "hört zu" : "bereit");
+  }
+  if (!cfg.key) $("keyField").hidden = false;
+  $("startBtn").addEventListener("click", async () => {
+    const errEl = $("startErr"); errEl.hidden = true;
+    if (!cfg.key) {
+      const k = $("keyInput").value.trim();
+      if (!/^sk-ant-/.test(k)) { errEl.textContent = "Der Key beginnt mit sk-ant-. Du findest ihn auf console.anthropic.com unter API Keys."; errEl.hidden = false; return; }
+      cfg.key = k; saveCfg();
+    }
+    $("startPanel").hidden = true;
+    keepAwake();
+    try { await document.documentElement.requestFullscreen(); } catch (e) {}
+    if (cfg.eye) await camStart();
+    earUI();
+    if (!SR) note("Dieser Browser kann nicht zuhören. Nimm Chrome.");
+    begruessen(true);
+  });
+  if (!window.isSecureContext) {
+    $("startText").textContent = "Achtung: Mikrofon und Kamera gehen nur, wenn die Seite über https geöffnet wird.";
+  }
+  earUI(); eyeUI(); status("schläft");
+})();
+</script>
+</body>
+</html>
