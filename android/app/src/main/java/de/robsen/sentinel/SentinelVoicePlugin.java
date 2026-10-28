@@ -73,6 +73,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
     // ---------------- Ohren ----------------
 
     private long busyBackoff = 1000;
+    private String lastPartial = "";
     private final Runnable listenRunnable = this::listen;
 
     @PluginMethod
@@ -128,9 +129,6 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
             i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
             i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
             i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getContext().getPackageName());
-            // Erst nach 1,5 s Ruhe gilt ein Satz als fertig – kurze Atempausen schneiden nichts ab
-            i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500);
-            i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500);
             recognizerIntent = i;
         }
         return recognizerIntent;
@@ -168,7 +166,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         main.postDelayed(listenRunnable, delayMs);
     }
 
-    @Override public void onReadyForSpeech(Bundle params) { busyBackoff = 1000; notifyListeners("ready", new JSObject()); }
+    @Override public void onReadyForSpeech(Bundle params) { busyBackoff = 1000; lastPartial = ""; notifyListeners("ready", new JSObject()); }
     @Override public void onBeginningOfSpeech() { notifyListeners("speechStart", new JSObject()); }
     @Override public void onRmsChanged(float rmsdB) {}
     @Override public void onBufferReceived(byte[] buffer) {}
@@ -178,12 +176,15 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
     @Override
     public void onPartialResults(Bundle b) {
         String t = first(b);
-        if (t != null && !t.isEmpty()) notifyListeners("partial", new JSObject().put("text", t));
+        if (t != null && !t.isEmpty()) { lastPartial = t; notifyListeners("partial", new JSObject().put("text", t)); }
     }
 
     @Override
     public void onResults(Bundle b) {
         String t = first(b);
+        // Manche Tablets liefern am Ende ein leeres Ergebnis, obwohl vorher Text kam -> den nehmen
+        if ((t == null || t.isEmpty()) && !lastPartial.isEmpty()) t = lastPartial;
+        lastPartial = "";
         notifyListeners("final", new JSObject().put("text", t == null ? "" : t));
         listening = false;
         destroyRecognizer();
@@ -193,6 +194,14 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
     @Override
     public void onError(int error) {
         listening = false;
+        // "Nichts verstanden", aber vorher kam schon Text -> den Text trotzdem weitergeben
+        if ((error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && !lastPartial.isEmpty()) {
+            notifyListeners("final", new JSObject().put("text", lastPartial));
+            lastPartial = "";
+            destroyRecognizer();
+            restart(250);
+            return;
+        }
         notifyListeners("error", new JSObject().put("code", error));
         destroyRecognizer();
         switch (error) {
