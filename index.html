@@ -420,20 +420,49 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     voice = vs.find(v => /male|mann|conrad|stefan|markus|killian/i.test(v.name)) || vs[0] || null;
   }
   if (synth) { pickVoice(); synth.onvoiceschanged = pickVoice; }
+  // Lange Texte in Sätze zerlegen: Android bricht lange Vorlesetexte sonst einfach ab und hängt dann.
+  function chunks(text) {
+    const sents = String(text).match(/[^.!?…]+[.!?…]+["“”»«)]*\s*|[^.!?…]+$/g) || [text];
+    const out = []; let cur = "";
+    for (const s of sents) {
+      if ((cur + s).length > 180 && cur) { out.push(cur.trim()); cur = ""; }
+      if (s.length > 220) { s.split(/,\s+/).forEach(p => out.push(p.trim())); continue; }
+      cur += s;
+    }
+    if (cur.trim()) out.push(cur.trim());
+    return out.filter(Boolean);
+  }
+  let speakId = 0;
   function speak(text, afterMood) {
     return new Promise(resolve => {
-      const done = () => { speaking = false; setMood(afterMood); status("bereit"); afterSpeaking(); resolve(); };
+      const id = ++speakId;
+      let finished = false;
+      const done = () => {
+        if (finished) return; finished = true;
+        if (id !== speakId) return resolve();
+        speaking = false; setMood(afterMood); status("bereit"); afterSpeaking(); resolve();
+      };
       if (!synth || !text) { setMood(afterMood); afterSpeaking(); return resolve(); }
       try {
         earPause();
         synth.cancel();
-        const u = new SpeechSynthesisUtterance(text);
-        u.lang = "de-DE"; if (voice) u.voice = voice; u.rate = 1.05;
         speaking = true; status("spricht");
-        u.onend = done; u.onerror = done;
-        synth.speak(u);
-        // Sicherheitsnetz, falls Android das Ende nicht meldet
-        setTimeout(() => { if (speaking && !synth.speaking) done(); }, 1500 + text.length * 90);
+        const parts = chunks(text);
+        let i = 0;
+        const next = () => {
+          if (id !== speakId) return done();
+          if (i >= parts.length) return done();
+          const part = parts[i++];
+          const u = new SpeechSynthesisUtterance(part);
+          u.lang = "de-DE"; if (voice) u.voice = voice; u.rate = 1.05;
+          let moved = false;
+          const go = () => { if (moved) return; moved = true; clearTimeout(guard); next(); };
+          u.onend = go; u.onerror = go;
+          // Sicherheitsnetz: falls Android das Ende nicht meldet, nach angemessener Zeit weiter
+          const guard = setTimeout(() => { try { synth.cancel(); } catch (e) {} go(); }, 4000 + part.length * 110);
+          synth.speak(u);
+        };
+        next();
       } catch (e) { done(); }
     });
   }
@@ -701,7 +730,9 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   let usage = store.get("usage", { tag: heute(), n: 0, inTok: 0, outTok: 0 });
   function countUsage(u) {
     if (usage.tag !== heute()) usage = { tag: heute(), n: 0, inTok: 0, outTok: 0 };
-    usage.n++; usage.inTok += (u && u.input_tokens) || 0; usage.outTok += (u && u.output_tokens) || 0;
+    usage.n++; usage.outTok += (u && u.output_tokens) || 0;
+    usage.inTok += ((u && u.input_tokens) || 0) + ((u && u.cache_creation_input_tokens) || 0);
+    usage.cacheTok = (usage.cacheTok || 0) + ((u && u.cache_read_input_tokens) || 0);
     store.set("usage", usage);
   }
   const overLimit = () => usage.tag === heute() && usage.n >= (Number(cfg.limit) || 300);
@@ -710,9 +741,12 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   async function api(body) {
     if (!cfg.key) throw new ApiError("Kein API-Key", "nokey");
     let res;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 90000); // nach 90 Sekunden abbrechen statt ewig zu hängen
     try {
       res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
+        signal: ctl.signal,
         headers: {
           "content-type": "application/json",
           "x-api-key": cfg.key,
@@ -721,7 +755,8 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
         },
         body: JSON.stringify(body),
       });
-    } catch (e) { throw new ApiError("Kein Internet", "net"); }
+    } catch (e) { clearTimeout(timer); throw new ApiError("Kein Internet", ctl.signal.aborted ? "timeout" : "net"); }
+    clearTimeout(timer);
     let data = null;
     try { data = await res.json(); } catch (e) {}
     if (!res.ok) {
@@ -771,6 +806,16 @@ ${zeile("Vorlieben und Gewohnheiten", ich.vorlieben)}
 ${zeile("Menschen", ich.menschen)}`;
   }
 
+  // Kosten sparen: Der gleichbleibende Teil (Charakter, Fähigkeiten, Werkzeuge) wird bei Anthropic
+  // zwischengespeichert und kostet bei Folgefragen nur noch etwa ein Zehntel.
+  function systemBlocks() {
+    const full = rules(), i = full.indexOf("\nJetzt: ");
+    if (i < 0) return full;
+    return [
+      { type: "text", text: full.slice(0, i), cache_control: { type: "ephemeral" } },
+      { type: "text", text: full.slice(i + 1) },
+    ];
+  }
   function tools() {
     const obj = (props, req = []) => ({ type: "object", properties: props, required: req });
     const t = [
@@ -800,7 +845,7 @@ ${zeile("Menschen", ich.menschen)}`;
       );
     }
     if (cfg.search) {
-      const s = { type: "web_search_20250305", name: "web_search", max_uses: 3 };
+      const s = { type: "web_search_20250305", name: "web_search", max_uses: 2 };
       if (cfg.ort) s.user_location = { type: "approximate", city: cfg.ort, country: "DE", timezone: "Europe/Berlin" };
       t.push(s);
     }
@@ -909,7 +954,7 @@ ${zeile("Menschen", ich.menschen)}`;
     for (let round = 0; round < 8; round++) {
       let data;
       try {
-        data = await api({ model: cfg.model, max_tokens: 1000, system: rules(), tools: tools(), messages: work });
+        data = await api({ model: cfg.model, max_tokens: 1000, system: systemBlocks(), tools: tools(), messages: work });
       } catch (e) {
         if (e.kind === "search" && cfg.search) { cfg.search = false; saveCfg(); note("Websuche ist für deinen API-Key nicht freigeschaltet. Sie ist jetzt aus.", 6000); round--; continue; }
         throw e;
@@ -943,6 +988,7 @@ ${zeile("Menschen", ich.menschen)}`;
     rate: "Zu viele Anfragen auf einmal. Einen Moment bitte.",
     busy: "Die Server sind gerade überlastet. Versuch es gleich noch einmal.",
     net: "Ich habe gerade keine Internetverbindung.",
+    timeout: "Das hat zu lange gedauert. Frag mich bitte noch einmal, gern etwas kürzer.",
   };
 
   async function send(text) {
@@ -1061,7 +1107,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake;
     $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about;
     const u = usage.tag === heute() ? usage : { n: 0, inTok: 0, outTok: 0 };
-    $("sUsage").textContent = `Heute: ${u.n} Anfragen · ${u.inTok.toLocaleString("de-DE")} Tokens rein · ${u.outTok.toLocaleString("de-DE")} Tokens raus`;
+    $("sUsage").textContent = `Heute: ${u.n} Anfragen · ${u.inTok.toLocaleString("de-DE")} Tokens rein · ${(u.cacheTok || 0).toLocaleString("de-DE")} günstig aus dem Zwischenspeicher · ${u.outTok.toLocaleString("de-DE")} Tokens raus`;
     $("setPanel").hidden = false;
   }
   $("setBtn").addEventListener("click", openSettings);
