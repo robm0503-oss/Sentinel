@@ -201,7 +201,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 22</div>
+    <div class="hint" id="verHint">Sentinel Version 23</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -1180,7 +1180,7 @@ Sehen: ${stream ? `Du hast eine Kamera als Augen, aber du schaust nur hin, wenn 
 Wenn du auf einem Bild etwas Wichtiges gesehen hast, schreib ganz am Ende eine kurze Notiz in der Form [sah: ...]. Die wird nicht vorgelesen und hilft dir, dich später daran zu erinnern.` : `Deine Kamera ist aus. Erwähne das nur, wenn ${wer} dich bittet, etwas anzuschauen.`}
 ${cfg.about ? `\nWas ${wer} selbst über sich erzählt:\n${cfg.about}\n` : ""}
 Deine Fähigkeiten: Timer und Erinnerungen stellen (sie klingeln auch, wenn gerade niemand redet), Listen führen (z. B. Einkauf, Aufgaben), dir Dinge merken${cfg.search ? ", im Internet nach aktuellen Infos suchen (Wetter, Nachrichten, Öffnungszeiten, Preise)" : ""}${smartCommands().length ? ", das Smart Home steuern mit diesen Befehlen: " + smartCommands().map(c => c.name).join(", ") + " (nutze smart_home; nur diese Befehle gibt es)" : ""}${cfg.haUrl && cfg.haToken ? ", das Smart Home über Home Assistant steuern (erst mit ha_geraete nachsehen, dann mit ha_schalten schalten; bei Türschlössern, Alarmanlagen und Heizung vorher kurz bestätigen lassen)" : (smartCommands().length ? "" : ". Smart-Home-Steuerung ist noch nicht eingerichtet; sag das, wenn danach gefragt wird, und dass man in den Einstellungen unter Smart-Home-Befehle Links eintragen kann")}.
-Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
+${NATIVE ? "Du kannst außerdem das Tablet bedienen: Apps öffnen, YouTube, Spotify, Maps oder die Websuche mit einer Suche starten, WhatsApp-Nachrichten vorbereiten (abschicken muss der Mensch), Wecker stellen, Kalendertermine anlegen, Lautstärke und Helligkeit ändern. Wenn du eine andere App öffnest, verschwindet dein Gesicht kurz und du hörst in der Zeit nicht zu; sag kurz, dass man mit dem Sentinel-Symbol oder der Zurück-Taste zu dir zurückkommt.\n" : ""}Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
 Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Sag nie, dass du dir etwas gemerkt hast, ohne das Werkzeug wirklich benutzt zu haben.
 Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})${cfg.ort ? "\nOrt: " + cfg.ort : ""}
@@ -1221,6 +1221,18 @@ ${zeile("Menschen", ich.menschen)}`;
         input_schema: obj({ aktion: { type: "string", enum: ["anzeigen", "hinzufuegen", "entfernen", "leeren"] }, liste: { type: "string" }, eintraege: { type: "array", items: { type: "string" } } }, ["aktion", "liste"]) },
     ];
     if (stream) t.push({ name: "kamera_bild", description: "Schaut durch deine Kamera und gibt dir das aktuelle Bild. Nur nutzen, wenn du gebeten wirst, etwas anzuschauen.", input_schema: obj({}) });
+    if (NATIVE && SV) t.push(
+      { name: "app_oeffnen", description: "Öffnet eine auf dem Tablet installierte App über ihren Namen, z. B. Netflix, Spotify, Kamera, Einstellungen.",
+        input_schema: obj({ app: { type: "string" } }, ["app"]) },
+      { name: "medien_oeffnen", description: "Öffnet YouTube, Spotify, Google Maps, WhatsApp oder die Websuche direkt mit einer Suche bzw. einem Text. Bei WhatsApp wird die Nachricht nur vorbereitet, abschicken muss der Mensch selbst.",
+        input_schema: obj({ dienst: { type: "string", enum: ["youtube", "spotify", "maps", "whatsapp", "web"] }, suche: { type: "string" } }, ["dienst", "suche"]) },
+      { name: "wecker_stellen", description: "Stellt einen echten Wecker in der Uhr-App des Tablets.",
+        input_schema: obj({ stunde: { type: "number" }, minute: { type: "number" }, text: { type: "string" } }, ["stunde", "minute"]) },
+      { name: "kalender_termin", description: "Legt einen Termin im Kalender des Tablets an (öffnet die Kalender-App zum Bestätigen). beginn als lokale Zeit JJJJ-MM-TTTHH:MM.",
+        input_schema: obj({ titel: { type: "string" }, beginn: { type: "string" }, dauer_minuten: { type: "number" } }, ["titel", "beginn"]) },
+      { name: "lautstaerke", description: "Stellt die Lautstärke des Tablets in Prozent ein.", input_schema: obj({ prozent: { type: "number" } }, ["prozent"]) },
+      { name: "helligkeit", description: "Stellt die Bildschirmhelligkeit in Prozent ein.", input_schema: obj({ prozent: { type: "number" } }, ["prozent"]) },
+    );
     const sc = smartCommands();
     if (sc.length) t.push({ name: "smart_home", description: "Führt einen Smart-Home-Befehl aus, z. B. Licht an. Nur die angegebenen Befehle sind möglich.",
       input_schema: obj({ befehl: { type: "string", enum: sc.map(c => c.name) } }, ["befehl"]) });
@@ -1241,6 +1253,7 @@ ${zeile("Menschen", ich.menschen)}`;
   }
 
   const SEE_RE = /\b(siehst|sieh|schau|schaust|guck|guckst|zeig|zeige|zeigen|halte|halt ich|in der hand|das hier|dies hier|was ist das|wer ist das|erkennst|erkenn|lies|lesen|wie sehe|wie seh|aussehen|aussehe|outfit|anhab|kamera|foto)\w*/i;
+  let appCache = null;
   async function runTool(b) {
     if (b.name === "kamera_bild") {
       const data = snapshot();
@@ -1308,6 +1321,39 @@ ${zeile("Menschen", ich.menschen)}`;
           if (!listen[name].length) delete listen[name];
           saveListen(); return ok(`${name}: ${(listen[name] || []).join(", ") || "leer"}`);
         }
+        case "app_oeffnen": {
+          if (!appCache) { const r = await SV.listApps(); appCache = (r && r.apps) || []; }
+          const q = String(inp.app || "").toLowerCase().trim();
+          const a = appCache.find(x => x.name.toLowerCase() === q) || appCache.find(x => x.name.toLowerCase().includes(q)) || appCache.find(x => q.includes(x.name.toLowerCase()));
+          if (!a) return fail("Diese App ist nicht installiert. Installiert sind: " + appCache.map(x => x.name).slice(0, 60).join(", "));
+          await SV.launchApp({ package: a.package }); elog("App geöffnet: " + a.name);
+          return ok("geöffnet: " + a.name + ". Zurück zu Sentinel geht es mit dem Sentinel-Symbol oder der Zurück-Taste.");
+        }
+        case "medien_oeffnen": {
+          const q = encodeURIComponent(String(inp.suche || ""));
+          const M = {
+            youtube: ["https://www.youtube.com/results?search_query=" + q, "com.google.android.youtube"],
+            spotify: ["spotify:search:" + q, null],
+            maps: ["https://www.google.com/maps/search/?api=1&query=" + q, "com.google.android.apps.maps"],
+            whatsapp: ["https://wa.me/?text=" + q, "com.whatsapp"],
+            web: ["https://www.google.com/search?q=" + q, null],
+          };
+          const m = M[inp.dienst]; if (!m) return fail("Unbekannter Dienst");
+          await SV.openUrl({ url: m[0], package: m[1] || undefined }); elog("Geöffnet: " + inp.dienst);
+          return ok("geöffnet");
+        }
+        case "wecker_stellen": {
+          await SV.setAlarm({ hour: Math.round(Number(inp.stunde)), minute: Math.round(Number(inp.minute) || 0), label: inp.text ? String(inp.text) : undefined });
+          return ok("Wecker gestellt");
+        }
+        case "kalender_termin": {
+          const b = new Date(String(inp.beginn || "")).getTime();
+          if (!isFinite(b)) return fail("Zeitpunkt nicht verstanden");
+          await SV.addEvent({ title: String(inp.titel || "Termin"), begin: b, end: b + (Number(inp.dauer_minuten) || 60) * 60000 });
+          return ok("Kalender geöffnet, Termin vorausgefüllt – bitte dort speichern");
+        }
+        case "lautstaerke": await SV.setVolume({ percent: Math.round(Number(inp.prozent)) }); return ok("Lautstärke " + Math.round(Number(inp.prozent)) + " %");
+        case "helligkeit": await SV.setBrightness({ percent: Math.round(Number(inp.prozent)) }); return ok("Helligkeit " + Math.round(Number(inp.prozent)) + " %");
         case "smart_home": {
           const c = smartCommands().find(x => x.name.toLowerCase() === String(inp.befehl || "").toLowerCase());
           if (!c) return fail("Diesen Befehl gibt es nicht.");

@@ -24,7 +24,16 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 
+import android.content.ActivityNotFoundException;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.net.Uri;
+import android.provider.AlarmClock;
+import android.provider.CalendarContract;
+import android.view.WindowManager;
+
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -44,6 +53,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
     private boolean wanted = false;      // soll zuhören
     private boolean listening = false;   // hört gerade
     private boolean speaking = false;    // spricht gerade
+    private boolean paused = false;      // App im Hintergrund (z. B. YouTube offen) -> nicht zuhören, nichts stummschalten
     private boolean muteBeep = true;
     private boolean beepMuted = false;
     private AudioManager audio;
@@ -137,7 +147,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
     // Jede Zuhör-Runde bekommt einen frischen Erkenner. Das vermeidet "Fehler 8 – Erkenner beschäftigt",
     // den manche Tablets werfen, wenn man denselben Erkenner sofort wieder startet.
     private void listen() {
-        if (!wanted || speaking || listening) return;
+        if (!wanted || speaking || listening || paused) return;
         try {
             destroyRecognizer();
             recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
@@ -331,17 +341,121 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         }
     }
 
+    // ---------------- Tablet bedienen (Stufe 1) ----------------
+
+    @PluginMethod
+    public void listApps(PluginCall call) {
+        PackageManager pm = getContext().getPackageManager();
+        Intent i = new Intent(Intent.ACTION_MAIN, null);
+        i.addCategory(Intent.CATEGORY_LAUNCHER);
+        List<ResolveInfo> list = pm.queryIntentActivities(i, 0);
+        JSArray arr = new JSArray();
+        for (ResolveInfo r : list) {
+            JSObject o = new JSObject();
+            o.put("name", String.valueOf(r.loadLabel(pm)));
+            o.put("package", r.activityInfo.packageName);
+            arr.put(o);
+        }
+        JSObject res = new JSObject();
+        try { res.put("apps", arr); } catch (Exception ignored) {}
+        call.resolve(res);
+    }
+
+    @PluginMethod
+    public void launchApp(PluginCall call) {
+        String pkg = call.getString("package", "");
+        Intent i = getContext().getPackageManager().getLaunchIntentForPackage(pkg);
+        if (i == null) { call.reject("App nicht gefunden"); return; }
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try { getContext().startActivity(i); call.resolve(); }
+        catch (Exception e) { call.reject("App ließ sich nicht öffnen"); }
+    }
+
+    @PluginMethod
+    public void openUrl(PluginCall call) {
+        String url = call.getString("url", "");
+        String pkg = call.getString("package");
+        Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (pkg != null && !pkg.isEmpty()) i.setPackage(pkg);
+        try { getContext().startActivity(i); call.resolve(); }
+        catch (ActivityNotFoundException e) {
+            if (pkg != null) {   // App nicht da -> ohne feste App nochmal (z. B. im Browser)
+                i.setPackage(null);
+                try { getContext().startActivity(i); call.resolve(); return; } catch (Exception ignored) {}
+            }
+            call.reject("Keine App für diesen Link gefunden");
+        }
+    }
+
+    @PluginMethod
+    public void setAlarm(PluginCall call) {
+        Intent i = new Intent(AlarmClock.ACTION_SET_ALARM);
+        i.putExtra(AlarmClock.EXTRA_HOUR, call.getInt("hour", 7));
+        i.putExtra(AlarmClock.EXTRA_MINUTES, call.getInt("minute", 0));
+        String label = call.getString("label");
+        if (label != null) i.putExtra(AlarmClock.EXTRA_MESSAGE, label);
+        i.putExtra(AlarmClock.EXTRA_SKIP_UI, true);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try { getContext().startActivity(i); call.resolve(); }
+        catch (Exception e) { call.reject("Keine Wecker-App gefunden"); }
+    }
+
+    @PluginMethod
+    public void addEvent(PluginCall call) {
+        Intent i = new Intent(Intent.ACTION_INSERT).setData(CalendarContract.Events.CONTENT_URI);
+        i.putExtra(CalendarContract.Events.TITLE, call.getString("title", "Termin"));
+        Double begin = call.getDouble("begin");
+        Double end = call.getDouble("end");
+        if (begin != null) i.putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, begin.longValue());
+        if (end != null) i.putExtra(CalendarContract.EXTRA_EVENT_END_TIME, end.longValue());
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try { getContext().startActivity(i); call.resolve(); }
+        catch (Exception e) { call.reject("Keine Kalender-App gefunden"); }
+    }
+
+    @PluginMethod
+    public void setVolume(PluginCall call) {
+        int pct = Math.max(0, Math.min(100, call.getInt("percent", 50)));
+        int max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, Math.round(max * pct / 100f), 0);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void setBrightness(PluginCall call) {
+        final float v = Math.max(0.02f, Math.min(1f, call.getInt("percent", 60) / 100f));
+        getActivity().runOnUiThread(() -> {
+            WindowManager.LayoutParams lp = getActivity().getWindow().getAttributes();
+            lp.screenBrightness = v;
+            getActivity().getWindow().setAttributes(lp);
+        });
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void bringToFront(PluginCall call) {
+        Intent i = getContext().getPackageManager().getLaunchIntentForPackage(getContext().getPackageName());
+        if (i != null) { i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT); getContext().startActivity(i); }
+        call.resolve();
+    }
+
     // ---------------- Lebenszyklus ----------------
 
     @Override
     protected void handleOnResume() {
         super.handleOnResume();
+        paused = false;
         if (wanted) restart(500);
     }
 
     @Override
     protected void handleOnPause() {
         super.handleOnPause();
+        paused = true;
+        main.removeCallbacks(listenRunnable);
+        destroyRecognizer();
+        listening = false;
         unmuteBeep();
     }
 

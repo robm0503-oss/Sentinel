@@ -42,6 +42,7 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
@@ -53,6 +54,15 @@
         </intent>
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+        <!-- damit Sentinel sieht, welche Apps installiert sind, und sie öffnen kann -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
         </intent>
     </queries>
 </manifest>
