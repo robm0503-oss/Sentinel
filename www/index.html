@@ -201,7 +201,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 23</div>
+    <div class="hint" id="verHint">Sentinel Version 24</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -1180,7 +1180,7 @@ Sehen: ${stream ? `Du hast eine Kamera als Augen, aber du schaust nur hin, wenn 
 Wenn du auf einem Bild etwas Wichtiges gesehen hast, schreib ganz am Ende eine kurze Notiz in der Form [sah: ...]. Die wird nicht vorgelesen und hilft dir, dich später daran zu erinnern.` : `Deine Kamera ist aus. Erwähne das nur, wenn ${wer} dich bittet, etwas anzuschauen.`}
 ${cfg.about ? `\nWas ${wer} selbst über sich erzählt:\n${cfg.about}\n` : ""}
 Deine Fähigkeiten: Timer und Erinnerungen stellen (sie klingeln auch, wenn gerade niemand redet), Listen führen (z. B. Einkauf, Aufgaben), dir Dinge merken${cfg.search ? ", im Internet nach aktuellen Infos suchen (Wetter, Nachrichten, Öffnungszeiten, Preise)" : ""}${smartCommands().length ? ", das Smart Home steuern mit diesen Befehlen: " + smartCommands().map(c => c.name).join(", ") + " (nutze smart_home; nur diese Befehle gibt es)" : ""}${cfg.haUrl && cfg.haToken ? ", das Smart Home über Home Assistant steuern (erst mit ha_geraete nachsehen, dann mit ha_schalten schalten; bei Türschlössern, Alarmanlagen und Heizung vorher kurz bestätigen lassen)" : (smartCommands().length ? "" : ". Smart-Home-Steuerung ist noch nicht eingerichtet; sag das, wenn danach gefragt wird, und dass man in den Einstellungen unter Smart-Home-Befehle Links eintragen kann")}.
-${NATIVE ? "Du kannst außerdem das Tablet bedienen: Apps öffnen, YouTube, Spotify, Maps oder die Websuche mit einer Suche starten, WhatsApp-Nachrichten vorbereiten (abschicken muss der Mensch), Wecker stellen, Kalendertermine anlegen, Lautstärke und Helligkeit ändern. Wenn du eine andere App öffnest, verschwindet dein Gesicht kurz und du hörst in der Zeit nicht zu; sag kurz, dass man mit dem Sentinel-Symbol oder der Zurück-Taste zu dir zurückkommt.\n" : ""}Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
+${NATIVE ? "Du kannst außerdem das Tablet bedienen: Apps öffnen, YouTube, Spotify, Maps oder die Websuche mit einer Suche starten, WhatsApp-Nachrichten vorbereiten (abschicken muss der Mensch), Wecker stellen, Kalendertermine anlegen, Lautstärke und Helligkeit ändern, das WLAN nach Geräten durchsuchen (erkläre danach verständlich, welche Geräte das wahrscheinlich sind). Wenn du eine andere App öffnest, verschwindet dein Gesicht kurz und du hörst in der Zeit nicht zu; sag kurz, dass man mit dem Sentinel-Symbol oder der Zurück-Taste zu dir zurückkommt.\n" : ""}Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
 Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Sag nie, dass du dir etwas gemerkt hast, ohne das Werkzeug wirklich benutzt zu haben.
 Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})${cfg.ort ? "\nOrt: " + cfg.ort : ""}
@@ -1230,6 +1230,7 @@ ${zeile("Menschen", ich.menschen)}`;
         input_schema: obj({ stunde: { type: "number" }, minute: { type: "number" }, text: { type: "string" } }, ["stunde", "minute"]) },
       { name: "kalender_termin", description: "Legt einen Termin im Kalender des Tablets an (öffnet die Kalender-App zum Bestätigen). beginn als lokale Zeit JJJJ-MM-TTTHH:MM.",
         input_schema: obj({ titel: { type: "string" }, beginn: { type: "string" }, dauer_minuten: { type: "number" } }, ["titel", "beginn"]) },
+      { name: "wlan_scannen", description: "Durchsucht das WLAN nach Geräten (dauert ca. 20 Sekunden). Gibt IP-Adressen, Namen, offene Anschlüsse und erkannte Dienste zurück.", input_schema: obj({}) },
       { name: "lautstaerke", description: "Stellt die Lautstärke des Tablets in Prozent ein.", input_schema: obj({ prozent: { type: "number" } }, ["prozent"]) },
       { name: "helligkeit", description: "Stellt die Bildschirmhelligkeit in Prozent ein.", input_schema: obj({ prozent: { type: "number" } }, ["prozent"]) },
     );
@@ -1253,7 +1254,7 @@ ${zeile("Menschen", ich.menschen)}`;
   }
 
   const SEE_RE = /\b(siehst|sieh|schau|schaust|guck|guckst|zeig|zeige|zeigen|halte|halt ich|in der hand|das hier|dies hier|was ist das|wer ist das|erkennst|erkenn|lies|lesen|wie sehe|wie seh|aussehen|aussehe|outfit|anhab|kamera|foto)\w*/i;
-  let appCache = null;
+  let appCache = null, lastScan = [];
   async function runTool(b) {
     if (b.name === "kamera_bild") {
       const data = snapshot();
@@ -1351,6 +1352,15 @@ ${zeile("Menschen", ich.menschen)}`;
           if (!isFinite(b)) return fail("Zeitpunkt nicht verstanden");
           await SV.addEvent({ title: String(inp.titel || "Termin"), begin: b, end: b + (Number(inp.dauer_minuten) || 60) * 60000 });
           return ok("Kalender geöffnet, Termin vorausgefüllt – bitte dort speichern");
+        }
+        case "wlan_scannen": {
+          status("durchsucht das WLAN"); elog("WLAN-Scan gestartet");
+          const r = await SV.scanNetwork();
+          const HINT = { 80: "Webseite (viele Geräte, z. B. Tapo, Router, Drucker)", 443: "sichere Webseite", 5555: "Android/Fire TV Fernsteuerung (ADB)", 8008: "Chromecast/Google-Gerät", 9999: "TP-Link Kasa", 1400: "Sonos", 8080: "Web-Oberfläche", 554: "Kamera-Stream" };
+          const list = ((r && r.geraete) || []).map(g => `${g.ip}${g.name ? " (" + g.name + ")" : ""}: ${[...(g.dienste || []), ...(g.ports || []).map(p => p + " = " + (HINT[p] || "offen"))].join("; ") || "antwortet"}`);
+          elog("WLAN-Scan: " + list.length + " Geräte");
+          lastScan = list;
+          return ok(list.length ? "Eigenes Tablet: " + r.eigeneIp + "\n" + list.join("\n") : "Keine Geräte gefunden.");
         }
         case "lautstaerke": await SV.setVolume({ percent: Math.round(Number(inp.prozent)) }); return ok("Lautstärke " + Math.round(Number(inp.prozent)) + " %");
         case "helligkeit": await SV.setBrightness({ percent: Math.round(Number(inp.prozent)) }); return ok("Helligkeit " + Math.round(Number(inp.prozent)) + " %");

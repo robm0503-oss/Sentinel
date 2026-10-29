@@ -32,8 +32,26 @@ import android.provider.AlarmClock;
 import android.provider.CalendarContract;
 import android.view.WindowManager;
 
+import android.net.nsd.NsdManager;
+import android.net.nsd.NsdServiceInfo;
+import android.net.wifi.WifiManager;
+
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.NetworkInterface;
+import java.net.Socket;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Enumeration;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.Locale;
 
 /**
@@ -438,6 +456,136 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         Intent i = getContext().getPackageManager().getLaunchIntentForPackage(getContext().getPackageName());
         if (i != null) { i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT); getContext().startActivity(i); }
         call.resolve();
+    }
+
+    // ---------------- WLAN-Scanner ----------------
+
+    private static final int[] SCAN_PORTS = { 80, 443, 5555, 8008, 9999, 1400, 8080, 554 };
+    private static final String[] MDNS_TYPES = { "_googlecast._tcp.", "_hue._tcp.", "_hap._tcp.", "_amzn-wplay._tcp.",
+        "_spotify-connect._tcp.", "_airplay._tcp.", "_shelly._tcp.", "_http._tcp.", "_printer._tcp.", "_sonos._tcp." };
+
+    private String localIp() {
+        try {
+            for (Enumeration<NetworkInterface> e = NetworkInterface.getNetworkInterfaces(); e.hasMoreElements();) {
+                NetworkInterface ni = e.nextElement();
+                if (!ni.isUp() || ni.isLoopback()) continue;
+                for (Enumeration<InetAddress> a = ni.getInetAddresses(); a.hasMoreElements();) {
+                    InetAddress ad = a.nextElement();
+                    if (ad instanceof Inet4Address && ad.isSiteLocalAddress()) return ad.getHostAddress();
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    @PluginMethod
+    public void scanNetwork(PluginCall call) {
+        new Thread(() -> {
+            String myIp = localIp();
+            if (myIp == null) { call.reject("Kein WLAN gefunden"); return; }
+            String prefix = myIp.substring(0, myIp.lastIndexOf('.') + 1);
+            Map<String, List<Integer>> open = new ConcurrentHashMap<>();
+            Map<String, List<String>> mdns = new ConcurrentHashMap<>();
+
+            // 1) Geräte-Namen per Bonjour/mDNS einsammeln (läuft parallel zum Port-Test)
+            Thread mdnsThread = new Thread(() -> discoverMdns(mdns, 6000));
+            mdnsThread.start();
+
+            // 2) Alle Adressen im Netz auf typische Geräte-Ports prüfen
+            ExecutorService ex = Executors.newFixedThreadPool(64);
+            List<Future<?>> jobs = new ArrayList<>();
+            for (int h = 1; h < 255; h++) {
+                final String ip = prefix + h;
+                if (ip.equals(myIp)) continue;
+                for (int port : SCAN_PORTS) {
+                    final int pp = port;
+                    jobs.add(ex.submit(() -> {
+                        try (Socket sk = new Socket()) {
+                            sk.connect(new InetSocketAddress(ip, pp), 400);
+                            open.computeIfAbsent(ip, k -> Collections.synchronizedList(new ArrayList<>())).add(pp);
+                        } catch (Exception ignored) {}
+                    }));
+                }
+            }
+            for (Future<?> f : jobs) { try { f.get(); } catch (Exception ignored) {} }
+
+            // 3) Namen beim Router nachfragen (falls bekannt)
+            Map<String, String> host = new ConcurrentHashMap<>();
+            List<Future<?>> nameJobs = new ArrayList<>();
+            List<String> ips = new ArrayList<>(open.keySet());
+            for (String ip : mdns.keySet()) if (!ips.contains(ip)) ips.add(ip);
+            for (String ip : ips) {
+                nameJobs.add(ex.submit(() -> {
+                    try { String n = InetAddress.getByName(ip).getCanonicalHostName(); if (n != null && !n.equals(ip)) host.put(ip, n); } catch (Exception ignored) {}
+                }));
+            }
+            for (Future<?> f : nameJobs) { try { f.get(1500, TimeUnit.MILLISECONDS); } catch (Exception ignored) {} }
+            ex.shutdownNow();
+            try { mdnsThread.join(7000); } catch (Exception ignored) {}
+
+            JSArray arr = new JSArray();
+            for (String ip : ips) {
+                JSObject o = new JSObject();
+                o.put("ip", ip);
+                if (host.containsKey(ip)) o.put("name", host.get(ip));
+                JSArray ports = new JSArray();
+                List<Integer> pl = open.get(ip);
+                if (pl != null) for (Integer pt : pl) ports.put(pt);
+                JSArray svc = new JSArray();
+                List<String> sl = mdns.get(ip);
+                if (sl != null) for (String sv : sl) svc.put(sv);
+                try { o.put("ports", ports); o.put("dienste", svc); } catch (Exception ignored) {}
+                arr.put(o);
+            }
+            JSObject res = new JSObject();
+            res.put("eigeneIp", myIp);
+            try { res.put("geraete", arr); } catch (Exception ignored) {}
+            call.resolve(res);
+        }).start();
+    }
+
+    private void discoverMdns(Map<String, List<String>> out, long ms) {
+        WifiManager wifi = (WifiManager) getContext().getApplicationContext().getSystemService(android.content.Context.WIFI_SERVICE);
+        WifiManager.MulticastLock lock = null;
+        try { lock = wifi.createMulticastLock("sentinel-scan"); lock.setReferenceCounted(false); lock.acquire(); } catch (Exception ignored) {}
+        NsdManager nsd = (NsdManager) getContext().getSystemService(android.content.Context.NSD_SERVICE);
+        List<NsdServiceInfo> found = Collections.synchronizedList(new ArrayList<>());
+        List<NsdManager.DiscoveryListener> listeners = new ArrayList<>();
+        for (String type : MDNS_TYPES) {
+            NsdManager.DiscoveryListener l = new NsdManager.DiscoveryListener() {
+                @Override public void onStartDiscoveryFailed(String t, int c) {}
+                @Override public void onStopDiscoveryFailed(String t, int c) {}
+                @Override public void onDiscoveryStarted(String t) {}
+                @Override public void onDiscoveryStopped(String t) {}
+                @Override public void onServiceFound(NsdServiceInfo si) { found.add(si); }
+                @Override public void onServiceLost(NsdServiceInfo si) {}
+            };
+            try { nsd.discoverServices(type, NsdManager.PROTOCOL_DNS_SD, l); listeners.add(l); } catch (Exception ignored) {}
+        }
+        try { Thread.sleep(ms / 2); } catch (Exception ignored) {}
+        for (NsdManager.DiscoveryListener l : listeners) { try { nsd.stopServiceDiscovery(l); } catch (Exception ignored) {} }
+        // Gefundene Dienste nacheinander auflösen (Android kann nur einen gleichzeitig)
+        long until = System.currentTimeMillis() + ms / 2;
+        List<NsdServiceInfo> copy = new ArrayList<>(found);
+        for (NsdServiceInfo si : copy) {
+            if (System.currentTimeMillis() > until) break;
+            final CountDownLatch latch = new CountDownLatch(1);
+            try {
+                nsd.resolveService(si, new NsdManager.ResolveListener() {
+                    @Override public void onResolveFailed(NsdServiceInfo s, int c) { latch.countDown(); }
+                    @Override public void onServiceResolved(NsdServiceInfo s) {
+                        if (s.getHost() != null) {
+                            String ip = s.getHost().getHostAddress();
+                            out.computeIfAbsent(ip, k -> Collections.synchronizedList(new ArrayList<>()))
+                               .add(s.getServiceName() + " (" + s.getServiceType().replace(".", "").replace("_tcp", "").replace("_", "") + ")");
+                        }
+                        latch.countDown();
+                    }
+                });
+                latch.await(1200, TimeUnit.MILLISECONDS);
+            } catch (Exception ignored) {}
+        }
+        try { if (lock != null) lock.release(); } catch (Exception ignored) {}
     }
 
     // ---------------- Lebenszyklus ----------------
