@@ -229,7 +229,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 34</div>
+    <div class="hint" id="verHint">Sentinel Version 35</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -908,9 +908,15 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   function nativeEarsOff() { if (SV) SV.stop().catch(() => {}); }
   if (NATIVE) nativeEarsInit();
   elog("Start: " + (NATIVE ? "Android-App" : "Browser") + (NATIVE ? (SV ? ", Ohren-Modul gefunden" : ", Ohren-Modul FEHLT") : ""));
+  let lastHard = Date.now();
   // Wächter für die App: falls Android die Ohren doch mal verliert, nach einer Minute Stille neu anwerfen
   setInterval(() => {
     if (!NATIVE || !cfg.ear || busy || speaking || earsSleeping || !$("startPanel").hidden) return;
+    if (Date.now() - Math.max(lastResultAt, lastHard) > 300000) {
+      lastHard = Date.now(); elog("Ohren: 5 Minuten nichts verstanden – starte sie frisch");
+      SV.stop().catch(() => {}).finally(() => setTimeout(() => { if (cfg.ear && !earsSleeping) nativeEarsOn(); lastReady = Date.now(); }, 800));
+      return;
+    }
     if (Date.now() - lastReady > 20000) {
       SV.status().then(st => elog(`Ohren-Status: soll=${st.wanted} hört=${st.listening} spricht=${st.speaking} Erkennung da=${st.available}`)).catch(() => {});
       nativeEarsOn(); lastReady = Date.now();
@@ -1982,7 +1988,8 @@ ${zeile("Menschen", ich.menschen)}`;
       ? [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: img } }, { type: "text", text: userText }]
       : userText;
     const work = [...history, { role: "user", content }];
-    let text = "";
+    let text = "", lastText = "";
+    const ergebnisse = [];
     for (let round = 0; round < 8; round++) {
       let data;
       try {
@@ -1993,13 +2000,27 @@ ${zeile("Menschen", ich.menschen)}`;
       }
       work.push({ role: "assistant", content: data.content });
       text = data.content.filter(c => c.type === "text").map(c => c.text).join("").trim();
+      if (text) lastText = text;
       if (data.stop_reason === "tool_use") {
         if (data.content.some(c => c.type === "server_tool_use")) status("sucht im Internet");
-        work.push({ role: "user", content: await Promise.all(data.content.filter(c => c.type === "tool_use").map(runTool)) });
+        const res = await Promise.all(data.content.filter(c => c.type === "tool_use").map(runTool));
+        data.content.filter(c => c.type === "tool_use").forEach((c, i) => {
+          const r = res[i]; elog(`Werkzeug ${c.name}: ${r.is_error ? "FEHLER " : ""}${String(r.content).slice(0, 90)}`);
+          ergebnisse.push(r);
+        });
+        work.push({ role: "user", content: res });
         continue;
       }
       if (data.stop_reason === "pause_turn") { status("sucht im Internet"); continue; }
       break;
+    }
+    if (!text) {
+      // Keine Worte vom Gehirn: ehrlich sagen, was wirklich passiert ist, statt einfach "Erledigt"
+      const fehler = ergebnisse.filter(r => r.is_error);
+      if (fehler.length) text = "[skeptisch] Das hat nicht geklappt: " + String(fehler[0].content).slice(0, 160);
+      else if (ergebnisse.length) text = ergebnisse.map(r => String(r.content)).filter(x => x.length > 3 && x !== "ok" && !x.startsWith("{")).join(" ").slice(0, 300) || lastText || "Erledigt.";
+      else text = lastText || "[skeptisch] Da kam gerade keine Antwort an. Sag es bitte nochmal.";
+      elog("Gehirn ohne Antworttext, sage: " + text.slice(0, 80));
     }
     return text;
   }
@@ -2099,7 +2120,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
       const a = raw.indexOf("{"), z = raw.lastIndexOf("}");
       const neu = a >= 0 && z > a ? JSON.parse(raw.slice(a, z + 1)) : null;
       if (neu && typeof neu === "object" && !Array.isArray(neu)) {
-        const s = sauber({ ...neu, gespraeche: ich.gespraeche });
+        const s = sauber({ ...neu, gespraeche: ich.gespraeche, geburtstag: ich.geburtstag });
         if (!s.name) s.name = ich.name;
         ich = s;
       }
