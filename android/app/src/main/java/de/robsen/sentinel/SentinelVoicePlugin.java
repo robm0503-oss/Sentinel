@@ -63,7 +63,10 @@ import java.util.Locale;
  */
 @CapacitorPlugin(
     name = "SentinelVoice",
-    permissions = { @Permission(strings = { Manifest.permission.RECORD_AUDIO }, alias = "mic") }
+    permissions = {
+        @Permission(strings = { Manifest.permission.RECORD_AUDIO }, alias = "mic"),
+        @Permission(strings = { Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR }, alias = "calendar")
+    }
 )
 public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
 
@@ -434,6 +437,67 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try { getContext().startActivity(i); call.resolve(); }
         catch (Exception e) { call.reject("Keine Kalender-App gefunden"); }
+    }
+
+    // Erinnerung direkt in den Google-Kalender schreiben (ohne Nachfrage). Der Kalender synchronisiert
+    // sie aufs Handy – so klingelt sie dort auch, wenn das Tablet aus ist.
+    @PluginMethod
+    public void reminderEvent(PluginCall call) {
+        if (getPermissionState("calendar") != PermissionState.GRANTED) { requestPermissionForAlias("calendar", call, "calendarCallback"); return; }
+        doReminderEvent(call);
+    }
+
+    @PermissionCallback
+    private void calendarCallback(PluginCall call) {
+        if (getPermissionState("calendar") == PermissionState.GRANTED) doReminderEvent(call);
+        else call.reject("Kalender nicht erlaubt");
+    }
+
+    private void doReminderEvent(PluginCall call) {
+        try {
+            android.content.ContentResolver cr = getContext().getContentResolver();
+            long calId = -1; String account = "";
+            String[] proj = { CalendarContract.Calendars._ID, CalendarContract.Calendars.ACCOUNT_NAME, CalendarContract.Calendars.ACCOUNT_TYPE,
+                CalendarContract.Calendars.IS_PRIMARY, CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL };
+            try (android.database.Cursor c = cr.query(CalendarContract.Calendars.CONTENT_URI, proj, CalendarContract.Calendars.VISIBLE + "=1", null, null)) {
+                int best = -1;
+                while (c != null && c.moveToNext()) {
+                    if (c.getInt(4) < CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR) continue;
+                    int score = ("com.google".equals(c.getString(2)) ? 2 : 0) + (c.getInt(3) == 1 ? 1 : 0);
+                    if (score > best) { best = score; calId = c.getLong(0); account = c.getString(1); }
+                }
+            }
+            if (calId < 0) { call.reject("Kein Kalender auf dem Tablet gefunden"); return; }
+            long begin = call.getDouble("begin", (double) System.currentTimeMillis()).longValue();
+            android.content.ContentValues v = new android.content.ContentValues();
+            v.put(CalendarContract.Events.CALENDAR_ID, calId);
+            v.put(CalendarContract.Events.TITLE, call.getString("title", "Erinnerung"));
+            v.put(CalendarContract.Events.DESCRIPTION, "Von Sentinel");
+            v.put(CalendarContract.Events.DTSTART, begin);
+            v.put(CalendarContract.Events.DTEND, begin + 15 * 60000L);
+            v.put(CalendarContract.Events.EVENT_TIMEZONE, java.util.TimeZone.getDefault().getID());
+            v.put(CalendarContract.Events.HAS_ALARM, 1);
+            Uri u = cr.insert(CalendarContract.Events.CONTENT_URI, v);
+            if (u == null) { call.reject("Kalender hat den Eintrag abgelehnt"); return; }
+            long id = Long.parseLong(u.getLastPathSegment());
+            android.content.ContentValues r = new android.content.ContentValues();
+            r.put(CalendarContract.Reminders.EVENT_ID, id);
+            r.put(CalendarContract.Reminders.MINUTES, 0);
+            r.put(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT);
+            cr.insert(CalendarContract.Reminders.CONTENT_URI, r);
+            JSObject o = new JSObject(); o.put("id", id); o.put("account", account);
+            call.resolve(o);
+        } catch (Exception e) { call.reject("Kalender-Fehler: " + e.getMessage()); }
+    }
+
+    @PluginMethod
+    public void deleteEvent(PluginCall call) {
+        try {
+            long id = call.getDouble("id", -1d).longValue();
+            if (id > 0 && getPermissionState("calendar") == PermissionState.GRANTED)
+                getContext().getContentResolver().delete(android.content.ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, id), null, null);
+        } catch (Exception ignored) {}
+        call.resolve();
     }
 
     @PluginMethod

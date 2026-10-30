@@ -230,7 +230,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 37</div>
+    <div class="hint" id="verHint">Sentinel Version 38</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -1545,7 +1545,7 @@ Lies immer nur EINEN Schritt vor, kurz und klar, und melde ihn mit kochschritt. 
     const s = due.typ === "timer" ? `Dein Timer ist abgelaufen${due.text ? ": " + due.text : ""}.` : `Erinnerung${ich.name ? " für " + ich.name : ""}: ${due.text}.`;
     setTimeout(() => speak(s, "neutral").then(() => { if (NATIVE && cfg.ear) nativeEarsOn(); }), 1400);
     // zusätzlich aufs Handy, falls niemand zu Hause ist
-    if (cfg.tgRemind !== false && tgReady()) tgText((due.typ === "timer" ? "⏱ " : "⏰ ") + s).catch(e => elog("Erinnerung per Telegram ging nicht: " + e.message));
+    if (!due.kal && cfg.tgRemind !== false && tgReady()) tgText((due.typ === "timer" ? "⏱ " : "⏰ ") + s).catch(e => elog("Erinnerung per Telegram ging nicht: " + e.message));
   }, 1000);
 
   // ================= SMART HOME ÜBER LINKS (z. B. Alexa-Routinen via Voice Monkey) =================
@@ -1841,17 +1841,26 @@ ${zeile("Menschen", ich.menschen)}`;
           if (!isFinite(at)) return fail("Zeitpunkt nicht verstanden. Format JJJJ-MM-TTTHH:MM.");
           if (at < Date.now() - 60000) return fail("Dieser Zeitpunkt liegt in der Vergangenheit.");
           const text = String(inp.text || "").trim().slice(0, 140);
-          termine.push({ typ: "erinnerung", at, text }); saveTermine();
-          return ok(`Erinnerung gestellt für ${wannText(at)}`);
+          const t = { typ: "erinnerung", at, text };
+          let handy = "";
+          // Auch in den Google-Kalender: dann meldet sich das Handy, selbst wenn das Tablet aus ist
+          if (NATIVE && SV && SV.reminderEvent && cfg.kalender !== false && at - Date.now() > 3 * 60000) {
+            try { const r = await SV.reminderEvent({ title: "⏰ " + (text || "Erinnerung"), begin: at }); t.kal = r.id; handy = " Sie steht auch im Kalender und meldet sich auf dem Handy."; elog("Erinnerung im Kalender (" + r.account + ")"); }
+            catch (e) { elog("Kalender ging nicht: " + (e.message || e)); }
+          }
+          termine.push(t); saveTermine();
+          return ok(`Erinnerung gestellt für ${wannText(at)}.${handy}`);
         }
         case "termine_anzeigen":
           return ok(termine.length ? termine.map((t, i) => `${i + 1}. ${t.typ === "timer" ? "Timer" : "Erinnerung"} ${wannText(t.at)}${t.text ? ": " + t.text : ""}`).join("\n") : "Keine offenen Timer oder Erinnerungen.");
         case "termin_loeschen": {
           const vorher = termine.length, w = String(inp.begriff || "").toLowerCase();
+          const alt = termine.slice();
           if (w === "alle") termine = [];
           else if (Number(inp.nummer) >= 1) termine = termine.filter((t, i) => i !== Number(inp.nummer) - 1);
           else if (w) termine = termine.filter(t => !(t.text || "").toLowerCase().includes(w) && !(w === "timer" && t.typ === "timer"));
           else return fail("Nummer oder Begriff fehlt");
+          alt.filter(t => t.kal && !termine.includes(t)).forEach(t => SV && SV.deleteEvent && SV.deleteEvent({ id: t.kal }).catch(() => {}));
           saveTermine(); return ok(`${vorher - termine.length} gelöscht`);
         }
         case "liste": {
