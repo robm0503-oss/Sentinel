@@ -229,7 +229,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 32</div>
+    <div class="hint" id="verHint">Sentinel Version 33</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -1553,7 +1553,9 @@ Lies immer nur EINEN Schritt vor, kurz und klar, und melde ihn mit kochschritt. 
     const CH = NATIVE && ((window.capacitorExports && window.capacitorExports.CapacitorHttp) || (window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp));
     if (CH) {
       const r = await CH.get({ url });
-      if (r.status >= 400) throw new Error("Fehler " + r.status);
+      const body = typeof r.data === "string" ? r.data : JSON.stringify(r.data || "");
+      elog(`Link-Antwort ${r.status}: ${String(body).slice(0, 80)}`);
+      if (r.status >= 400 || /"success"\s*:\s*false/.test(body)) throw new Error("Fehler " + r.status + " " + String(body).slice(0, 80));
       return;
     }
     try { const r = await fetch(url); if (!r.ok) throw new Error("Fehler " + r.status); }
@@ -2024,6 +2026,14 @@ ${zeile("Menschen", ich.menschen)}`;
   async function send(text) {
     text = String(text || "").trim();
     if (busy || !text) return;
+    const roh = text.toLowerCase().replace(WAKE, " ").replace(/\b(bitte|mal|jetzt)\b/g, " ").replace(/[^\wäöüß ]/g, " ").replace(/\s+/g, " ").trim();
+    const direkt = smartCommands().find(c => c.name.toLowerCase() === roh);
+    if (direkt) {
+      wake(); logTurn("user", text); elog("Direktbefehl: " + direkt.name);
+      try { await triggerUrl(direkt.url); speak("Erledigt.", "freude"); }
+      catch (e) { elog("Direktbefehl ging nicht: " + e.message); speak("Das hat nicht geklappt: " + direkt.name + ".", "skeptisch"); }
+      return;
+    }
     if (overLimit()) { setMood("muede"); speak("Das Tageslimit ist erreicht. Morgen bin ich wieder voll für dich da.", "muede"); return; }
     wake(); keepAwake();
     if (synth) synth.cancel();
