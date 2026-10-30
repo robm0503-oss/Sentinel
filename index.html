@@ -175,6 +175,10 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       <input id="sHaToken" type="password" autocomplete="off" placeholder="Langlebiges Zugriffstoken">
     </div>
     <div class="field">
+      <label for="sGovee">Govee-API-Key (Lampen direkt steuern: an/aus, Farbe, Helligkeit)</label>
+      <input id="sGovee" type="password" autocomplete="off" placeholder="aus der Govee-App: Profil → Einstellungen → API-Schlüssel beantragen">
+    </div>
+    <div class="field">
       <label for="sTgToken">Telegram-Bot-Token (für Nachrichten aufs Handy und den Wachhund)</label>
       <input id="sTgToken" type="password" autocomplete="off" placeholder="123456:ABC… von @BotFather">
     </div>
@@ -230,7 +234,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 38</div>
+    <div class="hint" id="verHint">Sentinel Version 39</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -1339,6 +1343,58 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     } catch (e) { elog("Foto ging nicht (" + e.message + "), schicke Text"); await tgText(caption); }
   }
 
+  // ================= GOVEE-LAMPEN (direkt über die Govee-API) =================
+  let goveeGeraete = null;
+  async function govee(path, body) {
+    const url = "https://openapi.api.govee.com/router/api/v1" + path, h = { "Govee-API-Key": cfg.govee, "Content-Type": "application/json" };
+    const CH = CHttp();
+    if (CH) {
+      const r = body ? await CH.post({ url, headers: h, data: body }) : await CH.get({ url, headers: h });
+      const d = typeof r.data === "string" ? JSON.parse(r.data || "{}") : r.data;
+      if (r.status >= 400 || (d && d.code && d.code !== 200)) throw new Error((d && (d.msg || d.message)) || "Govee-Fehler " + r.status);
+      return d;
+    }
+    const r = await fetch(url, body ? { method: "POST", headers: h, body: JSON.stringify(body) } : { headers: h });
+    const d = await r.json(); if (!r.ok || (d.code && d.code !== 200)) throw new Error(d.msg || d.message || "Govee-Fehler " + r.status);
+    return d;
+  }
+  async function goveeLaden() {
+    if (!cfg.govee) return [];
+    if (goveeGeraete) return goveeGeraete;
+    const d = await govee("/user/devices");
+    goveeGeraete = (d.data || []).map(x => ({ sku: x.sku, device: x.device, name: x.deviceName || x.sku, caps: (x.capabilities || []).map(c => c.instance) }));
+    store.set("goveeNamen", goveeGeraete.map(g => g.name));
+    elog("Govee: " + goveeGeraete.map(g => g.name).join(", "));
+    return goveeGeraete;
+  }
+  const FARBEN = { rot: "#ff0000", grün: "#00ff00", gruen: "#00ff00", blau: "#0000ff", gelb: "#ffd000", orange: "#ff7000", lila: "#8000ff", violett: "#8000ff", pink: "#ff3090", rosa: "#ff70b0", türkis: "#00ffd0", cyan: "#00ffff", weiß: "#ffffff", weiss: "#ffffff" };
+  async function licht(inp) {
+    if (!cfg.govee) throw new Error("Kein Govee-API-Key eingetragen (Einstellungen).");
+    const alle = await goveeLaden();
+    const w = String(inp.lampe || "alle").toLowerCase().trim();
+    const ziel = w === "alle" || !w ? alle : alle.filter(g => g.name.toLowerCase().includes(w) || w.includes(g.name.toLowerCase()));
+    if (!ziel.length) throw new Error("Keine Lampe namens „" + inp.lampe + "“. Es gibt: " + alle.map(g => g.name).join(", "));
+    const befehle = [];
+    if (inp.an === false) befehle.push({ type: "devices.capabilities.on_off", instance: "powerSwitch", value: 0 });
+    else {
+      if (inp.an === true || inp.helligkeit != null || inp.farbe || inp.kelvin) befehle.push({ type: "devices.capabilities.on_off", instance: "powerSwitch", value: 1 });
+      if (inp.helligkeit != null) befehle.push({ type: "devices.capabilities.range", instance: "brightness", value: Math.max(1, Math.min(100, Math.round(Number(inp.helligkeit)))) });
+      if (inp.farbe) {
+        let hx = FARBEN[String(inp.farbe).toLowerCase()] || String(inp.farbe);
+        if (!/^#?[0-9a-f]{6}$/i.test(hx)) throw new Error("Farbe nicht verstanden: " + inp.farbe);
+        befehle.push({ type: "devices.capabilities.color_setting", instance: "colorRgb", value: parseInt(hx.replace("#", ""), 16) });
+      }
+      if (inp.kelvin) befehle.push({ type: "devices.capabilities.color_setting", instance: "colorTemperatureK", value: Math.max(2000, Math.min(9000, Math.round(Number(inp.kelvin)))) });
+    }
+    if (!befehle.length) throw new Error("Was soll ich mit dem Licht machen?");
+    for (const g of ziel) for (const b of befehle) {
+      if (g.caps.length && !g.caps.includes(b.instance)) continue;
+      await govee("/device/control", { requestId: String(Date.now()), payload: { sku: g.sku, device: g.device, capability: b } });
+    }
+    return ziel.map(g => g.name).join(", ");
+  }
+  if (cfg.govee) setTimeout(() => goveeLaden().catch(e => elog("Govee: " + e.message)), 3000);
+
   // ================= WACHHUND: Bewegung -> Foto aufs Handy =================
   const wach = { on: false, armAt: 0, prev: null, lastAlert: 0, hits: 0, timer: null, alerts: 0 };
   const wcv = document.createElement("canvas"); wcv.width = 80; wcv.height = 60;
@@ -1698,7 +1754,7 @@ Für Wetterfragen nutze immer das Werkzeug wetter, nie die Websuche. Will ${wer}
 Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
 Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Sag nie, dass du dir etwas gemerkt hast, ohne das Werkzeug wirklich benutzt zu haben.
-Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\n${dekoInfo()}\n${geburtstagInfo()}\nDeine API-Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.monat === monat() ? kosten.usd : 0)}.${wach.on ? "\nDer WACHHUND ist gerade an" + (wach.alerts ? ` (${wach.alerts} Bewegungsmeldungen)` : "") + ". Wenn " + wer + " sagt, dass er wieder da ist, schalte ihn aus." : ""}${nightActive ? "\nEs ist Nachtmodus: antworte besonders kurz und ruhig." : ""}${kochInfo()}${essenInfo()}${akkuInfo()}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
+Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\n${dekoInfo()}\n${geburtstagInfo()}\nDeine API-Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.monat === monat() ? kosten.usd : 0)}.${wach.on ? "\nDer WACHHUND ist gerade an" + (wach.alerts ? ` (${wach.alerts} Bewegungsmeldungen)` : "") + ". Wenn " + wer + " sagt, dass er wieder da ist, schalte ihn aus." : ""}${nightActive ? "\nEs ist Nachtmodus: antworte besonders kurz und ruhig." : ""}${kochInfo()}${essenInfo()}${akkuInfo()}${cfg.govee ? "\nDeine Lampen (Werkzeug licht): " + (store.get("goveeNamen", []).join(", ") || "werden noch geladen") : ""}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
 Offene Timer und Erinnerungen: ${termText}
 Listen: ${listenText}
 ${zeile("Was du über " + wer + " weißt", ich.fakten)}
@@ -1759,6 +1815,8 @@ ${zeile("Menschen", ich.menschen)}`;
         input_schema: obj({ start: { type: "string" }, tage: { type: "array", items: obj({ tag: { type: "string" }, essen: { type: "string" } }, ["tag", "essen"]) } }, ["start", "tage"]) },
       { name: "ernaehrungsziel", description: "Speichert das Ernährungsziel (z. B. „bis Ostern 6 kg abnehmen“) oder löscht es mit leerem Text. hinweise = optional, wer mitisst und was jemand nicht mag oder nicht verträgt.",
         input_schema: obj({ ziel: { type: "string" }, hinweise: { type: "string" } }) },
+      { name: "licht", description: "Steuert die Govee-Lampen direkt: an/aus, Helligkeit (1–100), Farbe (Name wie rot/blau oder #RRGGBB, Zwischentöne selbst als Hex wählen) oder Weißton in Kelvin (2700 = gemütlich warm, 4000 = neutral, 6500 = kalt). lampe = Name der Lampe oder 'alle'. Für Stimmungen (Filmabend, gemütlich, Party) selbst passende Werte wählen.",
+        input_schema: obj({ lampe: { type: "string" }, an: { type: "boolean" }, helligkeit: { type: "integer" }, farbe: { type: "string" }, kelvin: { type: "integer" } }) },
       { name: "nachricht_ans_handy", description: "Schickt eine Telegram-Nachricht aufs Handy deines Menschen, z. B. die Einkaufsliste oder eine Notiz für unterwegs.",
         input_schema: obj({ text: { type: "string" } }, ["text"]) },
       { name: "wachhund", description: "Wachhund-Modus: Während niemand zu Hause ist, beobachtet die Kamera den Raum und schickt bei Bewegung ein Foto aufs Handy (Telegram). Startet nach einer Minute, damit man in Ruhe gehen kann. an=false schaltet ihn aus (z. B. wenn jemand sagt, dass er wieder da ist).",
@@ -1940,6 +1998,7 @@ ${zeile("Menschen", ich.menschen)}`;
           if (inp.hinweise != null) essen.hinweise = String(inp.hinweise).trim().slice(0, 400);
           saveEssen(); return ok(essen.ziel ? "Ziel gespeichert: " + essen.ziel : "Kein Ziel mehr gespeichert.");
         }
+        case "licht": return ok("Erledigt bei: " + await licht(inp));
         case "nachricht_ans_handy": await tgText(inp.text || ""); return ok("Nachricht ist aufs Handy geschickt.");
         case "wachhund": {
           if (inp.an) { await wachhundAn(false); return ok("Wachhund ist an und wird in einer Minute scharf. Bei Bewegung kommt ein Foto aufs Handy."); }
@@ -2187,7 +2246,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
     $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || ""; $("sGroq").value = cfg.groqKey || ""; $("sMuteBeep").checked = cfg.muteBeep !== false;
     $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about; $("sName").value = ich.name || ""; $("sBday").value = /^\d{4}-/.test(ich.geburtstag || "") ? ich.geburtstag : ""; $("sSmart").value = cfg.smart || "";
-    $("sTgToken").value = cfg.tgToken || ""; $("sTgChat").value = cfg.tgChat || ""; $("sNight").checked = !!cfg.night; $("sAkku").checked = !!cfg.akku; $("sTgRemind").checked = cfg.tgRemind !== false; $("sAkkuMin").value = cfg.akkuMin; $("sAkkuMax").value = cfg.akkuMax; $("sAkkuOn").value = cfg.akkuOn || ""; $("sAkkuOff").value = cfg.akkuOff || ""; $("sNightFrom").value = cfg.nightFrom || "22:30"; $("sNightTo").value = cfg.nightTo || "06:30";
+    $("sTgToken").value = cfg.tgToken || ""; $("sGovee").value = cfg.govee || ""; $("sTgChat").value = cfg.tgChat || ""; $("sNight").checked = !!cfg.night; $("sAkku").checked = !!cfg.akku; $("sTgRemind").checked = cfg.tgRemind !== false; $("sAkkuMin").value = cfg.akkuMin; $("sAkkuMax").value = cfg.akkuMax; $("sAkkuOn").value = cfg.akkuOn || ""; $("sAkkuOff").value = cfg.akkuOff || ""; $("sNightFrom").value = cfg.nightFrom || "22:30"; $("sNightTo").value = cfg.nightTo || "06:30";
     const u = usage.tag === heute() ? usage : { n: 0, inTok: 0, outTok: 0 };
     $("sUsage").textContent = `Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.usd)} · Heute: ${u.n} Anfragen · ${u.inTok.toLocaleString("de-DE")} Tokens rein · ${(u.cacheTok || 0).toLocaleString("de-DE")} günstig aus dem Zwischenspeicher · ${u.outTok.toLocaleString("de-DE")} Tokens raus`;
     $("setPanel").hidden = false;
@@ -2216,6 +2275,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     }
     cfg.haUrl = $("sHaUrl").value.trim(); cfg.haToken = $("sHaToken").value.trim(); cfg.about = $("sAbout").value.trim().slice(0, 4000); cfg.smart = $("sSmart").value.trim().slice(0, 8000);
     const nm = $("sName").value.trim().slice(0, 40); if (nm !== ich.name) { ich.name = nm; saveIch(); }
+    if ($("sGovee").value.trim() !== (cfg.govee || "")) { cfg.govee = $("sGovee").value.trim(); goveeGeraete = null; goveeLaden(); }
     cfg.tgToken = $("sTgToken").value.trim(); cfg.tgChat = $("sTgChat").value.trim();
     cfg.tgRemind = $("sTgRemind").checked; cfg.akku = $("sAkku").checked; cfg.akkuOn = $("sAkkuOn").value.trim(); cfg.akkuOff = $("sAkkuOff").value.trim();
     cfg.akkuMin = Math.max(5, Math.min(90, parseInt($("sAkkuMin").value, 10) || 15)); cfg.akkuMax = Math.max(cfg.akkuMin + 5, Math.min(100, parseInt($("sAkkuMax").value, 10) || 100));
