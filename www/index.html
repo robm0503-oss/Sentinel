@@ -183,6 +183,15 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       <input id="sTgChat" type="text" autocomplete="off" placeholder="Schreib deinem Bot „hallo“, dann tippe unten">
       <button class="ghost" id="sTgFind" type="button" style="margin-top:6px">Chat-ID automatisch finden</button>
     </div>
+    <label class="check"><input id="sAkku" type="checkbox"> Akku selbst laden (schaltet die Steckdose über die Smart-Home-Befehle)</label>
+    <div class="field" style="display:flex;gap:10px;align-items:center">
+      <label for="sAkkuMin" style="margin:0">an unter</label><input id="sAkkuMin" type="number" min="5" max="90" style="flex:1"><span>%</span>
+      <label for="sAkkuMax" style="margin:0">aus bei</label><input id="sAkkuMax" type="number" min="50" max="100" style="flex:1"><span>%</span>
+    </div>
+    <div class="field" style="display:flex;gap:10px">
+      <input id="sAkkuOn" type="text" autocomplete="off" placeholder="Befehl: z. B. Ladestecker an" style="flex:1">
+      <input id="sAkkuOff" type="text" autocomplete="off" placeholder="Befehl: z. B. Ladestecker aus" style="flex:1">
+    </div>
     <label class="check"><input id="sNight" type="checkbox"> Nachtmodus (dunkel, leise, hört nur nach Antippen)</label>
     <div class="field" style="display:flex;gap:10px;align-items:center">
       <label for="sNightFrom" style="margin:0">von</label><input id="sNightFrom" type="time" style="flex:1">
@@ -220,7 +229,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 31</div>
+    <div class="hint" id="verHint">Sentinel Version 32</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -252,7 +261,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     get(k, d) { try { const v = localStorage.getItem("sentinel." + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem("sentinel." + k, JSON.stringify(v)); } catch (e) {} },
   };
-  const cfg = Object.assign({ key: "", model: "claude-haiku-5-5", ort: "", limit: 300, search: true, wake: true, look: true, engine: "vosk", wakeExtra: "", voskUrl: "", ear: true, eye: true, haUrl: "", haToken: "", tgToken: "", tgChat: "", night: false, nightFrom: "22:30", nightTo: "06:30" }, store.get("cfg", {}));
+  const cfg = Object.assign({ key: "", model: "claude-haiku-5-5", ort: "", limit: 300, search: true, wake: true, look: true, engine: "vosk", wakeExtra: "", voskUrl: "", ear: true, eye: true, haUrl: "", haToken: "", tgToken: "", tgChat: "", akku: false, akkuMin: 15, akkuMax: 100, akkuOn: "", akkuOff: "", night: false, nightFrom: "22:30", nightTo: "06:30" }, store.get("cfg", {}));
   const saveCfg = () => store.set("cfg", cfg);
   // Umstieg auf v3: Sonnet als Standard-Gehirn für natürlichere Gespräche
   if (!cfg.v3) { if (cfg.model === "claude-haiku-5-5") cfg.model = "claude-sonnet-5-5"; cfg.v3 = true; saveCfg(); }
@@ -1382,6 +1391,40 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   }
   setInterval(nightTick, 5000); setTimeout(nightTick, 1500);
 
+  // ================= AKKU: lädt sich selbst über die Smart-Steckdose =================
+  const akku = { level: -1, charging: false, lastAction: "", lastAt: 0, tries: 0, warned: false };
+  async function akkuLesen() {
+    try {
+      if (NATIVE && SV && SV.battery) { const b = await SV.battery(); akku.level = b.level; akku.charging = !!b.charging; return; }
+      if (navigator.getBattery) { const b = await navigator.getBattery(); akku.level = Math.round(b.level * 100); akku.charging = b.charging; }
+    } catch (e) {}
+  }
+  async function akkuSchalten(an) {
+    const name = an ? cfg.akkuOn : cfg.akkuOff;
+    const c = smartCommands().find(x => x.name.toLowerCase() === String(name || "").toLowerCase());
+    if (!c) { elog(`Akku: Befehl „${name || "?"}“ fehlt in den Smart-Home-Befehlen`); return false; }
+    try { await triggerUrl(c.url); elog(`Akku ${akku.level} %: Steckdose ${an ? "an" : "aus"}`); return true; }
+    catch (e) { elog("Akku: Schalten ging nicht: " + e.message); return false; }
+  }
+  async function akkuTick() {
+    await akkuLesen();
+    if (!cfg.akku || akku.level < 0) return;
+    const now = Date.now();
+    if (akku.level <= cfg.akkuMin && !akku.charging) {
+      // alle 5 Minuten neu versuchen; nach 3 Fehlversuchen einmal Bescheid geben
+      if (now - akku.lastAt > 5 * 60000) {
+        akku.lastAt = now; akku.lastAction = "an"; akku.tries++;
+        await akkuSchalten(true);
+        if (akku.tries >= 3 && !akku.warned && tgReady()) { akku.warned = true; tgText(`🔋 Sentinel: Mein Akku ist bei ${akku.level} % und die Steckdose lädt nicht. Kannst du mal nachsehen?`).catch(() => {}); }
+      }
+    } else if (akku.charging) { akku.tries = 0; akku.warned = false; }
+    if (akku.level >= cfg.akkuMax && akku.charging && now - akku.lastAt > 2 * 60000) {
+      akku.lastAt = now; akku.lastAction = "aus"; await akkuSchalten(false);
+    }
+  }
+  setInterval(akkuTick, 60000); setTimeout(akkuTick, 5000);
+  const akkuInfo = () => akku.level < 0 ? "" : `\nDein Akku: ${akku.level} %${akku.charging ? ", lädt gerade" : ""}.${cfg.akku ? ` Du schaltest deine Ladesteckdose selbst: an unter ${cfg.akkuMin} %, aus bei ${cfg.akkuMax} %.` : ""}`;
+
   // ================= WETTER (Open-Meteo, kostenlos, ohne Websuche) =================
   const WMO = { 0: "klar", 1: "überwiegend klar", 2: "teils bewölkt", 3: "bedeckt", 45: "Nebel", 48: "Reifnebel", 51: "leichter Niesel", 53: "Niesel", 55: "starker Niesel", 56: "gefrierender Niesel", 57: "gefrierender Niesel", 61: "leichter Regen", 63: "Regen", 65: "starker Regen", 66: "gefrierender Regen", 67: "gefrierender Regen", 71: "leichter Schneefall", 73: "Schneefall", 75: "starker Schneefall", 77: "Schneegriesel", 80: "leichte Schauer", 81: "Schauer", 82: "heftige Schauer", 85: "Schneeschauer", 86: "starke Schneeschauer", 95: "Gewitter", 96: "Gewitter mit Hagel", 99: "Gewitter mit Hagel" };
   async function wetter(ort, tage) {
@@ -1644,7 +1687,7 @@ Für Wetterfragen nutze immer das Werkzeug wetter, nie die Websuche. Will ${wer}
 Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
 Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Sag nie, dass du dir etwas gemerkt hast, ohne das Werkzeug wirklich benutzt zu haben.
-Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\n${dekoInfo()}\n${geburtstagInfo()}\nDeine API-Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.monat === monat() ? kosten.usd : 0)}.${wach.on ? "\nDer WACHHUND ist gerade an" + (wach.alerts ? ` (${wach.alerts} Bewegungsmeldungen)` : "") + ". Wenn " + wer + " sagt, dass er wieder da ist, schalte ihn aus." : ""}${nightActive ? "\nEs ist Nachtmodus: antworte besonders kurz und ruhig." : ""}${kochInfo()}${essenInfo()}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
+Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\n${dekoInfo()}\n${geburtstagInfo()}\nDeine API-Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.monat === monat() ? kosten.usd : 0)}.${wach.on ? "\nDer WACHHUND ist gerade an" + (wach.alerts ? ` (${wach.alerts} Bewegungsmeldungen)` : "") + ". Wenn " + wer + " sagt, dass er wieder da ist, schalte ihn aus." : ""}${nightActive ? "\nEs ist Nachtmodus: antworte besonders kurz und ruhig." : ""}${kochInfo()}${essenInfo()}${akkuInfo()}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
 Offene Timer und Erinnerungen: ${termText}
 Listen: ${listenText}
 ${zeile("Was du über " + wer + " weißt", ich.fakten)}
@@ -2101,7 +2144,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
     $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || ""; $("sGroq").value = cfg.groqKey || ""; $("sMuteBeep").checked = cfg.muteBeep !== false;
     $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about; $("sName").value = ich.name || ""; $("sBday").value = /^\d{4}-/.test(ich.geburtstag || "") ? ich.geburtstag : ""; $("sSmart").value = cfg.smart || "";
-    $("sTgToken").value = cfg.tgToken || ""; $("sTgChat").value = cfg.tgChat || ""; $("sNight").checked = !!cfg.night; $("sNightFrom").value = cfg.nightFrom || "22:30"; $("sNightTo").value = cfg.nightTo || "06:30";
+    $("sTgToken").value = cfg.tgToken || ""; $("sTgChat").value = cfg.tgChat || ""; $("sNight").checked = !!cfg.night; $("sAkku").checked = !!cfg.akku; $("sAkkuMin").value = cfg.akkuMin; $("sAkkuMax").value = cfg.akkuMax; $("sAkkuOn").value = cfg.akkuOn || ""; $("sAkkuOff").value = cfg.akkuOff || ""; $("sNightFrom").value = cfg.nightFrom || "22:30"; $("sNightTo").value = cfg.nightTo || "06:30";
     const u = usage.tag === heute() ? usage : { n: 0, inTok: 0, outTok: 0 };
     $("sUsage").textContent = `Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.usd)} · Heute: ${u.n} Anfragen · ${u.inTok.toLocaleString("de-DE")} Tokens rein · ${(u.cacheTok || 0).toLocaleString("de-DE")} günstig aus dem Zwischenspeicher · ${u.outTok.toLocaleString("de-DE")} Tokens raus`;
     $("setPanel").hidden = false;
@@ -2131,6 +2174,8 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     cfg.haUrl = $("sHaUrl").value.trim(); cfg.haToken = $("sHaToken").value.trim(); cfg.about = $("sAbout").value.trim().slice(0, 4000); cfg.smart = $("sSmart").value.trim().slice(0, 8000);
     const nm = $("sName").value.trim().slice(0, 40); if (nm !== ich.name) { ich.name = nm; saveIch(); }
     cfg.tgToken = $("sTgToken").value.trim(); cfg.tgChat = $("sTgChat").value.trim();
+    cfg.akku = $("sAkku").checked; cfg.akkuOn = $("sAkkuOn").value.trim(); cfg.akkuOff = $("sAkkuOff").value.trim();
+    cfg.akkuMin = Math.max(5, Math.min(90, parseInt($("sAkkuMin").value, 10) || 15)); cfg.akkuMax = Math.max(cfg.akkuMin + 5, Math.min(100, parseInt($("sAkkuMax").value, 10) || 100));
     cfg.night = $("sNight").checked; cfg.nightFrom = $("sNightFrom").value || "22:30"; cfg.nightTo = $("sNightTo").value || "06:30";
     const bd = $("sBday").value; if (bd && bd !== ich.geburtstag) { ich.geburtstag = bd; saveIch(); }
     saveCfg(); $("setPanel").hidden = true; note("Gespeichert.", 2000);

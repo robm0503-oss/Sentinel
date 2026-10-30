@@ -2,6 +2,8 @@ package de.robsen.sentinel;
 
 import android.Manifest;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.os.BatteryManager;
 import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -453,6 +455,20 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
             getActivity().getWindow().setAttributes(lp);
         });
         call.resolve();
+    }
+
+    // Akkustand und ob gerade geladen wird
+    @PluginMethod
+    public void battery(PluginCall call) {
+        Intent b = getContext().registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        JSObject r = new JSObject();
+        if (b == null) { r.put("level", -1); r.put("charging", false); call.resolve(r); return; }
+        int level = b.getIntExtra(BatteryManager.EXTRA_LEVEL, -1), scale = b.getIntExtra(BatteryManager.EXTRA_SCALE, 100);
+        int status = b.getIntExtra(BatteryManager.EXTRA_STATUS, -1), plugged = b.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0);
+        r.put("level", scale > 0 ? Math.round(level * 100f / scale) : level);
+        r.put("charging", plugged != 0 || status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL);
+        r.put("full", status == BatteryManager.BATTERY_STATUS_FULL);
+        call.resolve(r);
     }
 
     @PluginMethod
