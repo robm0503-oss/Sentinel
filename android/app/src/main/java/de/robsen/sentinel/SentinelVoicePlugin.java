@@ -291,6 +291,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
             call.resolve();
             return;
         }
+        final float vol = Math.max(0.05f, Math.min(1f, call.getFloat("volume", 1f)));
         final long guardMs = Math.max(8000, text.length() * 150L);
         main.post(() -> {
             main.removeCallbacks(speakGuard);
@@ -304,6 +305,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
             tts.setPitch(pitch);
             Bundle p = new Bundle();
             p.putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC);
+            p.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, vol);   // Nachtmodus: leiser
             tts.speak(text, TextToSpeech.QUEUE_FLUSH, p, id);
         });
         call.resolve();
@@ -442,7 +444,9 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
 
     @PluginMethod
     public void setBrightness(PluginCall call) {
-        final float v = Math.max(0.02f, Math.min(1f, call.getInt("percent", 60) / 100f));
+        final int pc = call.getInt("percent", 60);
+        // -1 = wieder automatisch / Systemhelligkeit
+        final float v = pc < 0 ? WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE : Math.max(0.02f, Math.min(1f, pc / 100f));
         getActivity().runOnUiThread(() -> {
             WindowManager.LayoutParams lp = getActivity().getWindow().getAttributes();
             lp.screenBrightness = v;

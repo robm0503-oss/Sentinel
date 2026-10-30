@@ -34,6 +34,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--display); o
   padding: max(8px, env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) max(10px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
 }
 .stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; position: relative; }
+body.night canvas#face { filter: brightness(.45); }
 canvas#face { display: block; height: 100%; max-height: 100%; aspect-ratio: 1; max-width: 100%; touch-action: none; cursor: pointer; }
 .top {
   position: absolute; top: 4px; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; gap: 8px;
@@ -174,6 +175,20 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       <input id="sHaToken" type="password" autocomplete="off" placeholder="Langlebiges Zugriffstoken">
     </div>
     <div class="field">
+      <label for="sTgToken">Telegram-Bot-Token (für Nachrichten aufs Handy und den Wachhund)</label>
+      <input id="sTgToken" type="password" autocomplete="off" placeholder="123456:ABC… von @BotFather">
+    </div>
+    <div class="field">
+      <label for="sTgChat">Telegram-Chat-ID</label>
+      <input id="sTgChat" type="text" autocomplete="off" placeholder="Schreib deinem Bot „hallo“, dann tippe unten">
+      <button class="ghost" id="sTgFind" type="button" style="margin-top:6px">Chat-ID automatisch finden</button>
+    </div>
+    <label class="check"><input id="sNight" type="checkbox"> Nachtmodus (dunkel, leise, hört nur nach Antippen)</label>
+    <div class="field" style="display:flex;gap:10px;align-items:center">
+      <label for="sNightFrom" style="margin:0">von</label><input id="sNightFrom" type="time" style="flex:1">
+      <label for="sNightTo" style="margin:0">bis</label><input id="sNightTo" type="time" style="flex:1">
+    </div>
+    <div class="field">
       <label for="sName">Dein Name (so spricht Sentinel dich an)</label>
       <input id="sName" type="text" autocomplete="off" placeholder="z. B. Robert">
     </div>
@@ -205,7 +220,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 29</div>
+    <div class="hint" id="verHint">Sentinel Version 30</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -237,7 +252,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     get(k, d) { try { const v = localStorage.getItem("sentinel." + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem("sentinel." + k, JSON.stringify(v)); } catch (e) {} },
   };
-  const cfg = Object.assign({ key: "", model: "claude-haiku-5-5", ort: "", limit: 300, search: true, wake: true, look: true, engine: "vosk", wakeExtra: "", voskUrl: "", ear: true, eye: true, haUrl: "", haToken: "" }, store.get("cfg", {}));
+  const cfg = Object.assign({ key: "", model: "claude-haiku-5-5", ort: "", limit: 300, search: true, wake: true, look: true, engine: "vosk", wakeExtra: "", voskUrl: "", ear: true, eye: true, haUrl: "", haToken: "", tgToken: "", tgChat: "", night: false, nightFrom: "22:30", nightTo: "06:30" }, store.get("cfg", {}));
   const saveCfg = () => store.set("cfg", cfg);
   // Umstieg auf v3: Sonnet als Standard-Gehirn für natürlichere Gespräche
   if (!cfg.v3) { if (cfg.model === "claude-haiku-5-5") cfg.model = "claude-sonnet-5-5"; cfg.v3 = true; saveCfg(); }
@@ -421,9 +436,10 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     pointTo(e);
     // Antippen = "Ich will mit dir reden": Ohren frisch starten (Android erlaubt das nur direkt nach einer Berührung)
     // und die nächsten 15 Sekunden ohne "Sentinel" zuhören.
-    if (NATIVE && cfg.ear && !busy && !speaking) { followUntil = Date.now() + FOLLOW_MS; nativeEarsOn(); setMood("zuhoeren"); }
+    if (earsSleeping) { earsSleeping = false; elog("Nachts angetippt – ich höre"); }
+    if (NATIVE && cfg.ear && !busy && !speaking) { followUntil = Date.now() + followMs(); nativeEarsOn(); setMood("zuhoeren"); }
     if (cfg.engine === "google" && SR && !busy && !speaking) {
-      cfg.ear = true; earUI(); followUntil = Date.now() + FOLLOW_MS;
+      cfg.ear = true; earUI(); followUntil = Date.now() + followMs();
       hardReset("Antippen"); earStart(); setMood("zuhoeren"); status("hört zu");
     }
     press = { x: e.clientX, y: e.clientY, t: performance.now(), dist: 0, stroked: false, long: false };
@@ -512,8 +528,8 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
         const uid = "u" + id;
         ttsWait[uid] = done;
         speaking = true; status("spricht");
-        ttsWait[uid] = () => { done(); if (cfg.ear) nativeEarsOn(); };
-        SV.speak({ text: String(text), id: uid, rate: 1.05 }).catch(done);
+        ttsWait[uid] = () => { done(); if (cfg.ear && !earsSleeping) nativeEarsOn(); };
+        SV.speak({ text: String(text), id: uid, rate: 1.05, volume: nightActive ? .35 : 1 }).catch(done);
         setTimeout(done, 8000 + String(text).length * 120); // Sicherheitsnetz
         return;
       }
@@ -528,7 +544,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
           if (id !== speakId) return done();
           if (i >= parts.length) return done();
           const part = parts[i++];
-          const u = new SpeechSynthesisUtterance(part);
+          const u = new SpeechSynthesisUtterance(part); if (nightActive) u.volume = .35;
           u.lang = "de-DE"; if (voice) u.voice = voice; u.rate = 1.05;
           let moved = false;
           const go = () => { if (moved) return; moved = true; clearTimeout(guard); next(); };
@@ -553,6 +569,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   }
   let WAKE = buildWake();
   const FOLLOW_MS = 15000; // so lange darf man nach seiner Antwort ohne "Sentinel" weiterreden
+  const followMs = () => koch.on ? 120000 : FOLLOW_MS; // beim Kochen 2 Minuten
   let rec = null, recRunning = false, lastRecErr = null, followUntil = 0, oneShot = false;
   const earBtn = $("earBtn");
   function earUI() { earBtn.classList.toggle("on", cfg.ear); earBtn.setAttribute("aria-pressed", String(cfg.ear)); }
@@ -649,7 +666,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     if (rec) { const r = rec; rec = null; r.onend = r.onresult = r.onerror = r.onstart = null; try { r.abort(); } catch (e) {} }
     recRunning = false; startPending = 0;
   }
-  function afterSpeaking() { followUntil = Date.now() + FOLLOW_MS; muteUntil = Date.now() + 600; setTimeout(earStart, 350); }
+  function afterSpeaking() { followUntil = Date.now() + followMs(); muteUntil = Date.now() + 600; setTimeout(earStart, 350); }
   // Wächter: nichts darf dauerhaft hängen bleiben
   setInterval(() => {
     if (busy || speaking || !$("startPanel").hidden) return;
@@ -884,7 +901,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   elog("Start: " + (NATIVE ? "Android-App" : "Browser") + (NATIVE ? (SV ? ", Ohren-Modul gefunden" : ", Ohren-Modul FEHLT") : ""));
   // Wächter für die App: falls Android die Ohren doch mal verliert, nach einer Minute Stille neu anwerfen
   setInterval(() => {
-    if (!NATIVE || !cfg.ear || busy || speaking || !$("startPanel").hidden) return;
+    if (!NATIVE || !cfg.ear || busy || speaking || earsSleeping || !$("startPanel").hidden) return;
     if (Date.now() - lastReady > 20000) {
       SV.status().then(st => elog(`Ohren-Status: soll=${st.wanted} hört=${st.listening} spricht=${st.speaking} Erkennung da=${st.available}`)).catch(() => {});
       nativeEarsOn(); lastReady = Date.now();
@@ -986,7 +1003,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   }
   setInterval(() => { if (performance.now() - faceSeenAt > 60000) faceWasGone = true; }, 10000);
   function greet() {
-    if (busy || speaking || !ich.name) return;
+    if (busy || speaking || !ich.name || nightActive) return;
     lastGreet = Date.now();
     const h = new Date().getHours(), tag = new Date().toDateString();
     setMood("freude");
@@ -1275,6 +1292,129 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     }
   }
 
+  // ================= INTERNET-HELFER =================
+  const CHttp = () => NATIVE && ((window.capacitorExports && window.capacitorExports.CapacitorHttp) || (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp));
+  async function getJSON(url, post) {
+    try {
+      const r = await fetch(url, post ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(post) } : undefined);
+      return await r.json();
+    } catch (e) {
+      const CH = CHttp(); if (!CH) throw e;
+      const r = post ? await CH.post({ url, headers: { "Content-Type": "application/json" }, data: post }) : await CH.get({ url });
+      return typeof r.data === "string" ? JSON.parse(r.data) : r.data;
+    }
+  }
+
+  // ================= TELEGRAM: Nachrichten aufs Handy =================
+  const tgReady = () => !!(cfg.tgToken && cfg.tgChat);
+  async function tgText(text) {
+    if (!tgReady()) throw new Error("Telegram ist noch nicht eingerichtet (Einstellungen: Bot-Token und Chat-ID).");
+    const j = await getJSON(`https://api.telegram.org/bot${cfg.tgToken}/sendMessage`, { chat_id: cfg.tgChat, text: String(text).slice(0, 4000) });
+    if (!j || !j.ok) throw new Error((j && j.description) || "Telegram-Fehler");
+  }
+  async function tgPhoto(b64, caption) {
+    if (!b64) return tgText(caption + " (kein Kamerabild)");
+    try {
+      const bin = atob(b64), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+      const fd = new FormData(); fd.append("chat_id", cfg.tgChat); fd.append("caption", caption);
+      fd.append("photo", new Blob([a], { type: "image/jpeg" }), "sentinel.jpg");
+      const r = await fetch(`https://api.telegram.org/bot${cfg.tgToken}/sendPhoto`, { method: "POST", body: fd });
+      const j = await r.json(); if (!j.ok) throw new Error(j.description);
+    } catch (e) { elog("Foto ging nicht (" + e.message + "), schicke Text"); await tgText(caption); }
+  }
+
+  // ================= WACHHUND: Bewegung -> Foto aufs Handy =================
+  const wach = { on: false, armAt: 0, prev: null, lastAlert: 0, hits: 0, timer: null, alerts: 0 };
+  const wcv = document.createElement("canvas"); wcv.width = 80; wcv.height = 60;
+  const wctx = wcv.getContext("2d", { willReadFrequently: true });
+  async function wachhundAn(sofort) {
+    if (!tgReady()) throw new Error("Telegram ist noch nicht eingerichtet. Trag in den Einstellungen den Bot-Token und die Chat-ID ein.");
+    if (!(await camStart())) throw new Error("Die Kamera geht gerade nicht.");
+    Object.assign(wach, { on: true, armAt: Date.now() + (sofort ? 5000 : 60000), prev: null, hits: 0, alerts: 0 });
+    store.set("wach", true);
+    clearInterval(wach.timer); wach.timer = setInterval(wachCheck, 500);
+    elog("Wachhund an");
+  }
+  function wachhundAus() { wach.on = false; clearInterval(wach.timer); store.set("wach", false); elog("Wachhund aus"); }
+  function wachCheck() {
+    if (!wach.on || !stream || video.readyState < 2) return;
+    wctx.drawImage(video, 0, 0, 80, 60);
+    const px = wctx.getImageData(0, 0, 80, 60).data, g = new Uint8Array(4800);
+    for (let i = 0, j = 0; i < px.length; i += 4, j++) g[j] = (px[i] * 3 + px[i + 1] * 6 + px[i + 2]) / 10;
+    const prev = wach.prev; wach.prev = g;
+    if (!prev || Date.now() < wach.armAt) return;
+    let n = 0; for (let j = 0; j < g.length; j++) if (Math.abs(g[j] - prev[j]) > 35) n++;
+    const f = n / g.length;
+    // 3 % bis 60 % des Bildes ändern sich -> Bewegung; mehr ist meist nur Licht an/aus
+    if (f > .03 && f < .6) wach.hits++; else wach.hits = 0;
+    if (wach.hits >= 2 && Date.now() - wach.lastAlert > 60000) { wach.hits = 0; wach.lastAlert = Date.now(); wachAlarm(); }
+  }
+  async function wachAlarm() {
+    const zeit = uhr(Date.now()); wach.alerts++;
+    elog("Wachhund: Bewegung um " + zeit);
+    await new Promise(r => setTimeout(r, 700)); // kurz warten, damit die Person ganz im Bild ist
+    try { await tgPhoto(snapshot(), `🐕 Sentinel-Wachhund: Bewegung erkannt um ${zeit} Uhr`); }
+    catch (e) { elog("Telegram-Fehler: " + e.message); }
+  }
+  if (store.get("wach", false)) setTimeout(() => wachhundAn(true).catch(e => elog("Wachhund: " + e.message)), 4000);
+
+  // ================= NACHTMODUS =================
+  let nightActive = false, earsSleeping = false;
+  function isNight(d = new Date()) {
+    if (!cfg.night) return false;
+    const p = x => { const [h, mi] = String(x || "0:0").split(":").map(Number); return (h || 0) * 60 + (mi || 0); };
+    const m = d.getHours() * 60 + d.getMinutes(), a = p(cfg.nightFrom), b = p(cfg.nightTo);
+    return a <= b ? (m >= a && m < b) : (m >= a || m < b);
+  }
+  function nightTick() {
+    const n = isNight();
+    if (n !== nightActive) {
+      nightActive = n; document.body.classList.toggle("night", n);
+      if (NATIVE && SV && SV.setBrightness) SV.setBrightness({ percent: n ? 3 : -1 }).catch(() => {});
+      if (!n && earsSleeping) { earsSleeping = false; if (NATIVE && cfg.ear) nativeEarsOn(); }
+      elog(n ? "Nachtmodus an" : "Guten Morgen – Nachtmodus aus");
+    }
+    // Nachts nur zuhören, wenn er angetippt wurde oder gerade ein Gespräch läuft
+    if (n && NATIVE && cfg.ear && !earsSleeping && !busy && !speaking && !koch.on && Date.now() > followUntil + 5000) {
+      earsSleeping = true; nativeEarsOff(); status("schläft · antippen"); elog("Nachts: Ohren schlafen bis zum Antippen");
+    }
+    if (koch.on && Date.now() - koch.seit > 3 * 3600000) { koch.on = false; elog("Kochmodus nach 3 Stunden beendet"); }
+  }
+  setInterval(nightTick, 5000); setTimeout(nightTick, 1500);
+
+  // ================= WETTER (Open-Meteo, kostenlos, ohne Websuche) =================
+  const WMO = { 0: "klar", 1: "überwiegend klar", 2: "teils bewölkt", 3: "bedeckt", 45: "Nebel", 48: "Reifnebel", 51: "leichter Niesel", 53: "Niesel", 55: "starker Niesel", 56: "gefrierender Niesel", 57: "gefrierender Niesel", 61: "leichter Regen", 63: "Regen", 65: "starker Regen", 66: "gefrierender Regen", 67: "gefrierender Regen", 71: "leichter Schneefall", 73: "Schneefall", 75: "starker Schneefall", 77: "Schneegriesel", 80: "leichte Schauer", 81: "Schauer", 82: "heftige Schauer", 85: "Schneeschauer", 86: "starke Schneeschauer", 95: "Gewitter", 96: "Gewitter mit Hagel", 99: "Gewitter mit Hagel" };
+  async function wetter(ort, tage) {
+    ort = String(ort || cfg.ort || "").trim();
+    if (!ort) throw new Error("Kein Ort bekannt. Frag nach dem Ort oder trag ihn in den Einstellungen ein.");
+    const cache = store.get("geo", {});
+    let g = cache[ort.toLowerCase()];
+    if (!g) {
+      const r = await getJSON(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(ort)}&count=1&language=de`);
+      const x = r && r.results && r.results[0]; if (!x) throw new Error("Ort nicht gefunden: " + ort);
+      g = { lat: x.latitude, lon: x.longitude, name: x.name + (x.admin1 ? ", " + x.admin1 : "") }; cache[ort.toLowerCase()] = g; store.set("geo", cache);
+    }
+    tage = Math.max(1, Math.min(7, Math.round(Number(tage) || 3)));
+    const w = await getJSON(`https://api.open-meteo.com/v1/forecast?latitude=${g.lat}&longitude=${g.lon}&timezone=auto&forecast_days=${tage}` +
+      "&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_gusts_10m,precipitation,relative_humidity_2m" +
+      "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max,sunrise,sunset");
+    const c = w.current, d = w.daily, r1 = v => Math.round(v);
+    const zeilen = [`${g.name}, jetzt: ${WMO[c.weather_code] || "?"}, ${r1(c.temperature_2m)} °C (gefühlt ${r1(c.apparent_temperature)} °C), Wind ${r1(c.wind_speed_10m)} km/h, Böen ${r1(c.wind_gusts_10m)} km/h, Luftfeuchte ${r1(c.relative_humidity_2m)} %.`];
+    d.time.forEach((t, i) => {
+      const tag = new Date(t + "T12:00").toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "numeric" });
+      zeilen.push(`${tag}: ${WMO[d.weather_code[i]] || "?"}, ${r1(d.temperature_2m_min[i])} bis ${r1(d.temperature_2m_max[i])} °C, Regenrisiko ${d.precipitation_probability_max[i] ?? "?"} % (${d.precipitation_sum[i]} mm), Wind bis ${r1(d.wind_speed_10m_max[i])} km/h, Böen ${r1(d.wind_gusts_10m_max[i])} km/h, Sonne ${d.sunrise[i].slice(11)}–${d.sunset[i].slice(11)}.`);
+    });
+    return zeilen.join("\n");
+  }
+
+  // ================= KOCHMODUS =================
+  const koch = { on: false, rezept: "", schritte: [], schritt: 0, seit: 0 };
+  function kochInfo() {
+    if (!koch.on) return "";
+    return `\nKOCHMODUS AKTIV: Rezept „${koch.rezept}“. Schritte:\n${koch.schritte.map((x, i) => `${i + 1}) ${x}`).join("\n")}\nZuletzt vorgelesen: Schritt ${koch.schritt || "noch keiner"}.
+Lies immer nur EINEN Schritt vor, kurz und klar, und melde ihn mit kochschritt. Bei „weiter“ kommt der nächste, bei „nochmal“ der gleiche, bei „zurück“ der vorige. Hat ein Schritt eine Wartezeit, stell selbst einen passenden Timer. Fragen zwischendurch (Ersatz für Zutaten, Mengen umrechnen) beantwortest du kurz. Nach dem letzten Schritt: guten Appetit wünschen und den Kochmodus beenden.`;
+  }
+
   function snapshot() {
     if (!stream || video.readyState < 2) return null;
     const vw = video.videoWidth, vh = video.videoHeight, sc = Math.min(1, 640 / Math.max(vw, vh));
@@ -1303,6 +1443,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     o.name = String(d.name || "").trim().slice(0, 40);
     o.gespraeche = Math.max(0, Math.floor(Number(d.gespraeche) || 0));
     for (const [k, , max] of LISTEN) o[k] = liste(d[k], max);
+    if (/^(\d{4}-)?\d{2}-\d{2}$/.test(d.geburtstag || "")) o.geburtstag = d.geburtstag;
     return o;
   }
   let ich = sauber(store.get("ich", null));
@@ -1386,7 +1527,28 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   // Tageszähler als Kostenbremse
   const heute = () => new Date().toISOString().slice(0, 10);
   let usage = store.get("usage", { tag: heute(), n: 0, inTok: 0, outTok: 0 });
-  function countUsage(u) {
+  // Preise in US-Dollar je 1 Mio. Tokens (Stand Oktober 2026, eher großzügig geschätzt)
+  const PREIS = {
+    "claude-haiku-5-5": { in: .10, out: .50, cr: .01, cw: .125 },
+    "claude-sonnet-5-5": { in: 3, out: 15, cr: .30, cw: 3.75 },
+    "claude-opus-5-5": { in: 4, out: 20, cr: .20, cw: 5 },
+  };
+  const monat = () => heute().slice(0, 7);
+  const monatName = () => new Date().toLocaleDateString("de-DE", { month: "long" });
+  const dollar = v => v.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: v < 1 ? 3 : 2 }) + " $";
+  let kosten = store.get("kosten", { monat: monat(), usd: 0, tage: {} });
+  const kostenHeute = () => (kosten.monat === monat() && kosten.tage[heute()]) || 0;
+  function countCost(u, model) {
+    if (!u) return;
+    const p = PREIS[model] || PREIS["claude-sonnet-5-5"];
+    const usd = ((u.input_tokens || 0) * p.in + (u.output_tokens || 0) * p.out + (u.cache_read_input_tokens || 0) * p.cr + (u.cache_creation_input_tokens || 0) * p.cw) / 1e6
+      + ((u.server_tool_use && u.server_tool_use.web_search_requests) || 0) * .01;
+    if (kosten.monat !== monat()) kosten = { monat: monat(), usd: 0, tage: {} };
+    kosten.usd += usd; kosten.tage[heute()] = (kosten.tage[heute()] || 0) + usd;
+    store.set("kosten", kosten);
+  }
+  function countUsage(u, model) {
+    countCost(u, model);
     if (usage.tag !== heute()) usage = { tag: heute(), n: 0, inTok: 0, outTok: 0 };
     usage.n++; usage.outTok += (u && u.output_tokens) || 0;
     usage.inTok += ((u && u.input_tokens) || 0) + ((u && u.cache_creation_input_tokens) || 0);
@@ -1426,7 +1588,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       if (/web_search/i.test(m)) throw new ApiError(m, "search");
       throw new ApiError(m, "other");
     }
-    countUsage(data.usage);
+    countUsage(data.usage, body.model);
     return data;
   }
 
@@ -1453,7 +1615,7 @@ So funktionierst du selbst (erkläre es ${wer}, wenn er fragt, kurz und konkret)
 - Wenn du müde aussiehst (Augen halb zu, blau), schläfst du nicht wirklich, du hörst trotzdem zu. "Sentinel" sagen oder dich anschauen weckt dich.
 - Augenfarben: Bernstein normal, Eisblau hört zu, Lila denkt nach, Grün freut sich, Gelb skeptisch, Rot sauer, Dunkelblau müde.
 - Unten links ist der Mikro-Knopf (Zuhören an oder aus), daneben das Auge (Kamera an oder aus).
-- Oben gibt es "Gedächtnis" (zeigt, was du dir gemerkt hast, Timer und Listen, mit Löschen-Knopf), "Einstellungen" (API-Key, Gehirn-Modell, Name, Geburtstag, Über mich, Ort, Websuche, Weckwort, Tageslimit) und "Vollbild".
+- Oben gibt es "Gedächtnis" (zeigt, was du dir gemerkt hast, Timer und Listen, mit Löschen-Knopf), "Einstellungen" (API-Key, Gehirn-Modell, Telegram, Nachtmodus, Name, Geburtstag, Über mich, Ort, Websuche, Weckwort, Tageslimit) und "Vollbild".
 - Ein Tipp auf die Statuszeile oben links zeigt das Ohren-Protokoll, damit man sieht, was du gehört hast.
 - Wenn du schlecht hörst: Mikrofon am Tablet nicht abdecken (z. B. durch eine Hülle), nicht zu weit weg sprechen.
 - Berührung: Streicheln mag ich, ins Auge pieksen tut weh, wildes Tippen nervt, lange drücken fragt dich, ob alles okay ist.
@@ -1466,10 +1628,11 @@ Wenn du auf einem Bild etwas Wichtiges gesehen hast, schreib ganz am Ende eine k
 ${cfg.about ? `\nWas ${wer} selbst über sich erzählt:\n${cfg.about}\n` : ""}
 Deine Fähigkeiten: Timer und Erinnerungen stellen (sie klingeln auch, wenn gerade niemand redet), Listen führen (z. B. Einkauf, Aufgaben), dir Dinge merken${cfg.search ? ", im Internet nach aktuellen Infos suchen (Wetter, Nachrichten, Öffnungszeiten, Preise)" : ""}${smartCommands().length ? ", das Smart Home steuern mit diesen Befehlen: " + smartCommands().map(c => c.name).join(", ") + " (nutze smart_home; nur diese Befehle gibt es)" : ""}${cfg.haUrl && cfg.haToken ? ", das Smart Home über Home Assistant steuern (erst mit ha_geraete nachsehen, dann mit ha_schalten schalten; bei Türschlössern, Alarmanlagen und Heizung vorher kurz bestätigen lassen)" : (smartCommands().length ? "" : ". Smart-Home-Steuerung ist noch nicht eingerichtet; sag das, wenn danach gefragt wird, und dass man in den Einstellungen unter Smart-Home-Befehle Links eintragen kann")}.
 ${NATIVE ? "Du kannst außerdem das Tablet bedienen: Apps öffnen, YouTube, Spotify, Maps oder die Websuche mit einer Suche starten, WhatsApp-Nachrichten vorbereiten (abschicken muss der Mensch), Wecker stellen, Kalendertermine anlegen, Lautstärke und Helligkeit ändern, das WLAN nach Geräten durchsuchen (erkläre danach verständlich, welche Geräte das wahrscheinlich sind). Wenn du eine andere App öffnest, verschwindet dein Gesicht kurz und du hörst in der Zeit nicht zu; sag kurz, dass man mit dem Sentinel-Symbol oder der Zurück-Taste zu dir zurückkommt.\n" : ""}
+Für Wetterfragen nutze immer das Werkzeug wetter, nie die Websuche. Will ${wer} etwas kochen oder backen, biete den Kochmodus an: Dann führst du Schritt für Schritt durchs Rezept und man muss nicht jedes Mal „Sentinel“ sagen. Geht ${wer} aus dem Haus, kannst du den Wachhund anbieten. Nachrichten aufs Handy gehen über Telegram${tgReady() ? "" : " (noch nicht eingerichtet: in den Einstellungen Bot-Token und Chat-ID eintragen)"}.
 Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
 Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Sag nie, dass du dir etwas gemerkt hast, ohne das Werkzeug wirklich benutzt zu haben.
-Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\n${dekoInfo()}\n${geburtstagInfo()}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
+Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\n${dekoInfo()}\n${geburtstagInfo()}\nDeine API-Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.monat === monat() ? kosten.usd : 0)}.${wach.on ? "\nDer WACHHUND ist gerade an" + (wach.alerts ? ` (${wach.alerts} Bewegungsmeldungen)` : "") + ". Wenn " + wer + " sagt, dass er wieder da ist, schalte ihn aus." : ""}${nightActive ? "\nEs ist Nachtmodus: antworte besonders kurz und ruhig." : ""}${kochInfo()}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
 Offene Timer und Erinnerungen: ${termText}
 Listen: ${listenText}
 ${zeile("Was du über " + wer + " weißt", ich.fakten)}
@@ -1523,6 +1686,16 @@ ${zeile("Menschen", ich.menschen)}`;
       { name: "helligkeit", description: "Stellt die Bildschirmhelligkeit in Prozent ein.", input_schema: obj({ prozent: { type: "number" } }, ["prozent"]) },
     );
     t.push(
+      { name: "nachricht_ans_handy", description: "Schickt eine Telegram-Nachricht aufs Handy deines Menschen, z. B. die Einkaufsliste oder eine Notiz für unterwegs.",
+        input_schema: obj({ text: { type: "string" } }, ["text"]) },
+      { name: "wachhund", description: "Wachhund-Modus: Während niemand zu Hause ist, beobachtet die Kamera den Raum und schickt bei Bewegung ein Foto aufs Handy (Telegram). Startet nach einer Minute, damit man in Ruhe gehen kann. an=false schaltet ihn aus (z. B. wenn jemand sagt, dass er wieder da ist).",
+        input_schema: obj({ an: { type: "boolean" } }, ["an"]) },
+      { name: "wetter", description: "Aktuelles Wetter und Vorhersage (bis 7 Tage) mit Temperatur, Regen, Wind und Böen, Sonnenauf- und -untergang. Nutze das für alle Wetterfragen statt der Websuche. Ohne ort gilt der eingestellte Ort.",
+        input_schema: obj({ ort: { type: "string" }, tage: { type: "integer" } }) },
+      { name: "kochmodus", description: "Startet oder beendet den Kochmodus. Beim Start das Rezept als kurze, einzeln vorlesbare Schritte übergeben (Zutatenliste als erster Schritt). Im Kochmodus hörst du ohne Weckwort zu.",
+        input_schema: obj({ an: { type: "boolean" }, rezept: { type: "string" }, schritte: { type: "array", items: { type: "string" } } }, ["an"]) },
+      { name: "kochschritt", description: "Merkt sich, welchen Rezeptschritt (ab 1) du gerade vorgelesen hast.",
+        input_schema: obj({ nummer: { type: "integer" } }, ["nummer"]) },
       { name: "outfit", description: "Deine Outfits zu Jahreszeiten und Feiertagen (Wintermütze, Sonnenbrille, Halloween-Kostüm, Weihnachtsmütze usw.). modus auto = automatisch nach Datum, aus = keine Outfits, vorschau = ein bestimmtes Outfit 60 Sekunden zeigen (anlass angeben).",
         input_schema: obj({ modus: { type: "string", enum: ["auto", "aus", "vorschau"] }, anlass: { type: "string", enum: Object.keys(DEKO) } }, ["modus"]) },
     );
@@ -1661,6 +1834,20 @@ ${zeile("Menschen", ich.menschen)}`;
         }
         case "lautstaerke": await SV.setVolume({ percent: Math.round(Number(inp.prozent)) }); return ok("Lautstärke " + Math.round(Number(inp.prozent)) + " %");
         case "helligkeit": await SV.setBrightness({ percent: Math.round(Number(inp.prozent)) }); return ok("Helligkeit " + Math.round(Number(inp.prozent)) + " %");
+        case "nachricht_ans_handy": await tgText(inp.text || ""); return ok("Nachricht ist aufs Handy geschickt.");
+        case "wachhund": {
+          if (inp.an) { await wachhundAn(false); return ok("Wachhund ist an und wird in einer Minute scharf. Bei Bewegung kommt ein Foto aufs Handy."); }
+          const n = wach.alerts; wachhundAus(); return ok("Wachhund aus." + (n ? ` Während du weg warst, gab es ${n} Bewegungsmeldung(en).` : " Es gab keine Bewegungsmeldungen."));
+        }
+        case "wetter": return ok(await wetter(inp.ort, inp.tage));
+        case "kochmodus": {
+          if (!inp.an) { koch.on = false; return ok("Kochmodus aus."); }
+          const st = (Array.isArray(inp.schritte) ? inp.schritte : []).map(x => String(x).trim()).filter(Boolean).slice(0, 40);
+          if (!st.length) return fail("Bitte die Rezeptschritte mitgeben.");
+          Object.assign(koch, { on: true, rezept: String(inp.rezept || "Rezept").slice(0, 80), schritte: st, schritt: 0, seit: Date.now() });
+          return ok(`Kochmodus an, ${st.length} Schritte. Lies jetzt Schritt 1 vor.`);
+        }
+        case "kochschritt": koch.schritt = Math.max(1, Math.min(koch.schritte.length, Math.round(Number(inp.nummer) || 1))); return ok("ok");
         case "outfit": {
           if (inp.modus === "vorschau") {
             if (!DEKO[inp.anlass]) return fail("Unbekannter Anlass.");
@@ -1845,6 +2032,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     const head = el("div", "who");
     head.append(el("div", "big", ich.name ? `Sentinel & ${ich.name}` : "Sentinel kennt dich noch nicht"));
     head.append(el("div", "meta", `${ich.gespraeche} ${ich.gespraeche === 1 ? "Gespräch" : "Gespräche"} · Gesicht ${detector ? "erkannt per KI" : "per Bewegung"} · Smart Home ${cfg.haUrl && cfg.haToken ? "verbunden" : "nicht eingerichtet"}`));
+    head.append(el("div", "meta", `Kosten (geschätzt): heute ${dollar(kostenHeute())} · im ${monatName()} ${dollar(kosten.monat === monat() ? kosten.usd : 0)}`));
     pBody.append(head);
     pBody.append(grp("Timer und Erinnerungen", termine.map(t => `${wannText(t.at)}${t.text ? " · " + t.text : ""}`)));
     for (const [n, a] of Object.entries(listen)) pBody.append(grp("Liste: " + n, a));
@@ -1866,11 +2054,21 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
     $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || ""; $("sGroq").value = cfg.groqKey || ""; $("sMuteBeep").checked = cfg.muteBeep !== false;
     $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about; $("sName").value = ich.name || ""; $("sBday").value = /^\d{4}-/.test(ich.geburtstag || "") ? ich.geburtstag : ""; $("sSmart").value = cfg.smart || "";
+    $("sTgToken").value = cfg.tgToken || ""; $("sTgChat").value = cfg.tgChat || ""; $("sNight").checked = !!cfg.night; $("sNightFrom").value = cfg.nightFrom || "22:30"; $("sNightTo").value = cfg.nightTo || "06:30";
     const u = usage.tag === heute() ? usage : { n: 0, inTok: 0, outTok: 0 };
-    $("sUsage").textContent = `Heute: ${u.n} Anfragen · ${u.inTok.toLocaleString("de-DE")} Tokens rein · ${(u.cacheTok || 0).toLocaleString("de-DE")} günstig aus dem Zwischenspeicher · ${u.outTok.toLocaleString("de-DE")} Tokens raus`;
+    $("sUsage").textContent = `Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.usd)} · Heute: ${u.n} Anfragen · ${u.inTok.toLocaleString("de-DE")} Tokens rein · ${(u.cacheTok || 0).toLocaleString("de-DE")} günstig aus dem Zwischenspeicher · ${u.outTok.toLocaleString("de-DE")} Tokens raus`;
     $("setPanel").hidden = false;
   }
   $("setBtn").addEventListener("click", openSettings);
+  $("sTgFind").addEventListener("click", async () => {
+    const tok = $("sTgToken").value.trim(); if (!tok) { note("Erst den Bot-Token eintragen.", 4000); return; }
+    try {
+      const r = await getJSON(`https://api.telegram.org/bot${tok}/getUpdates`);
+      const ups = (r && r.result) || [], m = ups.reverse().map(u => u.message || u.channel_post).find(Boolean);
+      if (!m) { note("Noch keine Nachricht gefunden. Schreib deinem Bot in Telegram „hallo“ und tippe nochmal.", 7000); return; }
+      $("sTgChat").value = String(m.chat.id); note("Chat-ID gefunden: " + m.chat.id, 4000);
+    } catch (e) { note("Telegram nicht erreichbar: " + e.message, 6000); }
+  });
   $("setClose").addEventListener("click", () => { $("setPanel").hidden = true; });
   $("setSave").addEventListener("click", () => {
     cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.ort = $("sOrt").value.trim();
@@ -1885,6 +2083,8 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     }
     cfg.haUrl = $("sHaUrl").value.trim(); cfg.haToken = $("sHaToken").value.trim(); cfg.about = $("sAbout").value.trim().slice(0, 4000); cfg.smart = $("sSmart").value.trim().slice(0, 8000);
     const nm = $("sName").value.trim().slice(0, 40); if (nm !== ich.name) { ich.name = nm; saveIch(); }
+    cfg.tgToken = $("sTgToken").value.trim(); cfg.tgChat = $("sTgChat").value.trim();
+    cfg.night = $("sNight").checked; cfg.nightFrom = $("sNightFrom").value || "22:30"; cfg.nightTo = $("sNightTo").value || "06:30";
     const bd = $("sBday").value; if (bd && bd !== ich.geburtstag) { ich.geburtstag = bd; saveIch(); }
     saveCfg(); $("setPanel").hidden = true; note("Gespeichert.", 2000);
   });
