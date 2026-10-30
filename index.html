@@ -201,7 +201,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 27</div>
+    <div class="hint" id="verHint">Sentinel Version 28</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -362,9 +362,8 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     } else blink = 1;
     ctx.setTransform(S, 0, 0, S, 0, 0);
     ctx.fillStyle = "#000"; ctx.fillRect(0, 0, 240, 240);
-    if (comic.on && comic.img) drawComic(t);
-    else {
-      const dk = comic.countdown ? null : aktuelleDeko();
+    {
+      const dk = aktuelleDeko();
       // Mit Outfit wird das Gesicht etwas kleiner, damit Hut und Schriftzug draufpassen
       if (dk) { ctx.save(); ctx.translate(120, 205); ctx.scale(.8, .8); ctx.translate(-120, -205); }
       drawEye(-1, cur.L, t, m.anim); drawEye(1, cur.R, t, m.anim); drawMouth(t);
@@ -373,7 +372,6 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
         drawDeko(dk, t, { cx: 120 + gx * .5, top: 64 + gy * .5, s: 1, eyes: [[78 + gx * .92, 104 + gy], [162 + gx, 104 + gy]], ew: 54, mouth: [120 + gx * .5, 180 + gy * .4], mw: mouth.w || 60, chin: 200 + gy * .4 });
         ctx.restore(); drawDekoOverlay(dk, t);
       }
-      if (comic.countdown) { ctx.fillStyle = "rgba(0,0,0,.6)"; ctx.fillRect(0, 0, 240, 240); ctx.fillStyle = "#fff"; ctx.font = '700 64px "Chakra Petch", sans-serif'; ctx.textAlign = "center"; ctx.fillText(String(comic.countdown), 120, 142); ctx.textAlign = "start"; }
     }
     if (mood === "muede") {
       ctx.fillStyle = eyeColor; ctx.globalAlpha = .55 + Math.sin(t / 700) * .35;
@@ -1001,124 +999,8 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     }
     speak(pick([`Willkommen zurück, ${ich.name}.`, `Da bist du ja, ${ich.name}.`, `Hallo ${ich.name}.`]), "neutral");
   }
-  // ================= COMIC-GESICHT (nur mit Einwilligung, bleibt auf dem Tablet) =================
-  const comic = { on: false, img: null, data: store.get("comic", null), countdown: 0 };
-  function loadComic() {
-    comic.img = null;
-    if (!comic.data || !comic.data.png) { comic.on = false; return; }
-    const im = new Image(); im.onload = () => { comic.img = im; }; im.src = comic.data.png;
-    comic.on = cfg.faceMode === "comic";
-  }
-  loadComic();
-  // Foto -> Comic: weichzeichnen, Farben reduzieren, dunkle Konturen
-  function cartoonize(src, size) {
-    const c = document.createElement("canvas"); c.width = c.height = size;
-    const x = c.getContext("2d", { willReadFrequently: true });
-    x.filter = "blur(1.5px) saturate(1.5) contrast(1.15)"; x.drawImage(src, 0, 0, size, size); x.filter = "none";
-    const img = x.getImageData(0, 0, size, size), d = img.data;
-    const gray = new Float32Array(size * size);
-    for (let i = 0, j = 0; i < d.length; i += 4, j++) gray[j] = d[i] * .3 + d[i + 1] * .59 + d[i + 2] * .11;
-    const L = 5, q = v => Math.round(Math.round(v / 255 * (L - 1)) * 255 / (L - 1));
-    for (let i = 0; i < d.length; i += 4) { d[i] = q(d[i]); d[i + 1] = q(d[i + 1]); d[i + 2] = q(d[i + 2]); }
-    for (let y = 1; y < size - 1; y++) for (let xx = 1; xx < size - 1; xx++) {
-      const k = y * size + xx;
-      const gx = gray[k - size + 1] + 2 * gray[k + 1] + gray[k + size + 1] - gray[k - size - 1] - 2 * gray[k - 1] - gray[k + size - 1];
-      const gy = gray[k + size - 1] + 2 * gray[k + size] + gray[k + size + 1] - gray[k - size - 1] - 2 * gray[k - size] - gray[k - size + 1];
-      if (Math.hypot(gx, gy) > 110) { const o = k * 4; d[o] = d[o + 1] = d[o + 2] = 25; }
-    }
-    // runder Rahmen wie ein Comic-Sticker
-    const r = size / 2;
-    for (let y = 0; y < size; y++) for (let xx = 0; xx < size; xx++) {
-      const dist = Math.hypot(xx - r, y - r), o = (y * size + xx) * 4;
-      if (dist > r - 2) d[o + 3] = 0; else if (dist > r - 10) { d[o] = d[o + 1] = d[o + 2] = 25; }
-    }
-    x.putImageData(img, 0, 0);
-    return c;
-  }
-  async function createComic(name) {
-    if (!stream) { if (!(await camStart())) throw new Error("Kamera ist aus"); }
-    for (let i = 3; i >= 1; i--) { comic.countdown = i; await new Promise(r => setTimeout(r, 900)); }
-    comic.countdown = 0;
-    const vw = video.videoWidth, vh = video.videoHeight;
-    let box = { x: vw * .25, y: vh * .15, w: vw * .5, h: vh * .6 }, kp = null;
-    if (detector) {
-      try {
-        const det = detector.detectForVideo(video, performance.now()).detections[0];
-        if (!det) throw new Error("Kein Gesicht im Bild – bitte direkt in die Kamera schauen.");
-        const b = det.boundingBox; box = { x: b.originX, y: b.originY, w: b.width, h: b.height };
-        kp = det.keypoints;
-      } catch (e) { if (/Gesicht/.test(e.message)) throw e; }
-    }
-    // Quadrat um das Gesicht, etwas größer (Haare, Kinn)
-    const side = Math.min(Math.max(box.w, box.h) * 1.7, vw, vh);
-    const cx = box.x + box.w / 2, cy = box.y + box.h * .45;
-    const sx = Math.max(0, Math.min(vw - side, cx - side / 2)), sy = Math.max(0, Math.min(vh - side, cy - side / 2));
-    const crop = document.createElement("canvas"); crop.width = crop.height = 480;
-    const cc = crop.getContext("2d");
-    cc.translate(480, 0); cc.scale(-1, 1); // spiegeln, damit es wie im Spiegel aussieht
-    cc.drawImage(video, sx, sy, side, side, 0, 0, 480, 480);
-    // Augen- und Mundposition im Bild (0..1), gespiegelt
-    const rel = (px, py) => [1 - (px - sx) / side, (py - sy) / side];
-    let eyeR, eyeL, mouthP;
-    if (kp && kp.length >= 4) {
-      eyeR = rel(kp[0].x * vw, kp[0].y * vh); eyeL = rel(kp[1].x * vw, kp[1].y * vh); mouthP = rel(kp[3].x * vw, kp[3].y * vh);
-    } else {
-      eyeR = [.4, .42]; eyeL = [.6, .42]; mouthP = [.5, .68];
-    }
-    // Hautfarbe zwischen den Augen leicht oberhalb abnehmen (für das Blinzeln)
-    const sk = cc.getImageData(Math.round((eyeR[0] + eyeL[0]) / 2 * 480), Math.round(Math.max(0, (eyeR[1] - .1)) * 480), 1, 1).data;
-    const out = cartoonize(crop, 360);
-    comic.data = { png: out.toDataURL("image/png"), eyes: [eyeR, eyeL], mouth: mouthP, skin: [sk[0], sk[1], sk[2]], name, consentAt: new Date().toISOString() };
-    store.set("comic", comic.data);
-    cfg.faceMode = "comic"; saveCfg(); loadComic();
-    elog("Comic-Gesicht erstellt (Einwilligung von " + name + ")");
-  }
-  function deleteComic() {
-    comic.data = null; comic.img = null; comic.on = false;
-    try { localStorage.removeItem("sentinel.comic"); } catch (e) {}
-    cfg.faceMode = "roboter"; saveCfg();
-    elog("Comic-Gesicht gelöscht");
-  }
-  function drawComic(t) {
-    const dk = null; // Outfits nur bei den Roboteraugen
-    const D = comic.data, sz = dk ? 168 : 200, ox = (240 - sz) / 2 + gaze[0] * .25, oy = (dk ? (dk.txt ? 30 : 46) : 18) + gaze[1] * .25;
-    // Leuchtring in Gefühlsfarbe
-    ctx.save(); ctx.shadowColor = eyeColor; ctx.shadowBlur = 22; ctx.fillStyle = eyeColor;
-    ctx.beginPath(); ctx.arc(ox + sz / 2, oy + sz / 2, sz / 2 + 3, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-    ctx.drawImage(comic.img, ox, oy, sz, sz);
-    const P = p => [ox + p[0] * sz, oy + p[1] * sz];
-    const ed = Math.hypot((D.eyes[1][0] - D.eyes[0][0]) * sz, (D.eyes[1][1] - D.eyes[0][1]) * sz);
-    // Blinzeln: Lider in Hautfarbe über die Augen
-    if (blink < .7) {
-      const k = 1 - blink;
-      for (const e of D.eyes) {
-        const [x, y] = P(e);
-        ctx.fillStyle = `rgb(${D.skin.join(",")})`;
-        ctx.beginPath(); ctx.ellipse(x, y, ed * .3, ed * .2 * k + 1, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = "#191919"; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(x - ed * .28, y + ed * .02); ctx.quadraticCurveTo(x, y + ed * .1, x + ed * .28, y + ed * .02); ctx.stroke();
-      }
-    }
-    // Sprechen: Comic-Mund bewegt sich
-    if (speaking) {
-      const [x, y] = P(D.mouth);
-      const open = .15 + Math.abs(Math.sin(t / 85)) * (.55 + .45 * Math.sin(t / 210));
-      ctx.fillStyle = "#3a0f12"; ctx.strokeStyle = "#191919"; ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.ellipse(x, y, ed * .32, ed * .05 + ed * .2 * open, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = "#e86a6a"; ctx.beginPath(); ctx.ellipse(x, y + ed * .1 * open, ed * .16, ed * .06 * open, 0, 0, Math.PI * 2); ctx.fill();
-    }
-    if (dk && !comic.countdown) {
-      const E1 = P(D.eyes[0]), E2 = P(D.eyes[1]), M = P(D.mouth), cx = (E1[0] + E2[0]) / 2, ey = (E1[1] + E2[1]) / 2;
-      const w = ed * 2.8;
-      drawDeko(dk, t, { cx, top: Math.max(10, ey - ed * 1.05), s: w / 190, eyes: [E1, E2], ew: ed * .62, mouth: M, mw: ed * .75, chin: M[1] + ed * .7 });
-      drawDekoOverlay(dk, t);
-    }
-    if (comic.countdown) {
-      ctx.fillStyle = "rgba(0,0,0,.6)"; ctx.fillRect(0, 0, 240, 240);
-      ctx.fillStyle = "#fff"; ctx.font = '700 64px "Chakra Petch", sans-serif'; ctx.textAlign = "center"; ctx.fillText(String(comic.countdown), 120, 142); ctx.textAlign = "start";
-    }
-  }
-
+  // Altes Comic-Foto (frühere Version) vom Tablet entfernen
+  try { localStorage.removeItem("sentinel.comic"); } catch (e) {}
   // ================= OUTFITS: Jahreszeiten & Feiertage =================
   const DEKO = {
     winter: { name: "Wintermütze und Schal" },
@@ -1556,7 +1438,7 @@ Sehen: ${stream ? `Du hast eine Kamera als Augen, aber du schaust nur hin, wenn 
 Wenn du auf einem Bild etwas Wichtiges gesehen hast, schreib ganz am Ende eine kurze Notiz in der Form [sah: ...]. Die wird nicht vorgelesen und hilft dir, dich später daran zu erinnern.` : `Deine Kamera ist aus. Erwähne das nur, wenn ${wer} dich bittet, etwas anzuschauen.`}
 ${cfg.about ? `\nWas ${wer} selbst über sich erzählt:\n${cfg.about}\n` : ""}
 Deine Fähigkeiten: Timer und Erinnerungen stellen (sie klingeln auch, wenn gerade niemand redet), Listen führen (z. B. Einkauf, Aufgaben), dir Dinge merken${cfg.search ? ", im Internet nach aktuellen Infos suchen (Wetter, Nachrichten, Öffnungszeiten, Preise)" : ""}${smartCommands().length ? ", das Smart Home steuern mit diesen Befehlen: " + smartCommands().map(c => c.name).join(", ") + " (nutze smart_home; nur diese Befehle gibt es)" : ""}${cfg.haUrl && cfg.haToken ? ", das Smart Home über Home Assistant steuern (erst mit ha_geraete nachsehen, dann mit ha_schalten schalten; bei Türschlössern, Alarmanlagen und Heizung vorher kurz bestätigen lassen)" : (smartCommands().length ? "" : ". Smart-Home-Steuerung ist noch nicht eingerichtet; sag das, wenn danach gefragt wird, und dass man in den Einstellungen unter Smart-Home-Befehle Links eintragen kann")}.
-${NATIVE ? "Du kannst außerdem das Tablet bedienen: Apps öffnen, YouTube, Spotify, Maps oder die Websuche mit einer Suche starten, WhatsApp-Nachrichten vorbereiten (abschicken muss der Mensch), Wecker stellen, Kalendertermine anlegen, Lautstärke und Helligkeit ändern, das WLAN nach Geräten durchsuchen (erkläre danach verständlich, welche Geräte das wahrscheinlich sind). Wenn du eine andere App öffnest, verschwindet dein Gesicht kurz und du hörst in der Zeit nicht zu; sag kurz, dass man mit dem Sentinel-Symbol oder der Zurück-Taste zu dir zurückkommt.\n" : ""}Comic-Gesicht: Du kannst aus einem Foto ein Comic-Gesicht von einer Person machen und es statt deiner Augen zeigen. Bevor du das tust, frag IMMER ausdrücklich: "Darf ich ein Foto von dir machen, daraus ein Comic-Gesicht bauen und es nur auf diesem Tablet speichern? Ja oder Nein?" Nur bei einem klaren Ja nutze comic_gesicht_erstellen. Bei Nein oder Zögern machst du nichts. Niemals bei Kindern. Sag nach dem Erstellen, dass das Foto nur hier gespeichert ist und man jederzeit "lösch mein Comic-Gesicht" sagen kann. ${comic.data ? "Gespeichert ist ein Comic-Gesicht von " + comic.data.name + "." : ""}
+${NATIVE ? "Du kannst außerdem das Tablet bedienen: Apps öffnen, YouTube, Spotify, Maps oder die Websuche mit einer Suche starten, WhatsApp-Nachrichten vorbereiten (abschicken muss der Mensch), Wecker stellen, Kalendertermine anlegen, Lautstärke und Helligkeit ändern, das WLAN nach Geräten durchsuchen (erkläre danach verständlich, welche Geräte das wahrscheinlich sind). Wenn du eine andere App öffnest, verschwindet dein Gesicht kurz und du hörst in der Zeit nicht zu; sag kurz, dass man mit dem Sentinel-Symbol oder der Zurück-Taste zu dir zurückkommt.\n" : ""}
 Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
 Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Sag nie, dass du dir etwas gemerkt hast, ohne das Werkzeug wirklich benutzt zu haben.
@@ -1612,11 +1494,6 @@ ${zeile("Menschen", ich.menschen)}`;
       { name: "helligkeit", description: "Stellt die Bildschirmhelligkeit in Prozent ein.", input_schema: obj({ prozent: { type: "number" } }, ["prozent"]) },
     );
     t.push(
-      { name: "comic_gesicht_erstellen", description: "Macht nach einem 3-Sekunden-Countdown ein Foto der Person vor der Kamera und baut daraus dein Comic-Gesicht. NUR benutzen, wenn die Person vorher ausdrücklich Ja gesagt hat. einwilligung muss true sein, name ist der Name der Person, die eingewilligt hat.",
-        input_schema: obj({ name: { type: "string" }, einwilligung: { type: "boolean" } }, ["name", "einwilligung"]) },
-      { name: "gesicht_wechseln", description: "Wechselt zwischen Roboter-Augen und dem gespeicherten Comic-Gesicht.",
-        input_schema: obj({ modus: { type: "string", enum: ["roboter", "comic"] } }, ["modus"]) },
-      { name: "comic_gesicht_loeschen", description: "Löscht das gespeicherte Comic-Gesicht und Foto vollständig.", input_schema: obj({}) },
       { name: "outfit", description: "Deine Outfits zu Jahreszeiten und Feiertagen (Wintermütze, Sonnenbrille, Halloween-Kostüm, Weihnachtsmütze usw.). modus auto = automatisch nach Datum, aus = keine Outfits, vorschau = ein bestimmtes Outfit 60 Sekunden zeigen (anlass angeben).",
         input_schema: obj({ modus: { type: "string", enum: ["auto", "aus", "vorschau"] }, anlass: { type: "string", enum: Object.keys(DEKO) } }, ["modus"]) },
     );
@@ -1750,17 +1627,6 @@ ${zeile("Menschen", ich.menschen)}`;
         }
         case "lautstaerke": await SV.setVolume({ percent: Math.round(Number(inp.prozent)) }); return ok("Lautstärke " + Math.round(Number(inp.prozent)) + " %");
         case "helligkeit": await SV.setBrightness({ percent: Math.round(Number(inp.prozent)) }); return ok("Helligkeit " + Math.round(Number(inp.prozent)) + " %");
-        case "comic_gesicht_erstellen": {
-          if (inp.einwilligung !== true) return fail("Ohne ausdrückliches Ja wird kein Foto gemacht.");
-          const nm = String(inp.name || ich.name || "unbekannt").slice(0, 40);
-          await createComic(nm);
-          return ok("Comic-Gesicht erstellt und nur auf diesem Tablet gespeichert (Einwilligung von " + nm + "). Es wird jetzt angezeigt.");
-        }
-        case "gesicht_wechseln": {
-          if (inp.modus === "comic" && !comic.data) return fail("Es gibt noch kein Comic-Gesicht.");
-          cfg.faceMode = inp.modus === "comic" ? "comic" : "roboter"; saveCfg(); loadComic();
-          return ok("Gesicht: " + cfg.faceMode);
-        }
         case "outfit": {
           if (inp.modus === "vorschau") {
             if (!DEKO[inp.anlass]) return fail("Unbekannter Anlass.");
@@ -1770,7 +1636,6 @@ ${zeile("Menschen", ich.menschen)}`;
           cfg.deko = inp.modus === "aus" ? "aus" : "auto"; saveCfg(); dekoPreview = null;
           return ok(cfg.deko === "aus" ? "Outfits aus." : "Outfits automatisch. " + dekoInfo());
         }
-        case "comic_gesicht_loeschen": deleteComic(); return ok("Comic-Gesicht und Foto gelöscht.");
         case "smart_home": {
           const c = smartCommands().find(x => x.name.toLowerCase() === String(inp.befehl || "").toLowerCase());
           if (!c) return fail("Diesen Befehl gibt es nicht.");
