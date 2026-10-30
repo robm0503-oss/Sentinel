@@ -201,7 +201,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 25</div>
+    <div class="hint" id="verHint">Sentinel Version 26</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -364,7 +364,15 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     ctx.fillStyle = "#000"; ctx.fillRect(0, 0, 240, 240);
     if (comic.on && comic.img) drawComic(t);
     else {
+      const dk = comic.countdown ? null : aktuelleDeko();
+      // Mit Outfit wird das Gesicht etwas kleiner, damit Hut und Schriftzug draufpassen
+      if (dk) { ctx.save(); ctx.translate(120, 205); ctx.scale(.8, .8); ctx.translate(-120, -205); }
       drawEye(-1, cur.L, t, m.anim); drawEye(1, cur.R, t, m.anim); drawMouth(t);
+      if (dk) {
+        const gx = gaze[0], gy = gaze[1];
+        drawDeko(dk, t, { cx: 120 + gx * .5, top: 64 + gy * .5, s: 1, eyes: [[78 + gx * .92, 104 + gy], [162 + gx, 104 + gy]], ew: 54, mouth: [120 + gx * .5, 180 + gy * .4], mw: mouth.w || 60, chin: 200 + gy * .4 });
+        ctx.restore(); drawDekoOverlay(dk, t);
+      }
       if (comic.countdown) { ctx.fillStyle = "rgba(0,0,0,.6)"; ctx.fillRect(0, 0, 240, 240); ctx.fillStyle = "#fff"; ctx.font = '700 64px "Chakra Petch", sans-serif'; ctx.textAlign = "center"; ctx.fillText(String(comic.countdown), 120, 142); ctx.textAlign = "start"; }
     }
     if (mood === "muede") {
@@ -1072,7 +1080,8 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     elog("Comic-Gesicht gelöscht");
   }
   function drawComic(t) {
-    const D = comic.data, sz = 200, ox = 20 + gaze[0] * .25, oy = 18 + gaze[1] * .25;
+    const dk = aktuelleDeko();
+    const D = comic.data, sz = dk ? 168 : 200, ox = (240 - sz) / 2 + gaze[0] * .25, oy = (dk ? (dk.txt ? 30 : 46) : 18) + gaze[1] * .25;
     // Leuchtring in Gefühlsfarbe
     ctx.save(); ctx.shadowColor = eyeColor; ctx.shadowBlur = 22; ctx.fillStyle = eyeColor;
     ctx.beginPath(); ctx.arc(ox + sz / 2, oy + sz / 2, sz / 2 + 3, 0, Math.PI * 2); ctx.fill(); ctx.restore();
@@ -1098,9 +1107,262 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       ctx.beginPath(); ctx.ellipse(x, y, ed * .32, ed * .05 + ed * .2 * open, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       ctx.fillStyle = "#e86a6a"; ctx.beginPath(); ctx.ellipse(x, y + ed * .1 * open, ed * .16, ed * .06 * open, 0, 0, Math.PI * 2); ctx.fill();
     }
+    if (dk && !comic.countdown) {
+      const E1 = P(D.eyes[0]), E2 = P(D.eyes[1]), M = P(D.mouth), cx = (E1[0] + E2[0]) / 2, ey = (E1[1] + E2[1]) / 2;
+      const w = ed * 2.8;
+      drawDeko(dk, t, { cx, top: Math.max(10, ey - ed * 1.05), s: w / 190, eyes: [E1, E2], ew: ed * .62, mouth: M, mw: ed * .75, chin: M[1] + ed * .7 });
+      drawDekoOverlay(dk, t);
+    }
     if (comic.countdown) {
       ctx.fillStyle = "rgba(0,0,0,.6)"; ctx.fillRect(0, 0, 240, 240);
       ctx.fillStyle = "#fff"; ctx.font = '700 64px "Chakra Petch", sans-serif'; ctx.textAlign = "center"; ctx.fillText(String(comic.countdown), 120, 142); ctx.textAlign = "start";
+    }
+  }
+
+  // ================= OUTFITS: Jahreszeiten & Feiertage =================
+  const DEKO = {
+    winter: { name: "Wintermütze und Schal" },
+    sommer: { name: "Sonnenbrille" },
+    weihnachten: { name: "Weihnachtsmütze", txt: "Merry Christmas", col: "#ff4b4b", fx: "schnee" },
+    silvester: { name: "Partyhut", txt: "Happy New Year", col: "#ffd34d", fx: "konfetti" },
+    neujahr: { name: "Glücks-Zylinder vom Schornsteinfeger", txt: "Frohes neues Jahr!", col: "#ffd34d", fx: "konfetti" },
+    dreikoenige: { name: "Königskrone", txt: "Heilige Drei Könige", col: "#ffd34d" },
+    frauentag: { name: "Blume am Kopf", txt: "Alles Gute zum Frauentag!", col: "#ff7eb6" },
+    ostern: { name: "Hasenohren", txt: "Frohe Ostern!", col: "#9be37a" },
+    maifeiertag: { name: "Bauarbeiterhelm", txt: "Tag der Arbeit", col: "#ffcc00" },
+    herrentag: { name: "Strohhut", txt: "Schönen Herrentag!", col: "#7ec8ff" },
+    pfingsten: { name: "Blumenkranz", txt: "Frohe Pfingsten!", col: "#ffb3d9" },
+    einheit: { name: "Schwarz-Rot-Gold", txt: "Tag der Deutschen Einheit", col: "#ffce00" },
+    hexe: { name: "Hexenkostüm", txt: "Happy Halloween!", col: "#ff8a1f", fx: "fledermaus" },
+    vampir: { name: "Vampirkostüm", txt: "Happy Halloween!", col: "#ff8a1f", fx: "fledermaus" },
+    kuerbis: { name: "Kürbiskostüm", txt: "Happy Halloween!", col: "#ff8a1f", fx: "fledermaus" },
+    teufel: { name: "Teufelskostüm", txt: "Happy Halloween!", col: "#ff8a1f", fx: "fledermaus" },
+    frankenstein: { name: "Frankenstein-Kostüm", txt: "Happy Halloween!", col: "#ff8a1f", fx: "fledermaus" },
+    mumie: { name: "Mumienkostüm", txt: "Happy Halloween!", col: "#ff8a1f", fx: "fledermaus" },
+  };
+  const HALLOWEEN = ["hexe", "vampir", "kuerbis", "teufel", "frankenstein", "mumie"]; // jedes Jahr ein anderes
+  function osterSonntag(y) {
+    const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25),
+      g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4,
+      l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451), n = h + l - 7 * m + 114;
+    return new Date(y, Math.floor(n / 31) - 1, (n % 31) + 1);
+  }
+  function dekoKey(d = new Date()) {
+    const y = d.getFullYear(), M = d.getMonth() + 1, D = d.getDate();
+    const diff = Math.round((new Date(y, M - 1, D) - osterSonntag(y)) / 864e5);
+    if (M === 12 && D === 31) return "silvester";
+    if (M === 1 && D === 1) return "neujahr";
+    if (M === 1 && D === 6) return "dreikoenige";
+    if (M === 3 && D === 8) return "frauentag";
+    if (diff >= -2 && diff <= 1) return "ostern";
+    if (M === 5 && D === 1) return "maifeiertag";
+    if (diff === 39) return "herrentag";
+    if (diff === 49 || diff === 50) return "pfingsten";
+    if (M === 10 && D === 3) return "einheit";
+    if (M === 10 && D >= 24) return HALLOWEEN[((y - 2026) % 6 + 6) % 6];
+    if (M === 12 && D <= 26) return "weihnachten";
+    if (M === 12 || M <= 2) return "winter";
+    if (M >= 6 && M <= 8) return "sommer";
+    return null;
+  }
+  let dekoPreview = null;
+  function aktuelleDeko() {
+    if (dekoPreview && Date.now() < dekoPreview.until) return { key: dekoPreview.key, ...DEKO[dekoPreview.key] };
+    if (cfg.deko === "aus") return null;
+    const k = dekoKey();
+    return k ? { key: k, ...DEKO[k] } : null;
+  }
+  function dekoInfo() {
+    const d = aktuelleDeko();
+    if (cfg.deko === "aus") return "Outfits sind ausgeschaltet.";
+    return d ? `Du trägst heute: ${d.name}${d.txt ? ` (Schriftzug „${d.txt}“)` : ""}.` : "Heute trägst du kein besonderes Outfit.";
+  }
+
+  // Zeichnet das Outfit. A: Kopf-Anker in Bildschirm-Koordinaten; gemalt wird in einem Kopf-System (Breite 190, Oberkante y=0)
+  function drawDeko(dk, t, A) {
+    const s = A.s, L = p => [(p[0] - A.cx) / s, (p[1] - A.top) / s];
+    const eyes = A.eyes.map(L), mo = L(A.mouth), chin = (A.chin - A.top) / s, ew = A.ew / s, mw = A.mw / s;
+    const c = ctx;
+    c.save(); c.translate(A.cx, A.top); c.scale(s, s); c.shadowBlur = 0;
+    const fill = (col, f) => { c.fillStyle = col; c.beginPath(); f(); c.fill(); };
+    const pom = (x, y, r, col = "#fff") => { fill(col, () => { for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; c.moveTo(x + Math.cos(a) * r * .6 + r * .45, y + Math.sin(a) * r * .6); c.arc(x + Math.cos(a) * r * .6, y + Math.sin(a) * r * .6, r * .45, 0, Math.PI * 2); } c.moveTo(x + r * .7, y); c.arc(x, y, r * .7, 0, Math.PI * 2); }); };
+    const flower = (x, y, r, col, mid = "#ffd23f") => {
+      c.fillStyle = col; for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2; c.beginPath(); c.ellipse(x + Math.cos(a) * r * .55, y + Math.sin(a) * r * .55, r * .48, r * .32, a, 0, Math.PI * 2); c.fill(); }
+      fill(mid, () => c.arc(x, y, r * .3, 0, Math.PI * 2));
+    };
+    const sway = Math.sin(t / 900);
+    switch (dk.key) {
+      case "winter": {
+        fill("#2f6fd6", () => { c.moveTo(-92, 0); c.bezierCurveTo(-92, -100, 92, -100, 92, 0); c.closePath(); });
+        c.strokeStyle = "#fff"; c.lineWidth = 7; c.beginPath(); c.moveTo(-84, -34); c.bezierCurveTo(-40, -50, 40, -50, 84, -34); c.stroke();
+        c.fillStyle = "#1d4fa8"; roundRect(-100, -16, 200, 26, 12); c.fill();
+        c.strokeStyle = "rgba(255,255,255,.18)"; c.lineWidth = 2; for (let x = -92; x <= 92; x += 10) { c.beginPath(); c.moveTo(x, -13); c.lineTo(x, 7); c.stroke(); }
+        pom(0, -80, 20);
+        // Schal
+        c.fillStyle = "#d63a3a"; roundRect(-82, chin - 4, 164, 24, 12); c.fill();
+        c.save(); c.translate(48, chin + 12); c.rotate(.12 + sway * .04); c.fillStyle = "#c22f2f"; roundRect(-12, 0, 26, 52, 6); c.fill();
+        c.fillStyle = "#fff"; c.fillRect(-12, 14, 26, 5); c.fillRect(-12, 28, 26, 5); c.restore();
+        c.fillStyle = "#fff"; for (const x of [-50, -10, 30]) c.fillRect(x, chin - 4, 6, 24);
+        break;
+      }
+      case "sommer": {
+        const lw = ew * 1.4, lh = ew * 1.05;
+        c.strokeStyle = "#111"; c.lineWidth = 5;
+        c.beginPath(); c.moveTo(eyes[0][0] + lw / 2, eyes[0][1] - lh * .25); c.quadraticCurveTo((eyes[0][0] + eyes[1][0]) / 2, eyes[0][1] - lh * .5, eyes[1][0] - lw / 2, eyes[1][1] - lh * .25); c.stroke();
+        c.beginPath(); c.moveTo(eyes[0][0] - lw / 2, eyes[0][1] - lh * .3); c.lineTo(-100, eyes[0][1] - lh * .4);
+        c.moveTo(eyes[1][0] + lw / 2, eyes[1][1] - lh * .3); c.lineTo(100, eyes[1][1] - lh * .4); c.stroke();
+        for (const e of eyes) {
+          c.fillStyle = "rgba(12,12,18,.84)"; roundRect(e[0] - lw / 2, e[1] - lh / 2, lw, lh, lh * .38); c.fill(); c.stroke();
+          c.strokeStyle = "rgba(255,255,255,.35)"; c.lineWidth = 4; c.beginPath(); c.moveTo(e[0] - lw * .3, e[1] - lh * .1); c.lineTo(e[0] - lw * .1, e[1] - lh * .32); c.stroke();
+          c.strokeStyle = "#111"; c.lineWidth = 5;
+        }
+        break;
+      }
+      case "weihnachten": {
+        const tx = 100 + sway * 6, ty = -55 + sway * 4;
+        fill("#d81f26", () => { c.moveTo(-88, -4); c.bezierCurveTo(-60, -118, 40, -104, tx, ty); c.bezierCurveTo(50, -80, 70, -40, 88, -4); c.closePath(); });
+        c.fillStyle = "#fff"; roundRect(-100, -18, 200, 28, 14); c.fill();
+        pom(tx, ty, 16);
+        break;
+      }
+      case "silvester": {
+        c.save(); c.rotate(-.14 + sway * .03);
+        fill("#7b3cff", () => { c.moveTo(-48, -4); c.lineTo(48, -4); c.lineTo(0, -98); c.closePath(); });
+        c.save(); c.beginPath(); c.moveTo(-48, -4); c.lineTo(48, -4); c.lineTo(0, -98); c.closePath(); c.clip();
+        c.strokeStyle = "#ffd34d"; c.lineWidth = 8; for (let i = -6; i < 6; i++) { c.beginPath(); c.moveTo(i * 22 - 60, 0); c.lineTo(i * 22 + 40, -130); c.stroke(); }
+        c.restore();
+        pom(0, -100, 13, "#ff4fa3"); c.restore();
+        break;
+      }
+      case "neujahr": {
+        fill("#151515", () => c.ellipse(0, -4, 100, 13, 0, 0, Math.PI * 2));
+        c.fillStyle = "#151515"; c.fillRect(-58, -92, 116, 88);
+        c.fillStyle = "#c81e1e"; c.fillRect(-58, -30, 116, 16);
+        c.strokeStyle = "rgba(255,255,255,.15)"; c.lineWidth = 3; c.beginPath(); c.moveTo(-44, -84); c.lineTo(-44, -36); c.stroke();
+        for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + .3; fill("#2fbf4a", () => c.arc(40 + Math.cos(a) * 9, -22 + Math.sin(a) * 9, 8, 0, Math.PI * 2)); }
+        break;
+      }
+      case "dreikoenige": {
+        fill("#f2c230", () => { c.moveTo(-80, 0); c.lineTo(-80, -40); c.lineTo(-60, -20); c.lineTo(-40, -70); c.lineTo(-20, -25); c.lineTo(0, -85); c.lineTo(20, -25); c.lineTo(40, -70); c.lineTo(60, -20); c.lineTo(80, -40); c.lineTo(80, 0); c.closePath(); });
+        c.fillStyle = "#c89412"; c.fillRect(-80, -14, 160, 14);
+        [["#e3263a", -40], ["#2b6bff", 0], ["#24b34b", 40]].forEach(([col, x]) => fill(col, () => c.arc(x, -7, 6, 0, Math.PI * 2)));
+        for (const x of [-40, 0, 40]) fill("#fff3b0", () => c.arc(x, x ? -70 : -85, 5, 0, Math.PI * 2));
+        break;
+      }
+      case "frauentag": {
+        fill("#2f9e44", () => c.ellipse(60, -2, 22, 9, -.6, 0, Math.PI * 2));
+        flower(78, -12, 34, "#ff5fa2"); flower(48, -26, 20, "#ffb3d1");
+        break;
+      }
+      case "ostern": {
+        for (const sd of [-1, 1]) {
+          c.save(); c.translate(sd * 40, -4); c.rotate(sd * (.22 + (sd > 0 ? sway * .12 : 0)));
+          fill("#f4f4f4", () => c.ellipse(0, -56, 22, 56, 0, 0, Math.PI * 2));
+          fill("#ffb6c8", () => c.ellipse(0, -53, 11, 42, 0, 0, Math.PI * 2));
+          c.restore();
+        }
+        c.fillStyle = "#ff9ebb"; roundRect(-95, -12, 190, 16, 8); c.fill();
+        break;
+      }
+      case "maifeiertag": {
+        fill("#ffcc00", () => { c.moveTo(-84, 0); c.bezierCurveTo(-84, -100, 84, -100, 84, 0); c.closePath(); });
+        fill("#e6b400", () => c.ellipse(0, -2, 104, 12, 0, 0, Math.PI * 2));
+        c.fillStyle = "#f2c200"; roundRect(-12, -78, 24, 76, 8); c.fill();
+        c.strokeStyle = "rgba(255,255,255,.4)"; c.lineWidth = 5; c.beginPath(); c.arc(-30, -40, 30, Math.PI * 1.1, Math.PI * 1.45); c.stroke();
+        break;
+      }
+      case "herrentag": {
+        fill("#e2c46b", () => c.ellipse(0, -6, 122, 20, 0, 0, Math.PI * 2));
+        c.fillStyle = "#e8cd7a"; roundRect(-60, -74, 120, 70, 18); c.fill();
+        c.fillStyle = "#1f4e9c"; c.fillRect(-60, -26, 120, 14);
+        c.strokeStyle = "rgba(120,90,20,.35)"; c.lineWidth = 2; for (let x = -54; x < 60; x += 9) { c.beginPath(); c.moveTo(x, -70); c.lineTo(x + 3, -28); c.stroke(); }
+        // Feder
+        c.save(); c.translate(48, -30); c.rotate(-.9 + sway * .06); fill("#3fa34d", () => c.ellipse(0, -22, 7, 24, 0, 0, Math.PI * 2)); c.restore();
+        break;
+      }
+      case "pfingsten": {
+        c.strokeStyle = "#2f9e44"; c.lineWidth = 6; c.beginPath(); c.moveTo(-96, 0); c.quadraticCurveTo(0, -36, 96, 0); c.stroke();
+        const cols = ["#ff5fa2", "#ffd23f", "#8f6bff", "#ff8a3d", "#ffffff"];
+        for (let i = 0; i <= 8; i++) { const u = i / 8, x = -92 + u * 184, y = 2 - 36 * 2 * u * (1 - u) * 1; flower(x, y - 4, 17, cols[i % cols.length], i % 2 ? "#fff3b0" : "#ffd23f"); }
+        break;
+      }
+      case "einheit": {
+        const st = ["#111", "#dd0000", "#ffce00"];
+        st.forEach((col, i) => { c.fillStyle = col; c.fillRect(-96, -16 + i * 7, 192, 7); });
+        for (const e of eyes) st.forEach((col, i) => { c.fillStyle = col; roundRect(e[0] - 15 + (e[0] < 0 ? -10 : 10), e[1] + ew * .95 + i * 7, 30, 7, 2); c.fill(); });
+        break;
+      }
+      case "hexe": {
+        fill("#1b1426", () => c.ellipse(0, -4, 128, 17, 0, 0, Math.PI * 2));
+        fill("#231a33", () => { c.moveTo(-56, -8); c.lineTo(56, -8); c.quadraticCurveTo(30, -70, 66 + sway * 8, -118); c.quadraticCurveTo(-10, -90, -56, -8); c.closePath(); });
+        c.fillStyle = "#7b3cff"; c.fillRect(-54, -30, 106, 16);
+        c.strokeStyle = "#ffd34d"; c.lineWidth = 4; c.strokeRect(-12, -32, 22, 20);
+        break;
+      }
+      case "vampir": {
+        for (const sd of [-1, 1]) {
+          fill("#0d0d0d", () => { c.moveTo(sd * 30, chin); c.lineTo(sd * 128, chin - 78); c.lineTo(sd * 116, chin + 8); c.closePath(); });
+          fill("#9b0f1c", () => { c.moveTo(sd * 36, chin - 2); c.lineTo(sd * 118, chin - 64); c.lineTo(sd * 110, chin + 2); c.closePath(); });
+        }
+        fill("#111", () => { c.moveTo(-90, 6); c.quadraticCurveTo(-60, -40, 0, -36); c.quadraticCurveTo(60, -40, 90, 6); c.lineTo(40, -12); c.lineTo(0, 14); c.lineTo(-40, -12); c.closePath(); });
+        for (const sd of [-1, 1]) fill("#fff", () => { const x = mo[0] + sd * mw * .22; c.moveTo(x - 5, mo[1] + 2); c.lineTo(x + 5, mo[1] + 2); c.lineTo(x, mo[1] + 16); c.closePath(); });
+        break;
+      }
+      case "kuerbis": {
+        for (const [x, rx, col] of [[-48, 50, "#e8701a"], [48, 50, "#e8701a"], [0, 58, "#ff8a1f"]]) fill(col, () => c.ellipse(x, -40, rx, 42, 0, 0, Math.PI * 2));
+        c.fillStyle = "#2e7d32"; roundRect(-7, -100, 14, 24, 4); c.fill();
+        fill("#3a1500", () => { c.moveTo(-30, -52); c.lineTo(-16, -30); c.lineTo(-44, -30); c.closePath(); c.moveTo(30, -52); c.lineTo(44, -30); c.lineTo(16, -30); c.closePath(); });
+        fill("#3a1500", () => { c.moveTo(-36, -18); c.quadraticCurveTo(0, 0, 36, -18); c.quadraticCurveTo(0, -8, -36, -18); });
+        break;
+      }
+      case "teufel": {
+        for (const sd of [-1, 1]) fill("#d81f26", () => { c.moveTo(sd * 40, 0); c.quadraticCurveTo(sd * 84, -20, sd * 78, -78); c.quadraticCurveTo(sd * 66, -30, sd * 18, -10); c.closePath(); });
+        c.save(); c.translate(112, chin - 30); c.rotate(.15 + sway * .05);
+        c.strokeStyle = "#d81f26"; c.lineWidth = 5; c.beginPath(); c.moveTo(0, 60); c.lineTo(0, -40); c.moveTo(-14, -40); c.quadraticCurveTo(-14, -58, -12, -66); c.moveTo(14, -40); c.quadraticCurveTo(14, -58, 12, -66); c.moveTo(-14, -40); c.lineTo(14, -40); c.moveTo(0, -40); c.lineTo(0, -70); c.stroke(); c.restore();
+        break;
+      }
+      case "frankenstein": {
+        fill("#1d2b1d", () => { c.moveTo(-92, 10); c.lineTo(-92, -44); c.lineTo(92, -44); c.lineTo(92, 10); for (let x = 92; x > -92; x -= 23) { c.lineTo(x - 11, -6); c.lineTo(x - 23, 10); } c.closePath(); });
+        c.strokeStyle = "#7a5b4a"; c.lineWidth = 3; c.beginPath(); c.moveTo(-40, 22); c.lineTo(10, 18);
+        for (let x = -34; x <= 4; x += 9) { c.moveTo(x, 13); c.lineTo(x + 1, 27); } c.stroke();
+        for (const sd of [-1, 1]) { c.fillStyle = "#8a8f96"; c.fillRect(sd > 0 ? 84 : -110, chin - 20, 26, 14); c.fillStyle = "#5f646b"; c.fillRect(sd > 0 ? 106 : -114, chin - 24, 8, 22); }
+        break;
+      }
+      case "mumie": {
+        c.fillStyle = "rgba(238,232,212,.92)";
+        for (const [y, r] of [[-30, -.08], [-12, .06], [eyes[0][1] + ew * .78, -.05], [chin - 10, .07], [chin + 8, -.04]]) {
+          c.save(); c.translate(0, y); c.rotate(r); c.fillRect(-104, -8, 208, 15); c.restore();
+        }
+        c.strokeStyle = "rgba(160,150,120,.6)"; c.lineWidth = 1.5;
+        for (const y of [-30, -12, chin - 10]) { c.beginPath(); c.moveTo(-100, y); c.lineTo(100, y + 2); c.stroke(); }
+        break;
+      }
+    }
+    c.restore();
+  }
+  // Schnee, Konfetti, Fledermäuse und Schriftzug – immer über das ganze Bild
+  function drawDekoOverlay(dk, t) {
+    const c = ctx;
+    if (dk.fx === "schnee" || dk.fx === "konfetti") {
+      const n = dk.fx === "schnee" ? 34 : 46, cols = ["#ff4fa3", "#ffd34d", "#4fc3ff", "#7bff8a", "#b27bff"];
+      for (let i = 0; i < n; i++) {
+        const sp = .6 + (i * 7 % 5) / 6, x = (i * 53.7 + Math.sin(t / 1300 + i) * 10) % 240, y = ((t / 40) * sp + i * 41) % 262 - 12;
+        if (dk.fx === "schnee") { c.fillStyle = "rgba(255,255,255,.75)"; c.beginPath(); c.arc(x, y, 1.2 + (i % 3) * .6, 0, Math.PI * 2); c.fill(); }
+        else { c.save(); c.translate(x, y); c.rotate(t / 300 + i); c.fillStyle = cols[i % cols.length]; c.fillRect(-3, -1.5, 6, 3); c.restore(); }
+      }
+    }
+    if (dk.fx === "fledermaus") {
+      for (let i = 0; i < 3; i++) {
+        const x = ((t / 30) * (0.6 + i * .25) + i * 90) % 300 - 30, y = 22 + i * 14 + Math.sin(t / 400 + i) * 6, f = Math.sin(t / 70 + i) * 4;
+        c.fillStyle = "#3b2a4d"; c.beginPath(); c.moveTo(x, y);
+        c.quadraticCurveTo(x - 6, y - 6 - f, x - 13, y - 2 - f); c.quadraticCurveTo(x - 8, y + 1, x - 4, y + 3);
+        c.quadraticCurveTo(x, y + 6, x + 4, y + 3); c.quadraticCurveTo(x + 8, y + 1, x + 13, y - 2 - f); c.quadraticCurveTo(x + 6, y - 6 - f, x, y); c.fill();
+      }
+    }
+    if (dk.txt) {
+      c.save(); c.textAlign = "center"; c.font = '700 18px "Chakra Petch", sans-serif';
+      const wdt = c.measureText(dk.txt).width; if (wdt > 222) c.font = `700 ${Math.floor(18 * 222 / wdt)}px "Chakra Petch", sans-serif`;
+      c.shadowColor = dk.col; c.shadowBlur = 10; c.fillStyle = dk.col; c.fillText(dk.txt, 120, 232); c.restore();
     }
   }
 
@@ -1298,7 +1560,7 @@ ${NATIVE ? "Du kannst außerdem das Tablet bedienen: Apps öffnen, YouTube, Spot
 Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
 Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Sag nie, dass du dir etwas gemerkt hast, ohne das Werkzeug wirklich benutzt zu haben.
-Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})${cfg.ort ? "\nOrt: " + cfg.ort : ""}
+Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\n${dekoInfo()}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
 Offene Timer und Erinnerungen: ${termText}
 Listen: ${listenText}
 ${zeile("Was du über " + wer + " weißt", ich.fakten)}
@@ -1355,6 +1617,8 @@ ${zeile("Menschen", ich.menschen)}`;
       { name: "gesicht_wechseln", description: "Wechselt zwischen Roboter-Augen und dem gespeicherten Comic-Gesicht.",
         input_schema: obj({ modus: { type: "string", enum: ["roboter", "comic"] } }, ["modus"]) },
       { name: "comic_gesicht_loeschen", description: "Löscht das gespeicherte Comic-Gesicht und Foto vollständig.", input_schema: obj({}) },
+      { name: "outfit", description: "Deine Outfits zu Jahreszeiten und Feiertagen (Wintermütze, Sonnenbrille, Halloween-Kostüm, Weihnachtsmütze usw.). modus auto = automatisch nach Datum, aus = keine Outfits, vorschau = ein bestimmtes Outfit 60 Sekunden zeigen (anlass angeben).",
+        input_schema: obj({ modus: { type: "string", enum: ["auto", "aus", "vorschau"] }, anlass: { type: "string", enum: Object.keys(DEKO) } }, ["modus"]) },
     );
     const sc = smartCommands();
     if (sc.length) t.push({ name: "smart_home", description: "Führt einen Smart-Home-Befehl aus, z. B. Licht an. Nur die angegebenen Befehle sind möglich.",
@@ -1496,6 +1760,15 @@ ${zeile("Menschen", ich.menschen)}`;
           if (inp.modus === "comic" && !comic.data) return fail("Es gibt noch kein Comic-Gesicht.");
           cfg.faceMode = inp.modus === "comic" ? "comic" : "roboter"; saveCfg(); loadComic();
           return ok("Gesicht: " + cfg.faceMode);
+        }
+        case "outfit": {
+          if (inp.modus === "vorschau") {
+            if (!DEKO[inp.anlass]) return fail("Unbekannter Anlass.");
+            dekoPreview = { key: inp.anlass, until: Date.now() + 60000 };
+            return ok("Zeige 60 Sekunden lang: " + DEKO[inp.anlass].name);
+          }
+          cfg.deko = inp.modus === "aus" ? "aus" : "auto"; saveCfg(); dekoPreview = null;
+          return ok(cfg.deko === "aus" ? "Outfits aus." : "Outfits automatisch. " + dekoInfo());
         }
         case "comic_gesicht_loeschen": deleteComic(); return ok("Comic-Gesicht und Foto gelöscht.");
         case "smart_home": {
