@@ -229,7 +229,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 35</div>
+    <div class="hint" id="verHint">Sentinel Version 36</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -570,7 +570,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   // ================= OHREN: Dauerhören mit Weckwort =================
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   // „Sentinel“ und typische Verhörer der Google-Spracherkennung
-  const WAKE_BASE = "sentinel+s?|sentinal|sentenel|sentenell|centinel+|sendinel+|zentinel+|santinel+|setinel+|sentin|sentiment|sentimental|senti ?nel+|sendi ?nel+|send in el|sent in el|zenti ?nel+";
+  const WAKE_BASE = "sentin[aeiouy]\\w*|sendin[aeiouy]\\w*|zentin[aeiouy]\\w*|santin[aeiouy]\\w*|centin[aeiouy]\\w*|hexentin\\w*|(?:hey|hi|hallo) sandra|sentinel+s?|sentinal|sentenel|sentenell|centinel+|sendinel+|zentinel+|santinel+|setinel+|sentin|sentiment|sentimental|senti ?nel+|sendi ?nel+|send in el|sent in el|zenti ?nel+";
   const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   function buildWake() {
     const extra = String(cfg.wakeExtra || "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean).map(esc).join("|");
