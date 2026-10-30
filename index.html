@@ -183,6 +183,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       <input id="sTgChat" type="text" autocomplete="off" placeholder="Schreib deinem Bot „hallo“, dann tippe unten">
       <button class="ghost" id="sTgFind" type="button" style="margin-top:6px">Chat-ID automatisch finden</button>
     </div>
+    <label class="check"><input id="sTgRemind" type="checkbox"> Erinnerungen und Timer auch aufs Handy schicken (Telegram)</label>
     <label class="check"><input id="sAkku" type="checkbox"> Akku selbst laden (schaltet die Steckdose über die Smart-Home-Befehle)</label>
     <div class="field" style="display:flex;gap:10px;align-items:center">
       <label for="sAkkuMin" style="margin:0">an unter</label><input id="sAkkuMin" type="number" min="5" max="90" style="flex:1"><span>%</span>
@@ -229,7 +230,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 36</div>
+    <div class="hint" id="verHint">Sentinel Version 37</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -1543,6 +1544,8 @@ Lies immer nur EINEN Schritt vor, kurz und klar, und melde ihn mit kochschritt. 
     wake(); setTimeout(gong, NATIVE ? 300 : 0); setMood("ueberrascht");
     const s = due.typ === "timer" ? `Dein Timer ist abgelaufen${due.text ? ": " + due.text : ""}.` : `Erinnerung${ich.name ? " für " + ich.name : ""}: ${due.text}.`;
     setTimeout(() => speak(s, "neutral").then(() => { if (NATIVE && cfg.ear) nativeEarsOn(); }), 1400);
+    // zusätzlich aufs Handy, falls niemand zu Hause ist
+    if (cfg.tgRemind !== false && tgReady()) tgText((due.typ === "timer" ? "⏱ " : "⏰ ") + s).catch(e => elog("Erinnerung per Telegram ging nicht: " + e.message));
   }, 1000);
 
   // ================= SMART HOME ÜBER LINKS (z. B. Alexa-Routinen via Voice Monkey) =================
@@ -2175,7 +2178,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
     $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || ""; $("sGroq").value = cfg.groqKey || ""; $("sMuteBeep").checked = cfg.muteBeep !== false;
     $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about; $("sName").value = ich.name || ""; $("sBday").value = /^\d{4}-/.test(ich.geburtstag || "") ? ich.geburtstag : ""; $("sSmart").value = cfg.smart || "";
-    $("sTgToken").value = cfg.tgToken || ""; $("sTgChat").value = cfg.tgChat || ""; $("sNight").checked = !!cfg.night; $("sAkku").checked = !!cfg.akku; $("sAkkuMin").value = cfg.akkuMin; $("sAkkuMax").value = cfg.akkuMax; $("sAkkuOn").value = cfg.akkuOn || ""; $("sAkkuOff").value = cfg.akkuOff || ""; $("sNightFrom").value = cfg.nightFrom || "22:30"; $("sNightTo").value = cfg.nightTo || "06:30";
+    $("sTgToken").value = cfg.tgToken || ""; $("sTgChat").value = cfg.tgChat || ""; $("sNight").checked = !!cfg.night; $("sAkku").checked = !!cfg.akku; $("sTgRemind").checked = cfg.tgRemind !== false; $("sAkkuMin").value = cfg.akkuMin; $("sAkkuMax").value = cfg.akkuMax; $("sAkkuOn").value = cfg.akkuOn || ""; $("sAkkuOff").value = cfg.akkuOff || ""; $("sNightFrom").value = cfg.nightFrom || "22:30"; $("sNightTo").value = cfg.nightTo || "06:30";
     const u = usage.tag === heute() ? usage : { n: 0, inTok: 0, outTok: 0 };
     $("sUsage").textContent = `Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.usd)} · Heute: ${u.n} Anfragen · ${u.inTok.toLocaleString("de-DE")} Tokens rein · ${(u.cacheTok || 0).toLocaleString("de-DE")} günstig aus dem Zwischenspeicher · ${u.outTok.toLocaleString("de-DE")} Tokens raus`;
     $("setPanel").hidden = false;
@@ -2205,7 +2208,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     cfg.haUrl = $("sHaUrl").value.trim(); cfg.haToken = $("sHaToken").value.trim(); cfg.about = $("sAbout").value.trim().slice(0, 4000); cfg.smart = $("sSmart").value.trim().slice(0, 8000);
     const nm = $("sName").value.trim().slice(0, 40); if (nm !== ich.name) { ich.name = nm; saveIch(); }
     cfg.tgToken = $("sTgToken").value.trim(); cfg.tgChat = $("sTgChat").value.trim();
-    cfg.akku = $("sAkku").checked; cfg.akkuOn = $("sAkkuOn").value.trim(); cfg.akkuOff = $("sAkkuOff").value.trim();
+    cfg.tgRemind = $("sTgRemind").checked; cfg.akku = $("sAkku").checked; cfg.akkuOn = $("sAkkuOn").value.trim(); cfg.akkuOff = $("sAkkuOff").value.trim();
     cfg.akkuMin = Math.max(5, Math.min(90, parseInt($("sAkkuMin").value, 10) || 15)); cfg.akkuMax = Math.max(cfg.akkuMin + 5, Math.min(100, parseInt($("sAkkuMax").value, 10) || 100));
     cfg.night = $("sNight").checked; cfg.nightFrom = $("sNightFrom").value || "22:30"; cfg.nightTo = $("sNightTo").value || "06:30";
     const bd = $("sBday").value; if (bd && bd !== ich.geburtstag) { ich.geburtstag = bd; saveIch(); }
