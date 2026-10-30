@@ -229,7 +229,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 33</div>
+    <div class="hint" id="verHint">Sentinel Version 34</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -2030,8 +2030,8 @@ ${zeile("Menschen", ich.menschen)}`;
     const direkt = smartCommands().find(c => c.name.toLowerCase() === roh);
     if (direkt) {
       wake(); logTurn("user", text); elog("Direktbefehl: " + direkt.name);
-      try { await triggerUrl(direkt.url); speak("Erledigt.", "freude"); }
-      catch (e) { elog("Direktbefehl ging nicht: " + e.message); speak("Das hat nicht geklappt: " + direkt.name + ".", "skeptisch"); }
+      try { await triggerUrl(direkt.url); setMood("freude"); speak("Erledigt.", "neutral"); }
+      catch (e) { elog("Direktbefehl ging nicht: " + e.message); setMood("skeptisch"); speak("Das hat nicht geklappt: " + direkt.name + ".", "neutral"); }
       return;
     }
     if (overLimit()) { setMood("muede"); speak("Das Tageslimit ist erreicht. Morgen bin ich wieder voll für dich da.", "muede"); return; }
