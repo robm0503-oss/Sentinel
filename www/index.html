@@ -178,6 +178,10 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       <input id="sName" type="text" autocomplete="off" placeholder="z. B. Robert">
     </div>
     <div class="field">
+      <label for="sBday">Dein Geburtstag</label>
+      <input id="sBday" type="date">
+    </div>
+    <div class="field">
       <label for="sAbout">Über mich (das weiß Sentinel immer)</label>
       <textarea id="sAbout" rows="5" placeholder="Wer du bist, was du machst, was dir wichtig ist …"></textarea>
     </div>
@@ -201,7 +205,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 28</div>
+    <div class="hint" id="verHint">Sentinel Version 29</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -1003,6 +1007,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   try { localStorage.removeItem("sentinel.comic"); } catch (e) {}
   // ================= OUTFITS: Jahreszeiten & Feiertage =================
   const DEKO = {
+    geburtstag: { name: "Geburtstags-Partyhut mit Luftballons", txt: "Happy Birthday!", col: "#ff6fb5", fx: "konfetti ballons" },
     winter: { name: "Wintermütze und Schal" },
     sommer: { name: "Sonnenbrille" },
     weihnachten: { name: "Weihnachtsmütze", txt: "Merry Christmas", col: "#ff4b4b", fx: "schnee" },
@@ -1051,8 +1056,19 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   function aktuelleDeko() {
     if (dekoPreview && Date.now() < dekoPreview.until) return { key: dekoPreview.key, ...DEKO[dekoPreview.key] };
     if (cfg.deko === "aus") return null;
+    if (hatGeburtstag()) return { key: "geburtstag", ...DEKO.geburtstag, txt: `Happy Birthday${ich.name ? ", " + ich.name : ""}!` };
     const k = dekoKey();
     return k ? { key: k, ...DEKO[k] } : null;
+  }
+  function hatGeburtstag(d = new Date()) {
+    const g = ich.geburtstag || ""; if (!g) return false;
+    return g.slice(-5) === String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function geburtstagInfo() {
+    const g = ich.geburtstag; if (!g) return `Geburtstag von ${ich.name || "deinem Gegenüber"}: unbekannt. Frag bei passender Gelegenheit danach und nutze geburtstag_speichern.`;
+    if (!hatGeburtstag()) return `Geburtstag von ${ich.name || "deinem Gegenüber"}: ${g}.`;
+    const alt = /^\d{4}-/.test(g) ? new Date().getFullYear() - Number(g.slice(0, 4)) : 0;
+    return `HEUTE hat ${ich.name || "dein Gegenüber"} Geburtstag${alt ? " und wird " + alt : ""}! Gratuliere herzlich, wenn ihr heute zum ersten Mal sprecht.`;
   }
   function dekoInfo() {
     const d = aktuelleDeko();
@@ -1107,13 +1123,14 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
         pom(tx, ty, 16);
         break;
       }
-      case "silvester": {
+      case "silvester": case "geburtstag": {
+        const gb = dk.key === "geburtstag";
         c.save(); c.rotate(-.14 + sway * .03);
-        fill("#7b3cff", () => { c.moveTo(-48, -4); c.lineTo(48, -4); c.lineTo(0, -98); c.closePath(); });
+        fill(gb ? "#ff4fa3" : "#7b3cff", () => { c.moveTo(-48, -4); c.lineTo(48, -4); c.lineTo(0, -98); c.closePath(); });
         c.save(); c.beginPath(); c.moveTo(-48, -4); c.lineTo(48, -4); c.lineTo(0, -98); c.closePath(); c.clip();
-        c.strokeStyle = "#ffd34d"; c.lineWidth = 8; for (let i = -6; i < 6; i++) { c.beginPath(); c.moveTo(i * 22 - 60, 0); c.lineTo(i * 22 + 40, -130); c.stroke(); }
+        c.strokeStyle = gb ? "#4fc3ff" : "#ffd34d"; c.lineWidth = 8; for (let i = -6; i < 6; i++) { c.beginPath(); c.moveTo(i * 22 - 60, 0); c.lineTo(i * 22 + 40, -130); c.stroke(); }
         c.restore();
-        pom(0, -100, 13, "#ff4fa3"); c.restore();
+        pom(0, -100, 13, gb ? "#ffd34d" : "#ff4fa3"); c.restore();
         break;
       }
       case "neujahr": {
@@ -1225,15 +1242,25 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   // Schnee, Konfetti, Fledermäuse und Schriftzug – immer über das ganze Bild
   function drawDekoOverlay(dk, t) {
     const c = ctx;
-    if (dk.fx === "schnee" || dk.fx === "konfetti") {
-      const n = dk.fx === "schnee" ? 34 : 46, cols = ["#ff4fa3", "#ffd34d", "#4fc3ff", "#7bff8a", "#b27bff"];
+    const fx = dk.fx || "";
+    if (fx.includes("ballons")) {
+      [[18, "#ff4fa3", 0], [44, "#ffd34d", 1.7], [204, "#4fc3ff", .8], [226, "#7bff8a", 2.5]].forEach(([x, col, ph]) => {
+        const y = 150 + Math.sin(t / 900 + ph) * 8 - (x > 120 ? 20 : 0), xx = x + Math.sin(t / 1300 + ph) * 4;
+        c.strokeStyle = "rgba(255,255,255,.5)"; c.lineWidth = 1; c.beginPath(); c.moveTo(xx, y + 16); c.quadraticCurveTo(xx + 5, y + 40, xx, y + 70); c.stroke();
+        c.fillStyle = col; c.beginPath(); c.ellipse(xx, y, 12, 15, 0, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.moveTo(xx - 3, y + 17); c.lineTo(xx + 3, y + 17); c.lineTo(xx, y + 13); c.fill();
+        c.fillStyle = "rgba(255,255,255,.45)"; c.beginPath(); c.ellipse(xx - 4, y - 6, 3, 5, -.4, 0, Math.PI * 2); c.fill();
+      });
+    }
+    if (fx.includes("schnee") || fx.includes("konfetti")) {
+      const n = fx.includes("schnee") ? 34 : 46, cols = ["#ff4fa3", "#ffd34d", "#4fc3ff", "#7bff8a", "#b27bff"];
       for (let i = 0; i < n; i++) {
         const sp = .6 + (i * 7 % 5) / 6, x = (i * 53.7 + Math.sin(t / 1300 + i) * 10) % 240, y = ((t / 40) * sp + i * 41) % 262 - 12;
-        if (dk.fx === "schnee") { c.fillStyle = "rgba(255,255,255,.75)"; c.beginPath(); c.arc(x, y, 1.2 + (i % 3) * .6, 0, Math.PI * 2); c.fill(); }
+        if (fx.includes("schnee")) { c.fillStyle = "rgba(255,255,255,.75)"; c.beginPath(); c.arc(x, y, 1.2 + (i % 3) * .6, 0, Math.PI * 2); c.fill(); }
         else { c.save(); c.translate(x, y); c.rotate(t / 300 + i); c.fillStyle = cols[i % cols.length]; c.fillRect(-3, -1.5, 6, 3); c.restore(); }
       }
     }
-    if (dk.fx === "fledermaus") {
+    if (fx.includes("fledermaus")) {
       for (let i = 0; i < 3; i++) {
         const x = ((t / 30) * (0.6 + i * .25) + i * 90) % 300 - 30, y = 22 + i * 14 + Math.sin(t / 400 + i) * 6, f = Math.sin(t / 70 + i) * 4;
         c.fillStyle = "#3b2a4d"; c.beginPath(); c.moveTo(x, y);
@@ -1426,7 +1453,7 @@ So funktionierst du selbst (erkläre es ${wer}, wenn er fragt, kurz und konkret)
 - Wenn du müde aussiehst (Augen halb zu, blau), schläfst du nicht wirklich, du hörst trotzdem zu. "Sentinel" sagen oder dich anschauen weckt dich.
 - Augenfarben: Bernstein normal, Eisblau hört zu, Lila denkt nach, Grün freut sich, Gelb skeptisch, Rot sauer, Dunkelblau müde.
 - Unten links ist der Mikro-Knopf (Zuhören an oder aus), daneben das Auge (Kamera an oder aus).
-- Oben gibt es "Gedächtnis" (zeigt, was du dir gemerkt hast, Timer und Listen, mit Löschen-Knopf), "Einstellungen" (API-Key, Gehirn-Modell, Name, Über mich, Ort, Websuche, Weckwort, Tageslimit) und "Vollbild".
+- Oben gibt es "Gedächtnis" (zeigt, was du dir gemerkt hast, Timer und Listen, mit Löschen-Knopf), "Einstellungen" (API-Key, Gehirn-Modell, Name, Geburtstag, Über mich, Ort, Websuche, Weckwort, Tageslimit) und "Vollbild".
 - Ein Tipp auf die Statuszeile oben links zeigt das Ohren-Protokoll, damit man sieht, was du gehört hast.
 - Wenn du schlecht hörst: Mikrofon am Tablet nicht abdecken (z. B. durch eine Hülle), nicht zu weit weg sprechen.
 - Berührung: Streicheln mag ich, ins Auge pieksen tut weh, wildes Tippen nervt, lange drücken fragt dich, ob alles okay ist.
@@ -1442,7 +1469,7 @@ ${NATIVE ? "Du kannst außerdem das Tablet bedienen: Apps öffnen, YouTube, Spot
 Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
 Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Sag nie, dass du dir etwas gemerkt hast, ohne das Werkzeug wirklich benutzt zu haben.
-Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\n${dekoInfo()}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
+Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\n${dekoInfo()}\n${geburtstagInfo()}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
 Offene Timer und Erinnerungen: ${termText}
 Listen: ${listenText}
 ${zeile("Was du über " + wer + " weißt", ich.fakten)}
@@ -1465,6 +1492,8 @@ ${zeile("Menschen", ich.menschen)}`;
     const t = [
       { name: "ich_kenne_dich", description: "Speichert den Namen deines Gegenübers und optional einen kurzen Satz, wer er oder sie ist.",
         input_schema: obj({ name: { type: "string" }, info: { type: "string" } }, ["name"]) },
+      { name: "geburtstag_speichern", description: "Speichert den Geburtstag deines Gegenübers. datum als JJJJ-MM-TT, oder MM-TT wenn das Jahr unbekannt ist. An dem Tag trägst du automatisch ein Geburtstags-Outfit.",
+        input_schema: obj({ datum: { type: "string" } }, ["datum"]) },
       { name: "merke_dir", description: "Speichert dauerhaft einen kurzen Fakt über dein Gegenüber.",
         input_schema: obj({ fakt: { type: "string" } }, ["fakt"]) },
       { name: "vergiss", description: "Löscht gespeicherte Fakten, die den Begriff enthalten.",
@@ -1536,6 +1565,11 @@ ${zeile("Menschen", ich.menschen)}`;
           const info = String(inp.info || "").trim();
           if (info) ich.fakten = liste([...ich.fakten, info], 50);
           saveIch(); return ok("gespeichert");
+        }
+        case "geburtstag_speichern": {
+          const d = String(inp.datum || "").trim();
+          if (!/^(\d{4}-)?\d{2}-\d{2}$/.test(d)) return fail("Format JJJJ-MM-TT oder MM-TT");
+          ich.geburtstag = d; saveIch(); return ok("Geburtstag gespeichert: " + d);
         }
         case "merke_dir": {
           const f = String(inp.fakt || "").trim();
@@ -1831,7 +1865,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sOrt").value = cfg.ort;
     $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
     $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || ""; $("sGroq").value = cfg.groqKey || ""; $("sMuteBeep").checked = cfg.muteBeep !== false;
-    $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about; $("sName").value = ich.name || ""; $("sSmart").value = cfg.smart || "";
+    $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about; $("sName").value = ich.name || ""; $("sBday").value = /^\d{4}-/.test(ich.geburtstag || "") ? ich.geburtstag : ""; $("sSmart").value = cfg.smart || "";
     const u = usage.tag === heute() ? usage : { n: 0, inTok: 0, outTok: 0 };
     $("sUsage").textContent = `Heute: ${u.n} Anfragen · ${u.inTok.toLocaleString("de-DE")} Tokens rein · ${(u.cacheTok || 0).toLocaleString("de-DE")} günstig aus dem Zwischenspeicher · ${u.outTok.toLocaleString("de-DE")} Tokens raus`;
     $("setPanel").hidden = false;
@@ -1851,6 +1885,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     }
     cfg.haUrl = $("sHaUrl").value.trim(); cfg.haToken = $("sHaToken").value.trim(); cfg.about = $("sAbout").value.trim().slice(0, 4000); cfg.smart = $("sSmart").value.trim().slice(0, 8000);
     const nm = $("sName").value.trim().slice(0, 40); if (nm !== ich.name) { ich.name = nm; saveIch(); }
+    const bd = $("sBday").value; if (bd && bd !== ich.geburtstag) { ich.geburtstag = bd; saveIch(); }
     saveCfg(); $("setPanel").hidden = true; note("Gespeichert.", 2000);
   });
 
