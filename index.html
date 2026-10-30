@@ -220,7 +220,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 30</div>
+    <div class="hint" id="verHint">Sentinel Version 31</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -1460,6 +1460,16 @@ Lies immer nur EINEN Schritt vor, kurz und klar, und melde ihn mit kochschritt. 
   };
   let termine = (store.get("termine", []) || []).filter(t => t && t.at > Date.now() - 6 * 3600000);
   let listen = store.get("listen", {}) || {};
+  // ================= ESSEN: eure Gerichte, Wochenpläne, Ernährungsziel =================
+  let essen = Object.assign({ gerichte: [], plaene: [], ziel: "", hinweise: "" }, store.get("essen", {}));
+  const saveEssen = () => store.set("essen", essen);
+  function essenInfo() {
+    const g = essen.gerichte.length ? essen.gerichte.join("; ") : "(noch keine – frag danach, was es bei euch so gibt)";
+    const letzte = essen.plaene.slice(-4).map(pl => `Woche ab ${pl.start}: ${pl.tage.map(t => t.tag.slice(0, 2) + " " + t.essen).join(", ")}`).join("\n");
+    return `\nEURE GERICHTE (${essen.gerichte.length}): ${g}` +
+      (essen.hinweise ? `\nEssens-Hinweise (wer isst mit, was mag keiner): ${essen.hinweise}` : "") +
+      `\nERNÄHRUNGSZIEL: ${essen.ziel || "keins"}` + (letzte ? `\nLetzte Essenspläne:\n${letzte}` : "");
+  }
   const saveTermine = () => { termine.sort((a, b) => a.at - b.at); store.set("termine", termine); };
   const saveListen = () => store.set("listen", listen);
   let audioCtx = null;
@@ -1628,11 +1638,13 @@ Wenn du auf einem Bild etwas Wichtiges gesehen hast, schreib ganz am Ende eine k
 ${cfg.about ? `\nWas ${wer} selbst über sich erzählt:\n${cfg.about}\n` : ""}
 Deine Fähigkeiten: Timer und Erinnerungen stellen (sie klingeln auch, wenn gerade niemand redet), Listen führen (z. B. Einkauf, Aufgaben), dir Dinge merken${cfg.search ? ", im Internet nach aktuellen Infos suchen (Wetter, Nachrichten, Öffnungszeiten, Preise)" : ""}${smartCommands().length ? ", das Smart Home steuern mit diesen Befehlen: " + smartCommands().map(c => c.name).join(", ") + " (nutze smart_home; nur diese Befehle gibt es)" : ""}${cfg.haUrl && cfg.haToken ? ", das Smart Home über Home Assistant steuern (erst mit ha_geraete nachsehen, dann mit ha_schalten schalten; bei Türschlössern, Alarmanlagen und Heizung vorher kurz bestätigen lassen)" : (smartCommands().length ? "" : ". Smart-Home-Steuerung ist noch nicht eingerichtet; sag das, wenn danach gefragt wird, und dass man in den Einstellungen unter Smart-Home-Befehle Links eintragen kann")}.
 ${NATIVE ? "Du kannst außerdem das Tablet bedienen: Apps öffnen, YouTube, Spotify, Maps oder die Websuche mit einer Suche starten, WhatsApp-Nachrichten vorbereiten (abschicken muss der Mensch), Wecker stellen, Kalendertermine anlegen, Lautstärke und Helligkeit ändern, das WLAN nach Geräten durchsuchen (erkläre danach verständlich, welche Geräte das wahrscheinlich sind). Wenn du eine andere App öffnest, verschwindet dein Gesicht kurz und du hörst in der Zeit nicht zu; sag kurz, dass man mit dem Sentinel-Symbol oder der Zurück-Taste zu dir zurückkommt.\n" : ""}
+Du bist auch Ernährungsberater für den Haushalt. Erzählt ${wer}, was es bei euch so zu essen gibt, speichere jedes Gericht mit gerichte_merken (auch nebenbei erwähnte). Fragt ${wer}, was es nächste Woche gibt, mach einen Plan für 7 Tage: überwiegend aus euren Gerichten, abwechslungsreich und anders als die letzten Wochen, dazu ein bis zwei neue Vorschläge, die zu eurem Geschmack passen. Speichere ihn mit essensplan_speichern. Vorlesen: nur kurz zusammenfassen, dann anbieten, den Plan und eine Einkaufsliste aufs Handy zu schicken oder die Einkaufsliste anzulegen.
+Gibt es ein Ernährungsziel (z. B. abnehmen), speichere es mit ernaehrungsziel und richte alle Pläne danach aus: leichtere Varianten eurer Gerichte, mehr Gemüse und Eiweiß, satt machende Beilagen, sinnvolle Portionen, ab und zu ein Lieblingsessen, damit es durchhaltbar bleibt. Plane ein gesundes Tempo (etwa ein halbes Kilo pro Woche), nie Crash-Diäten oder extrem wenig essen. Bei Krankheiten oder sehr viel Gewicht rätst du zusätzlich zu ärztlicher Begleitung.
 Für Wetterfragen nutze immer das Werkzeug wetter, nie die Websuche. Will ${wer} etwas kochen oder backen, biete den Kochmodus an: Dann führst du Schritt für Schritt durchs Rezept und man muss nicht jedes Mal „Sentinel“ sagen. Geht ${wer} aus dem Haus, kannst du den Wachhund anbieten. Nachrichten aufs Handy gehen über Telegram${tgReady() ? "" : " (noch nicht eingerichtet: in den Einstellungen Bot-Token und Chat-ID eintragen)"}.
 Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
 Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Sag nie, dass du dir etwas gemerkt hast, ohne das Werkzeug wirklich benutzt zu haben.
-Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\n${dekoInfo()}\n${geburtstagInfo()}\nDeine API-Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.monat === monat() ? kosten.usd : 0)}.${wach.on ? "\nDer WACHHUND ist gerade an" + (wach.alerts ? ` (${wach.alerts} Bewegungsmeldungen)` : "") + ". Wenn " + wer + " sagt, dass er wieder da ist, schalte ihn aus." : ""}${nightActive ? "\nEs ist Nachtmodus: antworte besonders kurz und ruhig." : ""}${kochInfo()}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
+Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\n${dekoInfo()}\n${geburtstagInfo()}\nDeine API-Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.monat === monat() ? kosten.usd : 0)}.${wach.on ? "\nDer WACHHUND ist gerade an" + (wach.alerts ? ` (${wach.alerts} Bewegungsmeldungen)` : "") + ". Wenn " + wer + " sagt, dass er wieder da ist, schalte ihn aus." : ""}${nightActive ? "\nEs ist Nachtmodus: antworte besonders kurz und ruhig." : ""}${kochInfo()}${essenInfo()}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
 Offene Timer und Erinnerungen: ${termText}
 Listen: ${listenText}
 ${zeile("Was du über " + wer + " weißt", ich.fakten)}
@@ -1686,6 +1698,13 @@ ${zeile("Menschen", ich.menschen)}`;
       { name: "helligkeit", description: "Stellt die Bildschirmhelligkeit in Prozent ein.", input_schema: obj({ prozent: { type: "number" } }, ["prozent"]) },
     );
     t.push(
+      { name: "gerichte_merken", description: "Speichert Gerichte, die es im Haushalt gibt, in eurer Gerichte-Sammlung (kurze Namen, z. B. „Spaghetti Bolognese“).",
+        input_schema: obj({ gerichte: { type: "array", items: { type: "string" } } }, ["gerichte"]) },
+      { name: "gericht_entfernen", description: "Entfernt ein Gericht aus der Sammlung.", input_schema: obj({ name: { type: "string" } }, ["name"]) },
+      { name: "essensplan_speichern", description: "Speichert einen Wochen-Essensplan. start = Montag der Woche als JJJJ-MM-TT, tage = 7 Einträge mit Wochentag und Essen.",
+        input_schema: obj({ start: { type: "string" }, tage: { type: "array", items: obj({ tag: { type: "string" }, essen: { type: "string" } }, ["tag", "essen"]) } }, ["start", "tage"]) },
+      { name: "ernaehrungsziel", description: "Speichert das Ernährungsziel (z. B. „bis Ostern 6 kg abnehmen“) oder löscht es mit leerem Text. hinweise = optional, wer mitisst und was jemand nicht mag oder nicht verträgt.",
+        input_schema: obj({ ziel: { type: "string" }, hinweise: { type: "string" } }) },
       { name: "nachricht_ans_handy", description: "Schickt eine Telegram-Nachricht aufs Handy deines Menschen, z. B. die Einkaufsliste oder eine Notiz für unterwegs.",
         input_schema: obj({ text: { type: "string" } }, ["text"]) },
       { name: "wachhund", description: "Wachhund-Modus: Während niemand zu Hause ist, beobachtet die Kamera den Raum und schickt bei Bewegung ein Foto aufs Handy (Telegram). Startet nach einer Minute, damit man in Ruhe gehen kann. an=false schaltet ihn aus (z. B. wenn jemand sagt, dass er wieder da ist).",
@@ -1834,6 +1853,30 @@ ${zeile("Menschen", ich.menschen)}`;
         }
         case "lautstaerke": await SV.setVolume({ percent: Math.round(Number(inp.prozent)) }); return ok("Lautstärke " + Math.round(Number(inp.prozent)) + " %");
         case "helligkeit": await SV.setBrightness({ percent: Math.round(Number(inp.prozent)) }); return ok("Helligkeit " + Math.round(Number(inp.prozent)) + " %");
+        case "gerichte_merken": {
+          const neu = (Array.isArray(inp.gerichte) ? inp.gerichte : []).map(x => String(x).trim().slice(0, 60)).filter(Boolean);
+          const da = new Set(essen.gerichte.map(x => x.toLowerCase())), add = neu.filter(x => !da.has(x.toLowerCase()));
+          essen.gerichte = [...essen.gerichte, ...add].slice(-200); saveEssen();
+          return ok(add.length ? `Gespeichert: ${add.join(", ")}. Jetzt ${essen.gerichte.length} Gerichte.` : "Die kannte ich schon alle.");
+        }
+        case "gericht_entfernen": {
+          const n = String(inp.name || "").trim().toLowerCase(); if (!n) return fail("Kein Name");
+          const vorher = essen.gerichte.length;
+          essen.gerichte = essen.gerichte.filter(x => !x.toLowerCase().includes(n)); saveEssen();
+          return ok(vorher - essen.gerichte.length ? "Entfernt." : "Nicht gefunden.");
+        }
+        case "essensplan_speichern": {
+          const tage = (Array.isArray(inp.tage) ? inp.tage : []).map(t => ({ tag: String(t.tag || "").slice(0, 12), essen: String(t.essen || "").slice(0, 120) })).filter(t => t.essen).slice(0, 7);
+          if (!tage.length) return fail("Leerer Plan");
+          const start = String(inp.start || heute()).slice(0, 10);
+          essen.plaene = [...essen.plaene.filter(pl => pl.start !== start), { start, tage }].sort((a, b) => a.start < b.start ? -1 : 1).slice(-12); saveEssen();
+          return ok("Plan gespeichert. Er steht auch im Gedächtnis-Menü.");
+        }
+        case "ernaehrungsziel": {
+          if (inp.ziel != null) essen.ziel = String(inp.ziel).trim().slice(0, 200);
+          if (inp.hinweise != null) essen.hinweise = String(inp.hinweise).trim().slice(0, 400);
+          saveEssen(); return ok(essen.ziel ? "Ziel gespeichert: " + essen.ziel : "Kein Ziel mehr gespeichert.");
+        }
         case "nachricht_ans_handy": await tgText(inp.text || ""); return ok("Nachricht ist aufs Handy geschickt.");
         case "wachhund": {
           if (inp.an) { await wachhundAn(false); return ok("Wachhund ist an und wird in einer Minute scharf. Bei Bewegung kommt ein Foto aufs Handy."); }
@@ -2037,6 +2080,10 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     pBody.append(grp("Timer und Erinnerungen", termine.map(t => `${wannText(t.at)}${t.text ? " · " + t.text : ""}`)));
     for (const [n, a] of Object.entries(listen)) pBody.append(grp("Liste: " + n, a));
     for (const [k, titel] of LISTEN) pBody.append(grp(k === "fakten" && ich.name ? `Was ich über ${ich.name} weiß` : titel, ich[k]));
+    const plan = essen.plaene.filter(pl => pl.start <= heute()).slice(-1)[0] || essen.plaene.slice(-1)[0];
+    if (plan) pBody.append(grp("Essensplan ab " + new Date(plan.start + "T12:00").toLocaleDateString("de-DE"), plan.tage.map(t => `${t.tag}: ${t.essen}`)));
+    if (essen.ziel || essen.hinweise) pBody.append(grp("Ernährung", [essen.ziel && "Ziel: " + essen.ziel, essen.hinweise].filter(Boolean)));
+    pBody.append(grp(`Unsere Gerichte (${essen.gerichte.length})`, essen.gerichte));
   }
   $("ichBtn").addEventListener("click", () => { renderIch(); resetArmed = false; pReset.textContent = "Gedächtnis löschen"; $("ichPanel").hidden = false; });
   $("ichClose").addEventListener("click", () => { $("ichPanel").hidden = true; });
@@ -2044,7 +2091,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     if (!resetArmed) { resetArmed = true; pReset.textContent = "Wirklich alles vergessen? Nochmal tippen"; return; }
     resetArmed = false; pReset.textContent = "Gedächtnis löschen";
     ich = frisch(); saveIch(); history = []; sessionLog = []; store.set("session", []);
-    termine = []; saveTermine(); listen = {}; saveListen();
+    termine = []; saveTermine(); listen = {}; saveListen(); essen = { gerichte: [], plaene: [], ziel: "", hinweise: "" }; saveEssen();
     $("ichPanel").hidden = true; begruessen(true);
   });
 
