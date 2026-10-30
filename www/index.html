@@ -201,7 +201,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 26</div>
+    <div class="hint" id="verHint">Sentinel Version 27</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -1080,7 +1080,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     elog("Comic-Gesicht gelöscht");
   }
   function drawComic(t) {
-    const dk = aktuelleDeko();
+    const dk = null; // Outfits nur bei den Roboteraugen
     const D = comic.data, sz = dk ? 168 : 200, ox = (240 - sz) / 2 + gaze[0] * .25, oy = (dk ? (dk.txt ? 30 : 46) : 18) + gaze[1] * .25;
     // Leuchtring in Gefühlsfarbe
     ctx.save(); ctx.shadowColor = eyeColor; ctx.shadowBlur = 22; ctx.fillStyle = eyeColor;
