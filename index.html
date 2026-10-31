@@ -149,8 +149,9 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <div class="field">
       <label for="sModel">Gehirn</label>
       <select id="sModel">
+        <option value="auto">Automatik · Haiku für Einfaches, Sonnet für Schwieriges (empfohlen)</option>
         <option value="claude-haiku-5-5">Haiku 5.5 · schnell und günstig</option>
-        <option value="claude-sonnet-5-5">Sonnet 5.5 · natürliche Gespräche (empfohlen)</option>
+        <option value="claude-sonnet-5-5">Sonnet 5.5 · natürliche Gespräche</option>
         <option value="claude-opus-5-5">Opus 5.5 · am klügsten, deutlich teurer und langsamer</option>
       </select>
     </div>
@@ -159,6 +160,8 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       <input id="sOrt" type="text" placeholder="z. B. Wittenberge">
     </div>
     <div class="field">
+      <label for="sBudget">Monatsbudget in € (ab 80 % nur noch das günstige Gehirn)</label>
+      <input id="sBudget" type="number" min="1" max="500" step="1" style="margin-bottom:12px">
       <label for="sLimit">Tageslimit (Anfragen)</label>
       <input id="sLimit" type="number" min="10" max="5000" step="10">
     </div>
@@ -234,7 +237,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 39</div>
+    <div class="hint" id="verHint">Sentinel Version 40</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -269,6 +272,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   const cfg = Object.assign({ key: "", model: "claude-haiku-5-5", ort: "", limit: 300, search: true, wake: true, look: true, engine: "vosk", wakeExtra: "", voskUrl: "", ear: true, eye: true, haUrl: "", haToken: "", tgToken: "", tgChat: "", akku: false, akkuMin: 15, akkuMax: 100, akkuOn: "", akkuOff: "", night: false, nightFrom: "22:30", nightTo: "06:30" }, store.get("cfg", {}));
   const saveCfg = () => store.set("cfg", cfg);
   // Umstieg auf v3: Sonnet als Standard-Gehirn für natürlichere Gespräche
+  if (!cfg.vAuto) { cfg.model = "auto"; if (!cfg.budget) cfg.budget = 10; cfg.vAuto = true; saveCfg(); }
   if (!cfg.v3) { if (cfg.model === "claude-haiku-5-5") cfg.model = "claude-sonnet-5-5"; cfg.v3 = true; saveCfg(); }
   if (typeof cfg.about !== "string") cfg.about = "";
   // v12: zurück zur Google-Erkennung – die versteht am besten. Antippen weckt die Ohren zuverlässig.
@@ -2052,25 +2056,57 @@ ${zeile("Menschen", ich.menschen)}`;
     return fail("Unbekanntes Werkzeug");
   }
 
+  // ---- Automatik: welches Gehirn für welche Frage ----
+  const HAIKU = "claude-haiku-5-5", SONNET = "claude-sonnet-5-5";
+  const SCHWER_RE = /\b(warum|wieso|weshalb|erklär|erklaer|wie funktioniert|was bedeutet|unterschied|vergleich|vor- und nachteil|soll ich|was meinst du|rat|tipp|hilf mir|problem|plan|planen|strategie|idee|ideen|überleg|ueberleg|analys|rechne|berechne|schreib|formulier|text für|brief|mail|rezept|kochen|backen|essensplan|nächste woche|abnehmen|ernährung|geschichte|witz|gedicht|trading|steuer|recht|vertrag|code|programm)\w*/i;
+  let lastSonnet = 0;
+  const budgetEuro = () => (kosten.monat === monat() ? kosten.usd : 0) * 0.92; // grob in Euro
+  function gehirnFuer(text, img) {
+    const knapp = budgetEuro() >= (cfg.budget || 10) * 0.8;
+    if (cfg.model !== "auto") return knapp ? HAIKU : cfg.model;
+    if (knapp) return HAIKU;
+    if (img || koch.on || text.length > 140 || SCHWER_RE.test(text)) return SONNET;
+    if (Date.now() - lastSonnet < 90000 && text.split(/\s+/).length > 4) return SONNET; // laufendes tiefes Gespräch
+    return HAIKU;
+  }
+  let budgetGemeldet = "";
+  function budgetCheck() {
+    const b = cfg.budget || 10, e = budgetEuro(), stufe = e >= b ? "voll" : e >= b * .8 ? "80" : "";
+    if (stufe && budgetGemeldet !== monat() + stufe) {
+      budgetGemeldet = monat() + stufe;
+      const t = stufe === "voll" ? `Sentinel: Das Monatsbudget von ${b} € ist erreicht (ca. ${e.toFixed(2)} €). Ich antworte weiter, aber nur noch mit dem günstigen Gehirn.` : `Sentinel: 80 % vom Monatsbudget (${b} €) verbraucht. Ich nehme jetzt nur noch das günstige Gehirn.`;
+      elog(t); if (tgReady()) tgText("💶 " + t).catch(() => {});
+    }
+  }
+
   async function think(userText) {
     // Nur hinschauen, wenn es ums Sehen geht – sonst ganz normales Gespräch
     const img = SEE_RE.test(userText) ? snapshot() : null;
     const content = img
       ? [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: img } }, { type: "text", text: userText }]
       : userText;
-    const work = [...history, { role: "user", content }];
-    let text = "", lastText = "";
+    let model = gehirnFuer(userText, img);
+    elog("Gehirn: " + (model === SONNET ? "Sonnet" : model === HAIKU ? "Haiku" : "Opus"));
+    // Nur die letzten Sätze mitschicken – das Langzeitgedächtnis steckt sowieso im System-Text
+    const work = [...history.slice(model === HAIKU ? -12 : -20), { role: "user", content }];
+    let text = "", lastText = "", hochgestuft = false;
     const ergebnisse = [];
     for (let round = 0; round < 8; round++) {
       let data;
       try {
-        data = await api({ model: cfg.model, max_tokens: 1000, system: systemBlocks(), tools: tools(), messages: work });
+        const sys = systemBlocks();
+        if (cfg.model === "auto" && model === HAIKU && !hochgestuft && Array.isArray(sys)) sys.push({ type: "text", text: "Wenn diese Frage echtes Nachdenken, Planen, Erklären oder einen längeren Text braucht, antworte NUR mit [hoch] und sonst nichts. Einfache Dinge erledigst du direkt." });
+        data = await api({ model, max_tokens: 1000, system: sys, tools: tools(), messages: work });
       } catch (e) {
         if (e.kind === "search" && cfg.search) { cfg.search = false; saveCfg(); note("Websuche ist für deinen API-Key nicht freigeschaltet. Sie ist jetzt aus.", 6000); round--; continue; }
         throw e;
       }
+      const t0 = data.content.filter(c => c.type === "text").map(c => c.text).join("").trim();
+      if (model === HAIKU && cfg.model === "auto" && !hochgestuft && /^\[hoch\]/i.test(t0) && budgetEuro() < (cfg.budget || 10) * 0.8) {
+        hochgestuft = true; model = SONNET; elog("Gehirn: hochgestuft auf Sonnet"); round--; continue;
+      }
       work.push({ role: "assistant", content: data.content });
-      text = data.content.filter(c => c.type === "text").map(c => c.text).join("").trim();
+      text = t0.replace(/\[hoch\]/gi, "").trim();
       if (text) lastText = text;
       if (data.stop_reason === "tool_use") {
         if (data.content.some(c => c.type === "server_tool_use")) status("sucht im Internet");
@@ -2085,6 +2121,8 @@ ${zeile("Menschen", ich.menschen)}`;
       if (data.stop_reason === "pause_turn") { status("sucht im Internet"); continue; }
       break;
     }
+    if (model === SONNET) lastSonnet = Date.now();
+    budgetCheck();
     if (!text) {
       // Keine Worte vom Gehirn: ehrlich sagen, was wirklich passiert ist, statt einfach "Erledigt"
       const fehler = ergebnisse.filter(r => r.is_error);
@@ -2186,7 +2224,7 @@ Regeln:
 - Behalte, was stimmt, korrigiere Veraltetes, fasse Doppeltes zusammen. Nimm nur Dauerhaftes auf, keine einmaligen Kleinigkeiten wie einen einzelnen Timer. Nichts erfinden. Kurze deutsche Stichpunkte.
 Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakten": [], "vorlieben": [], "menschen": []}`;
     try {
-      const data = await api({ model: cfg.model, max_tokens: 1500, messages: [{ role: "user", content: prompt }] });
+      const data = await api({ model: HAIKU, max_tokens: 1500, messages: [{ role: "user", content: prompt }] });
       const raw = data.content.filter(c => c.type === "text").map(c => c.text).join("");
       const a = raw.indexOf("{"), z = raw.lastIndexOf("}");
       const neu = a >= 0 && z > a ? JSON.parse(raw.slice(a, z + 1)) : null;
@@ -2242,7 +2280,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
 
   // ================= EINSTELLUNGEN =================
   function openSettings() {
-    $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sOrt").value = cfg.ort;
+    $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sBudget").value = cfg.budget || 10; $("sOrt").value = cfg.ort;
     $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
     $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || ""; $("sGroq").value = cfg.groqKey || ""; $("sMuteBeep").checked = cfg.muteBeep !== false;
     $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about; $("sName").value = ich.name || ""; $("sBday").value = /^\d{4}-/.test(ich.geburtstag || "") ? ich.geburtstag : ""; $("sSmart").value = cfg.smart || "";
@@ -2263,7 +2301,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   });
   $("setClose").addEventListener("click", () => { $("setPanel").hidden = true; });
   $("setSave").addEventListener("click", () => {
-    cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.ort = $("sOrt").value.trim();
+    cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.budget = Math.max(1, Math.min(500, parseInt($("sBudget").value, 10) || 10)); cfg.ort = $("sOrt").value.trim();
     cfg.limit = Math.max(10, Math.min(5000, parseInt($("sLimit").value, 10) || 300));
     cfg.search = $("sSearch").checked; cfg.wake = $("sWake").checked; cfg.look = $("sLook").checked;
     cfg.muteBeep = $("sMuteBeep").checked;
