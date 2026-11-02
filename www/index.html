@@ -190,6 +190,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       <input id="sTgChat" type="text" autocomplete="off" placeholder="Schreib deinem Bot „hallo“, dann tippe unten">
       <button class="ghost" id="sTgFind" type="button" style="margin-top:6px">Chat-ID automatisch finden</button>
     </div>
+    <label class="check"><input id="sTgConfirm" type="checkbox"> Jede ausgeführte Aktion per Telegram bestätigen</label>
     <label class="check"><input id="sTgRemind" type="checkbox"> Erinnerungen und Timer auch aufs Handy schicken (Telegram)</label>
     <label class="check"><input id="sAkku" type="checkbox"> Akku selbst laden (schaltet die Steckdose über die Smart-Home-Befehle)</label>
     <div class="field" style="display:flex;gap:10px;align-items:center">
@@ -237,7 +238,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 40</div>
+    <div class="hint" id="verHint">Sentinel Version 41</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -1022,7 +1023,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     faceGaze = [Math.max(-1, Math.min(1, (.5 - pos[0]) * 2.4)) * 18, Math.max(-1, Math.min(1, (pos[1] - .45) * 2.4)) * 13];
     const gone = now - faceSeenAt;
     faceSeenAt = now; wake();
-    if (detector && faceWasGone && gone > 5 * 60000 && Date.now() - lastGreet > 20 * 60000) greet();
+    if (detector && faceWasGone && gone > 5 * 60000 && Date.now() - lastGreet > 20 * 60000 && !(typeof wach !== "undefined" && wach.on)) greet();
     faceWasGone = false;
   }
   setInterval(() => { if (performance.now() - faceSeenAt > 60000) faceWasGone = true; }, 10000);
@@ -1422,16 +1423,99 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     let n = 0; for (let j = 0; j < g.length; j++) if (Math.abs(g[j] - prev[j]) > 35) n++;
     const f = n / g.length;
     // 3 % bis 60 % des Bildes ändern sich -> Bewegung; mehr ist meist nur Licht an/aus
-    if (f > .03 && f < .6) wach.hits++; else wach.hits = 0;
-    if (wach.hits >= 2 && Date.now() - wach.lastAlert > 60000) { wach.hits = 0; wach.lastAlert = Date.now(); wachAlarm(); }
+    if (f > .03 && f < .6) { wach.hits++; wach.lastMotion = Date.now(); } else wach.hits = 0;
+    if (!wach.recording && wach.hits >= 2 && Date.now() - wach.lastAlert > 20000) { wach.hits = 0; wach.lastAlert = Date.now(); wachAlarm(); }
   }
   async function wachAlarm() {
     const zeit = uhr(Date.now()); wach.alerts++;
     elog("Wachhund: Bewegung um " + zeit);
+    wachVideo(zeit); // läuft weiter, solange sich etwas bewegt
     await new Promise(r => setTimeout(r, 700)); // kurz warten, damit die Person ganz im Bild ist
-    try { await tgPhoto(snapshot(), `🐕 Sentinel-Wachhund: Bewegung erkannt um ${zeit} Uhr`); }
+    try { await tgPhoto(snapshot(), `🐕 Sentinel-Wachhund: Bewegung erkannt um ${zeit} Uhr – Video folgt`); }
     catch (e) { elog("Telegram-Fehler: " + e.message); }
   }
+  // Kurzes Video, solange Bewegung im Bild ist (max. 30 Sekunden), dann aufs Handy
+  function wachVideo(zeit) {
+    if (!window.MediaRecorder || !stream || wach.recording) return;
+    const mt = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp8", "video/webm"].find(t => MediaRecorder.isTypeSupported(t));
+    if (!mt) { elog("Wachhund: Video wird hier nicht unterstützt"); return; }
+    let rec; try { rec = new MediaRecorder(stream, { mimeType: mt, videoBitsPerSecond: 1000000 }); } catch (e) { elog("Wachhund-Video: " + e.message); return; }
+    const teile = [], start = Date.now(); wach.recording = true; wach.lastMotion = Date.now();
+    rec.ondataavailable = e => { if (e.data && e.data.size) teile.push(e.data); };
+    rec.onstop = async () => {
+      wach.recording = false;
+      const blob = new Blob(teile, { type: mt.split(";")[0] }), sek = Math.round((Date.now() - start) / 1000);
+      elog(`Wachhund: Video ${sek} s, ${Math.round(blob.size / 1024)} kB`);
+      try { await tgVideo(blob, `🎥 Bewegung ab ${zeit} Uhr (${sek} s)`); } catch (e) { elog("Video ging nicht: " + e.message); }
+    };
+    rec.start(1000);
+    const t = setInterval(() => {
+      if (!wach.on || !stream || Date.now() - wach.lastMotion > 4000 || Date.now() - start > 30000) { clearInterval(t); try { rec.stop(); } catch (e) {} }
+    }, 500);
+  }
+  async function tgVideo(blob, caption) {
+    const mp4 = /mp4/.test(blob.type);
+    const fd = new FormData(); fd.append("chat_id", cfg.tgChat); fd.append("caption", caption);
+    if (mp4) { fd.append("video", blob, "wachhund.mp4"); fd.append("supports_streaming", "true"); }
+    else fd.append("document", blob, "wachhund.webm");
+    const r = await fetch(`https://api.telegram.org/bot${cfg.tgToken}/${mp4 ? "sendVideo" : "sendDocument"}`, { method: "POST", body: fd });
+    const j = await r.json(); if (!j.ok) throw new Error(j.description);
+  }
+  // ================= ANDERE APPS / YOUTUBE =================
+  function zurueckHolen(ms) { setTimeout(() => { if (SV && SV.bringToFront) SV.bringToFront().then(() => elog("Wieder im Vordergrund")).catch(() => {}); }, ms); }
+  function ytPlayer(id) {
+    let box = document.getElementById("ytBox");
+    if (!id) { if (box) box.remove(); return; }
+    if (!box) {
+      box = document.createElement("div"); box.id = "ytBox";
+      box.style.cssText = "position:fixed;right:12px;bottom:84px;width:280px;height:158px;z-index:30;border-radius:12px;overflow:hidden;box-shadow:0 0 0 1px #333;background:#000";
+      const x = document.createElement("button"); x.textContent = "✕"; x.type = "button";
+      x.style.cssText = "position:absolute;top:4px;right:4px;z-index:2;background:#000a;color:#fff;border:0;border-radius:50%;width:28px;height:28px";
+      x.onclick = () => box.remove(); box.append(x);
+      document.body.append(box);
+    }
+    box.querySelectorAll("iframe").forEach(f => f.remove());
+    const f = document.createElement("iframe");
+    f.src = `https://www.youtube.com/embed/${id}?autoplay=1&playsinline=1&rel=0`;
+    f.allow = "autoplay; encrypted-media"; f.style.cssText = "width:100%;height:100%;border:0";
+    box.prepend(f); elog("YouTube: " + id);
+  }
+
+  // ================= TELEGRAM-BEFEHLE (von unterwegs) =================
+  let tgOffset = store.get("tgOffset", 0), tgLaeuft = false;
+  const tgSchlange = [];
+  async function tgPoll() {
+    if (!tgReady()) { setTimeout(tgPoll, 15000); return; }
+    if (tgLaeuft) return; tgLaeuft = true;
+    try {
+      if (!tgOffset) { // beim allerersten Mal alte Nachrichten überspringen
+        const j0 = await getJSON(`https://api.telegram.org/bot${cfg.tgToken}/getUpdates?offset=-1`);
+        const l = (j0.result || []).slice(-1)[0]; tgOffset = l ? l.update_id + 1 : 1; store.set("tgOffset", tgOffset);
+      }
+      const j = await getJSON(`https://api.telegram.org/bot${cfg.tgToken}/getUpdates?timeout=25&offset=${tgOffset}`);
+      for (const u of (j.result || [])) {
+        tgOffset = u.update_id + 1; store.set("tgOffset", tgOffset);
+        const m = u.message;
+        if (!m || !m.text) continue;
+        if (String(m.chat.id) !== String(cfg.tgChat)) { elog("Telegram: fremder Absender ignoriert"); continue; }
+        elog("Telegram: " + m.text.slice(0, 60)); tgSchlange.push(m.text);
+      }
+    } catch (e) { elog("Telegram-Abruf: " + e.message); await new Promise(r => setTimeout(r, 8000)); }
+    tgLaeuft = false; setTimeout(tgPoll, 300);
+  }
+  setTimeout(tgPoll, 6000);
+  setInterval(() => { if (tgSchlange.length && !busy && !speaking) tgBefehl(tgSchlange.shift()); }, 700);
+  async function tgBefehl(text) {
+    const t = text.trim(), k = t.toLowerCase().replace(/^\//, "").replace(/[!.?]+$/, "").trim();
+    const antw = x => tgText(x).catch(e => elog("Telegram-Antwort: " + e.message));
+    if (k === "start" || k === "hilfe" || k === "help") return antw("🤖 Sentinel hört dich.\nSchnellbefehle: wachhund an · wachhund aus · foto · status\nAlles andere schreibst du einfach wie mit mir zu Hause – z. B. „mach das große Licht aus“ oder „erinnere mich morgen um 8 an den Müll“.");
+    if (/^wachhund\s*(an|ein|start)/.test(k)) { try { await wachhundAn(true); return antw("🐕 Wachhund ist AN. Bei Bewegung kommen Foto und Video. Ausschalten: „wachhund aus“."); } catch (e) { return antw("❌ Wachhund ging nicht: " + e.message); } }
+    if (/^wachhund\s*(aus|stop|ende)/.test(k)) { const n = wach.alerts; wachhundAus(); return antw(`✅ Wachhund ist AUS. Meldungen: ${n}.`); }
+    if (k === "foto" || k === "bild" || k === "kamera") { if (!(await camStart())) return antw("❌ Kamera geht gerade nicht."); await new Promise(r => setTimeout(r, 1200)); return tgPhoto(snapshot(), "📷 So sieht es gerade aus (" + uhr(Date.now()) + " Uhr)"); }
+    if (k === "status") return antw(`📊 Sentinel-Status\nAkku: ${akku.level >= 0 ? akku.level + " %" + (akku.charging ? " (lädt)" : "") : "?"}\nWachhund: ${wach.on ? "AN (" + wach.alerts + " Meldungen)" : "aus"}\nKosten diesen Monat: ca. ${budgetEuro().toFixed(2)} € von ${cfg.budget || 10} €\nOffene Erinnerungen: ${termine.length}`);
+    send(t, "telegram");
+  }
+
   if (store.get("wach", false)) setTimeout(() => wachhundAn(true).catch(e => elog("Wachhund: " + e.message)), 4000);
 
   // ================= NACHTMODUS =================
@@ -1754,6 +1838,8 @@ Deine Fähigkeiten: Timer und Erinnerungen stellen (sie klingeln auch, wenn gera
 ${NATIVE ? "Du kannst außerdem das Tablet bedienen: Apps öffnen, YouTube, Spotify, Maps oder die Websuche mit einer Suche starten, WhatsApp-Nachrichten vorbereiten (abschicken muss der Mensch), Wecker stellen, Kalendertermine anlegen, Lautstärke und Helligkeit ändern, das WLAN nach Geräten durchsuchen (erkläre danach verständlich, welche Geräte das wahrscheinlich sind). Wenn du eine andere App öffnest, verschwindet dein Gesicht kurz und du hörst in der Zeit nicht zu; sag kurz, dass man mit dem Sentinel-Symbol oder der Zurück-Taste zu dir zurückkommt.\n" : ""}
 Du bist auch Ernährungsberater für den Haushalt. Erzählt ${wer}, was es bei euch so zu essen gibt, speichere jedes Gericht mit gerichte_merken (auch nebenbei erwähnte). Fragt ${wer}, was es nächste Woche gibt, mach einen Plan für 7 Tage: überwiegend aus euren Gerichten, abwechslungsreich und anders als die letzten Wochen, dazu ein bis zwei neue Vorschläge, die zu eurem Geschmack passen. Speichere ihn mit essensplan_speichern. Vorlesen: nur kurz zusammenfassen, dann anbieten, den Plan und eine Einkaufsliste aufs Handy zu schicken oder die Einkaufsliste anzulegen.
 Gibt es ein Ernährungsziel (z. B. abnehmen), speichere es mit ernaehrungsziel und richte alle Pläne danach aus: leichtere Varianten eurer Gerichte, mehr Gemüse und Eiweiß, satt machende Beilagen, sinnvolle Portionen, ab und zu ein Lieblingsessen, damit es durchhaltbar bleibt. Plane ein gesundes Tempo (etwa ein halbes Kilo pro Woche), nie Crash-Diäten oder extrem wenig essen. Bei Krankheiten oder sehr viel Gewicht rätst du zusätzlich zu ärztlicher Begleitung.
+Nachrichten, die mit „(per Telegram von unterwegs)“ beginnen, schickt ${wer} per Telegram, er ist also nicht vor dir. Führe Befehle direkt aus und antworte kurz als Text (es wird nicht vorgelesen). Kamera-Fragen beantwortest du mit kamera_bild.
+Soll Musik oder ein Video von YouTube laufen: suche mit der Websuche den passenden youtube.com/watch-Link und nutze youtube_abspielen – der Player läuft klein in deinem Gesicht und du bleibst im Vordergrund. Öffnest du andere Apps für etwas, das im Hintergrund weiterlaufen soll, setze zurueck=true.
 Für Wetterfragen nutze immer das Werkzeug wetter, nie die Websuche. Will ${wer} etwas kochen oder backen, biete den Kochmodus an: Dann führst du Schritt für Schritt durchs Rezept und man muss nicht jedes Mal „Sentinel“ sagen. Geht ${wer} aus dem Haus, kannst du den Wachhund anbieten. Nachrichten aufs Handy gehen über Telegram${tgReady() ? "" : " (noch nicht eingerichtet: in den Einstellungen Bot-Token und Chat-ID eintragen)"}.
 Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
@@ -1799,10 +1885,13 @@ ${zeile("Menschen", ich.menschen)}`;
     ];
     if (stream) t.push({ name: "kamera_bild", description: "Schaut durch deine Kamera und gibt dir das aktuelle Bild. Nur nutzen, wenn du gebeten wirst, etwas anzuschauen.", input_schema: obj({}) });
     if (NATIVE && SV) t.push(
-      { name: "app_oeffnen", description: "Öffnet eine auf dem Tablet installierte App über ihren Namen, z. B. Netflix, Spotify, Kamera, Einstellungen.",
-        input_schema: obj({ app: { type: "string" } }, ["app"]) },
+      { name: "app_oeffnen", description: "Öffnet eine auf dem Tablet installierte App über ihren Namen, z. B. Netflix, Spotify, Kamera, Einstellungen. zurueck=true: nach ein paar Sekunden kommst du selbst wieder in den Vordergrund (für Dinge, die im Hintergrund weiterlaufen, z. B. Spotify-Musik). zurueck=false, wenn man die App anschauen will (Netflix, Maps).",
+        input_schema: obj({ app: { type: "string" }, zurueck: { type: "boolean" } }, ["app"]) },
+      { name: "youtube_abspielen", description: "Spielt ein YouTube-Video bzw. Lied direkt in deinem Gesicht ab (kleiner Player, du bleibst im Vordergrund). Vorher mit der Websuche den passenden Link youtube.com/watch?v=… finden. url = dieser Link.",
+        input_schema: obj({ url: { type: "string" } }, ["url"]) },
+      { name: "youtube_stoppen", description: "Stoppt die YouTube-Wiedergabe in deinem Gesicht.", input_schema: obj({}) },
       { name: "medien_oeffnen", description: "Öffnet YouTube, Spotify, Google Maps, WhatsApp oder die Websuche direkt mit einer Suche bzw. einem Text. Bei WhatsApp wird die Nachricht nur vorbereitet, abschicken muss der Mensch selbst.",
-        input_schema: obj({ dienst: { type: "string", enum: ["youtube", "spotify", "maps", "whatsapp", "web"] }, suche: { type: "string" } }, ["dienst", "suche"]) },
+        input_schema: obj({ dienst: { type: "string", enum: ["youtube", "spotify", "maps", "whatsapp", "web"] }, suche: { type: "string" }, zurueck: { type: "boolean" } }, ["dienst", "suche"]) },
       { name: "wecker_stellen", description: "Stellt einen echten Wecker in der Uhr-App des Tablets.",
         input_schema: obj({ stunde: { type: "number" }, minute: { type: "number" }, text: { type: "string" } }, ["stunde", "minute"]) },
       { name: "kalender_termin", description: "Legt einen Termin im Kalender des Tablets an (öffnet die Kalender-App zum Bestätigen). beginn als lokale Zeit JJJJ-MM-TTTHH:MM.",
@@ -1936,12 +2025,19 @@ ${zeile("Menschen", ich.menschen)}`;
           if (!listen[name].length) delete listen[name];
           saveListen(); return ok(`${name}: ${(listen[name] || []).join(", ") || "leer"}`);
         }
+        case "youtube_abspielen": {
+          const id = (String(inp.url || "").match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([\w-]{11})/) || [])[1];
+          if (!id) return fail("Kein gültiger YouTube-Link. Erst mit der Websuche einen youtube.com/watch?v=…-Link finden.");
+          ytPlayer(id); return ok("läuft jetzt in deinem Gesicht");
+        }
+        case "youtube_stoppen": ytPlayer(null); return ok("gestoppt");
         case "app_oeffnen": {
           if (!appCache) { const r = await SV.listApps(); appCache = (r && r.apps) || []; }
           const q = String(inp.app || "").toLowerCase().trim();
           const a = appCache.find(x => x.name.toLowerCase() === q) || appCache.find(x => x.name.toLowerCase().includes(q)) || appCache.find(x => q.includes(x.name.toLowerCase()));
           if (!a) return fail("Diese App ist nicht installiert. Installiert sind: " + appCache.map(x => x.name).slice(0, 60).join(", "));
           await SV.launchApp({ package: a.package }); elog("App geöffnet: " + a.name);
+          if (inp.zurueck) { zurueckHolen(10000); return ok("geöffnet: " + a.name + ". In 10 Sekunden bist du wieder im Vordergrund."); }
           return ok("geöffnet: " + a.name + ". Zurück zu Sentinel geht es mit dem Sentinel-Symbol oder der Zurück-Taste.");
         }
         case "medien_oeffnen": {
@@ -1955,6 +2051,7 @@ ${zeile("Menschen", ich.menschen)}`;
           };
           const m = M[inp.dienst]; if (!m) return fail("Unbekannter Dienst");
           await SV.openUrl({ url: m[0], package: m[1] || undefined }); elog("Geöffnet: " + inp.dienst);
+          if (inp.zurueck) { zurueckHolen(12000); return ok("geöffnet, in 12 Sekunden bist du wieder im Vordergrund"); }
           return ok("geöffnet");
         }
         case "wecker_stellen": {
@@ -2079,7 +2176,10 @@ ${zeile("Menschen", ich.menschen)}`;
     }
   }
 
+  let letzteWerkzeuge = [];
+  function bestaetigen(text) { if (cfg.tgConfirm !== false && tgReady()) tgText(text).catch(() => {}); }
   async function think(userText) {
+    letzteWerkzeuge = [];
     // Nur hinschauen, wenn es ums Sehen geht – sonst ganz normales Gespräch
     const img = SEE_RE.test(userText) ? snapshot() : null;
     const content = img
@@ -2112,7 +2212,7 @@ ${zeile("Menschen", ich.menschen)}`;
         if (data.content.some(c => c.type === "server_tool_use")) status("sucht im Internet");
         const res = await Promise.all(data.content.filter(c => c.type === "tool_use").map(runTool));
         data.content.filter(c => c.type === "tool_use").forEach((c, i) => {
-          const r = res[i]; elog(`Werkzeug ${c.name}: ${r.is_error ? "FEHLER " : ""}${String(r.content).slice(0, 90)}`);
+          const r = res[i]; if (!r.is_error) letzteWerkzeuge.push(c.name); elog(`Werkzeug ${c.name}: ${r.is_error ? "FEHLER " : ""}${String(r.content).slice(0, 90)}`);
           ergebnisse.push(r);
         });
         work.push({ role: "user", content: res });
@@ -2153,40 +2253,49 @@ ${zeile("Menschen", ich.menschen)}`;
     timeout: "Das hat zu lange gedauert. Frag mich bitte noch einmal, gern etwas kürzer.",
   };
 
-  async function send(text) {
+  // Werkzeuge, die nur etwas nachschauen – dafür keine Bestätigung aufs Handy
+  const NUR_LESEN = new Set(["wetter", "termine_anzeigen", "kochschritt", "kamera_bild", "ha_geraete", "wlan_scannen", "web_search"]);
+  async function send(text, via = "sprache") {
     text = String(text || "").trim();
     if (busy || !text) return;
+    const tg = via === "telegram";
+    const sag = (x, m) => tg ? tgText("🤖 " + x).catch(e => elog("Telegram-Antwort: " + e.message)) : speak(x, m);
     const roh = text.toLowerCase().replace(WAKE, " ").replace(/\b(bitte|mal|jetzt)\b/g, " ").replace(/[^\wäöüß ]/g, " ").replace(/\s+/g, " ").trim();
     const direkt = smartCommands().find(c => c.name.toLowerCase() === roh);
     if (direkt) {
       wake(); logTurn("user", text); elog("Direktbefehl: " + direkt.name);
-      try { await triggerUrl(direkt.url); setMood("freude"); speak("Erledigt.", "neutral"); }
-      catch (e) { elog("Direktbefehl ging nicht: " + e.message); setMood("skeptisch"); speak("Das hat nicht geklappt: " + direkt.name + ".", "neutral"); }
+      try { await triggerUrl(direkt.url); setMood("freude"); sag(tg ? "✅ " + direkt.name : "Erledigt.", "neutral"); if (!tg) bestaetigen("✅ " + direkt.name); }
+      catch (e) { elog("Direktbefehl ging nicht: " + e.message); setMood("skeptisch"); sag("Das hat nicht geklappt: " + direkt.name + ".", "neutral"); }
+      if (tg) setTimeout(() => { if (!busy && !speaking) setMood("neutral"); }, 2500);
       return;
     }
-    if (overLimit()) { setMood("muede"); speak("Das Tageslimit ist erreicht. Morgen bin ich wieder voll für dich da.", "muede"); return; }
+    if (overLimit()) { setMood("muede"); sag("Das Tageslimit ist erreicht. Morgen bin ich wieder voll für dich da.", "muede"); return; }
     wake(); keepAwake();
-    if (synth) synth.cancel();
-    earPause();
+    if (!tg) { if (synth) synth.cancel(); earPause(); }
     busy = true; sendBtn.disabled = true; msg.value = ""; msg.blur();
     setMood("nachdenken"); status("denkt nach"); show("");
     logTurn("user", text);
     const nameM = text.match(/\b(?:ich hei(?:ß|ss)e|mein name ist|nenn mich)\s+([A-ZÄÖÜa-zäöüß][\wäöüß-]{1,30})/i);
     if (nameM) { const n = nameM[1].charAt(0).toUpperCase() + nameM[1].slice(1); if (n.toLowerCase() !== "sentinel") { ich.name = n; saveIch(); elog("Name gespeichert: " + n); } }
     try {
-      const answer = await think(text);
+      const answer = await think(tg ? "(per Telegram von unterwegs) " + text : text);
       const { tag, clean, sah } = parse(answer || "");
       const said = clean || "Erledigt.";
-      history.push({ role: "user", content: text }, { role: "assistant", content: said + (sah ? ` [sah: ${sah}]` : "") });
+      history.push({ role: "user", content: (tg ? "(per Telegram) " : "") + text }, { role: "assistant", content: said + (sah ? ` [sah: ${sah}]` : "") });
       while (history.length > 40) history.splice(0, 2);
       logTurn("assistant", said + (sah ? ` (gesehen: ${sah})` : ""));
       busy = false; sendBtn.disabled = false;
       setMood(tag);
-      await speak(said, tag === "muede" ? "muede" : "neutral");
+      if (tg) { await sag(said); setTimeout(() => { if (!busy && !speaking) setMood("neutral"); }, 2500); }
+      else {
+        if (letzteWerkzeuge.some(n => !NUR_LESEN.has(n))) bestaetigen("✅ " + said);
+        await speak(said, tag === "muede" ? "muede" : "neutral");
+      }
     } catch (e) {
       busy = false; sendBtn.disabled = false;
       setMood("skeptisch");
       const t = ERRTEXT[e && e.kind] || "Da ist etwas schiefgegangen: " + ((e && e.message) || "unbekannt");
+      if (tg) { sag("❌ " + t); setTimeout(() => { if (mood === "skeptisch" && !busy) setMood("neutral"); }, 2500); return; }
       show(t, true); setTimeout(() => show(""), 8000);
       setTimeout(() => { if (mood === "skeptisch" && !busy) setMood("neutral"); afterSpeaking(); }, 2500);
     }
@@ -2284,7 +2393,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
     $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || ""; $("sGroq").value = cfg.groqKey || ""; $("sMuteBeep").checked = cfg.muteBeep !== false;
     $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about; $("sName").value = ich.name || ""; $("sBday").value = /^\d{4}-/.test(ich.geburtstag || "") ? ich.geburtstag : ""; $("sSmart").value = cfg.smart || "";
-    $("sTgToken").value = cfg.tgToken || ""; $("sGovee").value = cfg.govee || ""; $("sTgChat").value = cfg.tgChat || ""; $("sNight").checked = !!cfg.night; $("sAkku").checked = !!cfg.akku; $("sTgRemind").checked = cfg.tgRemind !== false; $("sAkkuMin").value = cfg.akkuMin; $("sAkkuMax").value = cfg.akkuMax; $("sAkkuOn").value = cfg.akkuOn || ""; $("sAkkuOff").value = cfg.akkuOff || ""; $("sNightFrom").value = cfg.nightFrom || "22:30"; $("sNightTo").value = cfg.nightTo || "06:30";
+    $("sTgToken").value = cfg.tgToken || ""; $("sGovee").value = cfg.govee || ""; $("sTgChat").value = cfg.tgChat || ""; $("sNight").checked = !!cfg.night; $("sAkku").checked = !!cfg.akku; $("sTgRemind").checked = cfg.tgRemind !== false; $("sTgConfirm").checked = cfg.tgConfirm !== false; $("sAkkuMin").value = cfg.akkuMin; $("sAkkuMax").value = cfg.akkuMax; $("sAkkuOn").value = cfg.akkuOn || ""; $("sAkkuOff").value = cfg.akkuOff || ""; $("sNightFrom").value = cfg.nightFrom || "22:30"; $("sNightTo").value = cfg.nightTo || "06:30";
     const u = usage.tag === heute() ? usage : { n: 0, inTok: 0, outTok: 0 };
     $("sUsage").textContent = `Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.usd)} · Heute: ${u.n} Anfragen · ${u.inTok.toLocaleString("de-DE")} Tokens rein · ${(u.cacheTok || 0).toLocaleString("de-DE")} günstig aus dem Zwischenspeicher · ${u.outTok.toLocaleString("de-DE")} Tokens raus`;
     $("setPanel").hidden = false;
@@ -2315,7 +2424,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     const nm = $("sName").value.trim().slice(0, 40); if (nm !== ich.name) { ich.name = nm; saveIch(); }
     if ($("sGovee").value.trim() !== (cfg.govee || "")) { cfg.govee = $("sGovee").value.trim(); goveeGeraete = null; goveeLaden(); }
     cfg.tgToken = $("sTgToken").value.trim(); cfg.tgChat = $("sTgChat").value.trim();
-    cfg.tgRemind = $("sTgRemind").checked; cfg.akku = $("sAkku").checked; cfg.akkuOn = $("sAkkuOn").value.trim(); cfg.akkuOff = $("sAkkuOff").value.trim();
+    cfg.tgRemind = $("sTgRemind").checked; cfg.tgConfirm = $("sTgConfirm").checked; cfg.akku = $("sAkku").checked; cfg.akkuOn = $("sAkkuOn").value.trim(); cfg.akkuOff = $("sAkkuOff").value.trim();
     cfg.akkuMin = Math.max(5, Math.min(90, parseInt($("sAkkuMin").value, 10) || 15)); cfg.akkuMax = Math.max(cfg.akkuMin + 5, Math.min(100, parseInt($("sAkkuMax").value, 10) || 100));
     cfg.night = $("sNight").checked; cfg.nightFrom = $("sNightFrom").value || "22:30"; cfg.nightTo = $("sNightTo").value || "06:30";
     const bd = $("sBday").value; if (bd && bd !== ich.geburtstag) { ich.geburtstag = bd; saveIch(); }
