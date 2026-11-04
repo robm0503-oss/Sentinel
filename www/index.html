@@ -156,6 +156,16 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       </select>
     </div>
     <div class="field">
+      <label for="sGesicht">Gesicht</label>
+      <select id="sGesicht">
+        <option value="roboter">Roboter · Augen und Mund</option>
+        <option value="holo">Hologramm-Kern · kreisende Lichtringe</option>
+        <option value="welle">Stimmwelle · leuchtende Audiowelle</option>
+        <option value="partikel">Partikel-Kugel · schwebende Lichtpunkte</option>
+        <option value="pixel">Retro-Pixel · 8-Bit-Augen</option>
+      </select>
+    </div>
+    <div class="field">
       <label for="sOrt">Ort (für Wetter und Suche in der Nähe)</label>
       <input id="sOrt" type="text" placeholder="z. B. Wittenberge">
     </div>
@@ -238,7 +248,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 41</div>
+    <div class="hint" id="verHint">Sentinel Version 42</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -374,6 +384,94 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     else { ctx.lineWidth = 5; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(-w / 2, 0); ctx.quadraticCurveTo(0, mouth.curve * 2, w / 2, 0); ctx.stroke(); }
     ctx.restore();
   }
+  // ---- Weitere Gesichter (eigene Designs) ----
+  const sprechAmp = t => speaking ? .15 + Math.abs(Math.sin(t / 85)) * (.55 + .45 * Math.sin(t / 210)) : 0;
+  const rgba = a => `rgba(${rgb.map(Math.round).join(",")},${a})`;
+  const KUGEL = Array.from({ length: 240 }, (_, i) => { const y = 1 - (i + .5) / 120, r = Math.sqrt(Math.max(0, 1 - y * y)), th = i * 2.39996; return [Math.cos(th) * r, y, Math.sin(th) * r]; });
+  const GESICHTER = {
+    holo(t, amp) {
+      const c = ctx, cx = 120 + gaze[0] * .35, cy = 118 + gaze[1] * .35;
+      const denkt = mood === "nachdenken", muede = mood === "muede", hoert = mood === "zuhoeren";
+      const sp = denkt ? 3.2 : muede ? .25 : 1;
+      c.save(); c.lineCap = "round"; c.shadowColor = eyeColor; c.shadowBlur = 14;
+      [[92, 6, .00045, [.15, .55, .7, 1.2, 1.45, 1.9]], [74, 4, -.0007, [0, .9, 1.1, 1.75]], [58, 3, .0011, [.3, .95, 1.3, 1.85]]].forEach(([r, w, v, seg], k) => {
+        const rot = t * v * sp * Math.PI;
+        c.strokeStyle = rgba(muede ? .35 : hoert && k === 0 ? 1 : .85 - k * .15); c.lineWidth = w;
+        for (let i = 0; i < seg.length; i += 2) { c.beginPath(); c.arc(cx, cy, r + amp * 6 * (k + 1), rot + seg[i] * Math.PI, rot + seg[i + 1] * Math.PI); c.stroke(); }
+      });
+      c.strokeStyle = rgba(.35); c.lineWidth = 1.5;
+      for (let i = 0; i < 48; i++) { const a = i / 48 * Math.PI * 2 + t * .0002 * sp, r1 = 104, r2 = i % 4 ? 108 : 113; c.beginPath(); c.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); c.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2); c.stroke(); }
+      const kr = (20 + amp * 16 + Math.sin(t / 900) * 1.5) * (muede ? .7 : 1) * (.4 + .6 * blink);
+      const g = c.createRadialGradient(cx, cy, 0, cx, cy, kr * 1.9);
+      g.addColorStop(0, "rgba(255,255,255,.95)"); g.addColorStop(.35, rgba(.95)); g.addColorStop(1, rgba(0));
+      c.fillStyle = g; c.beginPath(); c.arc(cx, cy, kr * 1.9, 0, Math.PI * 2); c.fill();
+      c.restore();
+    },
+    welle(t, amp) {
+      const c = ctx, cy = 120 + gaze[1] * .3, x0 = 22, x1 = 218;
+      const denkt = mood === "nachdenken", muede = mood === "muede", hoert = mood === "zuhoeren", sauer = mood === "sauer";
+      const basis = muede ? 2 : hoert ? 7 : 4 + Math.sin(t / 900) * 1.5;
+      const hoehe = basis + amp * 46, tempo = denkt ? 160 : speaking ? 60 : 420;
+      c.save(); c.lineCap = "round"; c.lineJoin = "round"; c.shadowColor = eyeColor; c.shadowBlur = 16;
+      for (let L = 0; L < 3; L++) {
+        c.strokeStyle = rgba([1, .45, .22][L]); c.lineWidth = [3.5, 2, 1.5][L];
+        c.beginPath();
+        for (let x = x0; x <= x1; x += 2) {
+          const u = (x - x0) / (x1 - x0), huelle = Math.sin(u * Math.PI) ** 1.6;
+          let y = Math.sin(u * 14 + t / tempo + L * 1.7) * .6 + Math.sin(u * 31 - t / (tempo * .7) + L) * .4;
+          if (sauer) y = Math.sign(y) * Math.min(1, Math.abs(y) * 2.2);
+          y *= hoehe * huelle * (L ? .75 : 1);
+          if (L === 2) y = -y;
+          x === x0 ? c.moveTo(x + gaze[0] * .2, cy + y) : c.lineTo(x + gaze[0] * .2, cy + y);
+        }
+        c.stroke();
+      }
+      c.restore();
+    },
+    partikel(t, amp) {
+      const c = ctx, cx = 120 + gaze[0] * .4, cy = 118 + gaze[1] * .4;
+      const denkt = mood === "nachdenken", muede = mood === "muede", freude = mood === "freude", sauer = mood === "sauer";
+      const rot = t * (denkt ? .0016 : muede ? .00015 : .0005), co = Math.cos(rot), si = Math.sin(rot);
+      const R = 74 * (1 + amp * .16 + Math.sin(t / 1000) * .025) * (muede ? .9 : 1);
+      c.save(); c.shadowColor = eyeColor; c.shadowBlur = 6;
+      for (let i = 0; i < KUGEL.length; i++) {
+        let [x, y, z] = KUGEL[i];
+        const xr = x * co - z * si, zr = x * si + z * co;
+        let r = R;
+        if (sauer) r *= 1 + .12 * Math.sin(i * 7.3 + t / 90);
+        if (freude) r *= 1 + .06 * Math.sin(y * 6 - t / 160);
+        if (speaking) r *= 1 + amp * .12 * Math.sin(i * 1.7 + t / 70);
+        let py = y * (muede ? .75 : 1);
+        const d = (zr + 1.4) / 2.4;
+        c.fillStyle = rgba(.15 + .85 * d);
+        c.beginPath(); c.arc(cx + xr * r, cy + py * r + (muede ? 10 : 0), .6 + d * 2.1, 0, Math.PI * 2); c.fill();
+      }
+      c.restore();
+    },
+    pixel(t, amp) {
+      const c = ctx, P = 10, gx = Math.round(gaze[0] / 8), gy = Math.round(gaze[1] / 8);
+      const muede = mood === "muede", freude = mood === "freude", sauer = mood === "sauer";
+      c.save(); c.fillStyle = eyeColor; c.shadowColor = eyeColor; c.shadowBlur = 8;
+      const px = (x, y) => c.fillRect(x * P + 1, y * P + 1, P - 2, P - 2);
+      for (const ox of [6, 15]) {
+        if (freude) { [[0, 2], [1, 1], [2, 0], [3, 1], [4, 2]].forEach(([x, y]) => px(ox - 1 + x, 8 + y)); continue; }
+        const h = muede ? 1 : Math.max(1, Math.round(5 * blink));
+        const top = 7 + Math.floor((5 - h) / 2);
+        for (let y = 0; y < h; y++) for (let x = 0; x < 3; x++) px(ox + x, top + y);
+        if (h >= 3) { c.fillStyle = "#000"; px(ox + 1 + Math.max(-1, Math.min(1, gx)), top + Math.floor(h / 2) + Math.max(-1, Math.min(1, gy))); c.fillStyle = eyeColor; }
+        if (sauer) { c.fillStyle = "#000"; px(ox === 6 ? ox : ox + 2, top); c.fillStyle = eyeColor; }
+      }
+      const offen = Math.round(amp * 3);
+      const mw = speaking ? 6 : 5, mx = 12 - Math.floor(mw / 2);
+      for (let x = 0; x < mw; x++) px(mx + x, 17 + (freude && (x === 0 || x === mw - 1) ? -1 : 0));
+      for (let y = 1; y <= offen; y++) { px(mx, 17 + y); px(mx + mw - 1, 17 + y); }
+      if (offen) for (let x = 0; x < mw; x++) px(mx + x, 17 + offen + 1);
+      c.restore();
+      c.fillStyle = "rgba(0,0,0,.18)"; for (let y = 0; y < 240; y += 3) c.fillRect(0, y, 240, 1);
+    },
+  };
+  const GESICHT_NAMEN = { roboter: "Roboter", holo: "Hologramm-Kern", welle: "Stimmwelle", partikel: "Partikel-Kugel", pixel: "Retro-Pixel" };
+
   function frame(t) {
     const tc = hex(MOOD_COLOR[mood] || MOOD_COLOR.neutral);
     rgb = rgb.map((v, i) => lerp(v, tc[i], reduce ? 1 : .08));
@@ -400,7 +498,11 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     } else blink = 1;
     ctx.setTransform(S, 0, 0, S, 0, 0);
     ctx.fillStyle = "#000"; ctx.fillRect(0, 0, 240, 240);
-    {
+    if (cfg.gesicht && cfg.gesicht !== "roboter" && GESICHTER[cfg.gesicht]) {
+      const dk = aktuelleDeko();
+      GESICHTER[cfg.gesicht](t, sprechAmp(t));
+      if (dk) drawDekoOverlay(dk, t);
+    } else {
       const dk = aktuelleDeko();
       // Mit Outfit wird das Gesicht etwas kleiner, damit Hut und Schriftzug draufpassen
       if (dk) { ctx.save(); ctx.translate(120, 205); ctx.scale(.8, .8); ctx.translate(-120, -205); }
@@ -921,7 +1023,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   let lastHard = Date.now();
   // Wächter für die App: falls Android die Ohren doch mal verliert, nach einer Minute Stille neu anwerfen
   setInterval(() => {
-    if (!NATIVE || !cfg.ear || busy || speaking || earsSleeping || !$("startPanel").hidden) return;
+    if (!NATIVE || !cfg.ear || busy || speaking || earsSleeping || wach.recording || !$("startPanel").hidden) return;
     if (Date.now() - Math.max(lastResultAt, lastHard) > 300000) {
       lastHard = Date.now(); elog("Ohren: 5 Minuten nichts verstanden – starte sie frisch");
       SV.stop().catch(() => {}).finally(() => setTimeout(() => { if (cfg.ear && !earsSleeping) nativeEarsOn(); lastReady = Date.now(); }, 800));
@@ -1435,15 +1537,24 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     catch (e) { elog("Telegram-Fehler: " + e.message); }
   }
   // Kurzes Video, solange Bewegung im Bild ist (max. 30 Sekunden), dann aufs Handy
-  function wachVideo(zeit) {
+  async function wachVideo(zeit) {
     if (!window.MediaRecorder || !stream || wach.recording) return;
-    const mt = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp8", "video/webm"].find(t => MediaRecorder.isTypeSupported(t));
-    if (!mt) { elog("Wachhund: Video wird hier nicht unterstützt"); return; }
-    let rec; try { rec = new MediaRecorder(stream, { mimeType: mt, videoBitsPerSecond: 1000000 }); } catch (e) { elog("Wachhund-Video: " + e.message); return; }
-    const teile = [], start = Date.now(); wach.recording = true; wach.lastMotion = Date.now();
+    wach.recording = true; wach.lastMotion = Date.now();
+    // Ton: Ohren kurz pausieren, damit das Mikrofon frei ist
+    let ton = null;
+    try {
+      if (NATIVE) { nativeEarsOff(); await new Promise(r => setTimeout(r, 350)); }
+      ton = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false } });
+    } catch (e) { elog("Wachhund: kein Ton (" + (e.name || e.message) + ")"); ton = null; }
+    const quelle = new MediaStream([...stream.getVideoTracks(), ...(ton ? ton.getAudioTracks() : [])]);
+    const mt = (ton ? ["video/mp4;codecs=avc1,mp4a.40.2", "video/mp4", "video/webm;codecs=vp8,opus", "video/webm"] : ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp8", "video/webm"]).find(t => MediaRecorder.isTypeSupported(t));
+    const aufraeumen = () => { if (ton) ton.getTracks().forEach(x => x.stop()); if (NATIVE && cfg.ear && !earsSleeping) setTimeout(nativeEarsOn, 300); };
+    if (!mt) { elog("Wachhund: Video wird hier nicht unterstützt"); wach.recording = false; aufraeumen(); return; }
+    let rec; try { rec = new MediaRecorder(quelle, { mimeType: mt, videoBitsPerSecond: 1000000, audioBitsPerSecond: 64000 }); } catch (e) { elog("Wachhund-Video: " + e.message); wach.recording = false; aufraeumen(); return; }
+    const teile = [], start = Date.now();
     rec.ondataavailable = e => { if (e.data && e.data.size) teile.push(e.data); };
     rec.onstop = async () => {
-      wach.recording = false;
+      wach.recording = false; aufraeumen();
       const blob = new Blob(teile, { type: mt.split(";")[0] }), sek = Math.round((Date.now() - start) / 1000);
       elog(`Wachhund: Video ${sek} s, ${Math.round(blob.size / 1024)} kB`);
       try { await tgVideo(blob, `🎥 Bewegung ab ${zeit} Uhr (${sek} s)`); } catch (e) { elog("Video ging nicht: " + e.message); }
@@ -1844,7 +1955,7 @@ Für Wetterfragen nutze immer das Werkzeug wetter, nie die Websuche. Will ${wer}
 Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
 Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Sag nie, dass du dir etwas gemerkt hast, ohne das Werkzeug wirklich benutzt zu haben.
-Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\n${dekoInfo()}\n${geburtstagInfo()}\nDeine API-Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.monat === monat() ? kosten.usd : 0)}.${wach.on ? "\nDer WACHHUND ist gerade an" + (wach.alerts ? ` (${wach.alerts} Bewegungsmeldungen)` : "") + ". Wenn " + wer + " sagt, dass er wieder da ist, schalte ihn aus." : ""}${nightActive ? "\nEs ist Nachtmodus: antworte besonders kurz und ruhig." : ""}${kochInfo()}${essenInfo()}${akkuInfo()}${cfg.govee ? "\nDeine Lampen (Werkzeug licht): " + (store.get("goveeNamen", []).join(", ") || "werden noch geladen") : ""}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
+Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\nDein aktuelles Gesicht: ${GESICHT_NAMEN[cfg.gesicht || "roboter"]}.\n${dekoInfo()}\n${geburtstagInfo()}\nDeine API-Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.monat === monat() ? kosten.usd : 0)}.${wach.on ? "\nDer WACHHUND ist gerade an" + (wach.alerts ? ` (${wach.alerts} Bewegungsmeldungen)` : "") + ". Wenn " + wer + " sagt, dass er wieder da ist, schalte ihn aus." : ""}${nightActive ? "\nEs ist Nachtmodus: antworte besonders kurz und ruhig." : ""}${kochInfo()}${essenInfo()}${akkuInfo()}${cfg.govee ? "\nDeine Lampen (Werkzeug licht): " + (store.get("goveeNamen", []).join(", ") || "werden noch geladen") : ""}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
 Offene Timer und Erinnerungen: ${termText}
 Listen: ${listenText}
 ${zeile("Was du über " + wer + " weißt", ich.fakten)}
@@ -1920,6 +2031,8 @@ ${zeile("Menschen", ich.menschen)}`;
         input_schema: obj({ an: { type: "boolean" }, rezept: { type: "string" }, schritte: { type: "array", items: { type: "string" } } }, ["an"]) },
       { name: "kochschritt", description: "Merkt sich, welchen Rezeptschritt (ab 1) du gerade vorgelesen hast.",
         input_schema: obj({ nummer: { type: "integer" } }, ["nummer"]) },
+      { name: "gesicht_waehlen", description: "Wechselt dein Aussehen. roboter = Augen und Mund, holo = Hologramm-Kern mit kreisenden Lichtringen, welle = leuchtende Stimmwelle, partikel = schwebende Kugel aus Lichtpunkten, pixel = Retro-8-Bit-Augen.",
+        input_schema: obj({ stil: { type: "string", enum: Object.keys(GESICHT_NAMEN) } }, ["stil"]) },
       { name: "outfit", description: "Deine Outfits zu Jahreszeiten und Feiertagen (Wintermütze, Sonnenbrille, Halloween-Kostüm, Weihnachtsmütze usw.). modus auto = automatisch nach Datum, aus = keine Outfits, vorschau = ein bestimmtes Outfit 60 Sekunden zeigen (anlass angeben).",
         input_schema: obj({ modus: { type: "string", enum: ["auto", "aus", "vorschau"] }, anlass: { type: "string", enum: Object.keys(DEKO) } }, ["modus"]) },
     );
@@ -2114,6 +2227,7 @@ ${zeile("Menschen", ich.menschen)}`;
           return ok(`Kochmodus an, ${st.length} Schritte. Lies jetzt Schritt 1 vor.`);
         }
         case "kochschritt": koch.schritt = Math.max(1, Math.min(koch.schritte.length, Math.round(Number(inp.nummer) || 1))); return ok("ok");
+        case "gesicht_waehlen": cfg.gesicht = inp.stil in GESICHT_NAMEN ? inp.stil : "roboter"; saveCfg(); return ok("Gesicht jetzt: " + GESICHT_NAMEN[cfg.gesicht]);
         case "outfit": {
           if (inp.modus === "vorschau") {
             if (!DEKO[inp.anlass]) return fail("Unbekannter Anlass.");
@@ -2389,7 +2503,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
 
   // ================= EINSTELLUNGEN =================
   function openSettings() {
-    $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sBudget").value = cfg.budget || 10; $("sOrt").value = cfg.ort;
+    $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sGesicht").value = cfg.gesicht || "roboter"; $("sBudget").value = cfg.budget || 10; $("sOrt").value = cfg.ort;
     $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
     $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || ""; $("sGroq").value = cfg.groqKey || ""; $("sMuteBeep").checked = cfg.muteBeep !== false;
     $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about; $("sName").value = ich.name || ""; $("sBday").value = /^\d{4}-/.test(ich.geburtstag || "") ? ich.geburtstag : ""; $("sSmart").value = cfg.smart || "";
@@ -2410,7 +2524,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   });
   $("setClose").addEventListener("click", () => { $("setPanel").hidden = true; });
   $("setSave").addEventListener("click", () => {
-    cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.budget = Math.max(1, Math.min(500, parseInt($("sBudget").value, 10) || 10)); cfg.ort = $("sOrt").value.trim();
+    cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.gesicht = $("sGesicht").value; cfg.budget = Math.max(1, Math.min(500, parseInt($("sBudget").value, 10) || 10)); cfg.ort = $("sOrt").value.trim();
     cfg.limit = Math.max(10, Math.min(5000, parseInt($("sLimit").value, 10) || 300));
     cfg.search = $("sSearch").checked; cfg.wake = $("sWake").checked; cfg.look = $("sLook").checked;
     cfg.muteBeep = $("sMuteBeep").checked;
