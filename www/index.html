@@ -73,6 +73,10 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
 .sheet p { margin: 0; color: var(--muted); line-height: 1.5; font-size: .95rem; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 #hilfeBody .grp, #aboListe .grp { margin-bottom: 20px; }
+.zweck { display: flex; gap: 12px; align-items: flex-start; text-align: left; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: transparent; color: var(--text); font: inherit; cursor: pointer; }
+.zweck b { display: block; margin-bottom: 2px; }
+.zweck span.ic { font-size: 1.6rem; line-height: 1; }
+.zweck.on { border-color: #ffb547; background: rgba(255,181,71,.1); }
 .grp p { margin: 6px 0 8px; font-size: .9rem; line-height: 1.45; opacity: .85; }
 .field label, .grp h3 { font: 500 .7rem var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0; }
 .field textarea { resize: vertical; line-height: 1.4; }
@@ -164,6 +168,14 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
         <option value="claude-sonnet-5-5">Sonnet 5.5 · natürliche Gespräche</option>
         <option value="claude-opus-5-5">Opus 5.5 · am klügsten, deutlich teurer und langsamer</option>
       </select>
+    </div>
+    <div class="field">
+      <label>Wofür nutzt du Sentinel?</label>
+      <button class="ghost" id="sZwecke" type="button" style="width:100%">Auswahl ändern</button>
+    </div>
+    <div class="field" id="firmaFeld" hidden>
+      <label for="sFirma">Firmenwissen (Name, Öffnungszeiten, Angebot, häufige Fragen)</label>
+      <textarea id="sFirma" rows="5" placeholder="z. B. Blackkeytion Paddleboards, SUP-Verleih an der Elbe in Wittenberge, Mai–September täglich 10–19 Uhr …"></textarea>
     </div>
     <div class="field">
       <label for="sPhase">Für wen ist Sentinel da?</label>
@@ -280,7 +292,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 50</div>
+    <div class="hint" id="verHint">Sentinel Version 51</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -290,6 +302,16 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   <div class="sheet">
     <div class="phead"><h2>Ohren-Protokoll</h2><button class="ghost" id="logClose" type="button">Schließen</button></div>
     <pre id="logBody" style="margin:0;white-space:pre-wrap;font:.8rem var(--mono);color:var(--muted)"></pre>
+  </div>
+</div>
+
+<!-- Wofür? -->
+<div class="panel" id="zweckPanel" hidden>
+  <div class="sheet">
+    <h2>Wofür soll Sentinel da sein?</h2>
+    <p class="hint" style="text-align:left">Tippe alles an, was passt – ich stelle mich darauf ein. Ändern geht jederzeit in den Einstellungen.</p>
+    <div id="zweckListe" style="display:grid;gap:10px;margin:12px 0"></div>
+    <button class="btn" id="zweckWeiter" type="button" disabled>Weiter</button>
   </div>
 </div>
 
@@ -1198,11 +1220,18 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     faceGaze = [Math.max(-1, Math.min(1, (.5 - pos[0]) * 2.4)) * 18, Math.max(-1, Math.min(1, (pos[1] - .45) * 2.4)) * 13];
     const gone = now - faceSeenAt;
     faceSeenAt = now; wake();
-    if (detector && faceWasGone && gone > 5 * 60000 && Date.now() - lastGreet > 20 * 60000 && !(typeof wach !== "undefined" && wach.on)) greet();
+    const firmaModus = zwecke().includes("firma");
+    if (detector && faceWasGone && gone > (firmaModus ? 60000 : 5 * 60000) && Date.now() - lastGreet > (firmaModus ? 2 * 60000 : 20 * 60000) && !(typeof wach !== "undefined" && wach.on)) greet();
     faceWasGone = false;
   }
   setInterval(() => { if (performance.now() - faceSeenAt > 60000) faceWasGone = true; }, 10000);
   function greet() {
+    if (zwecke().includes("firma") && !busy && !speaking && !nightActive) {
+      lastGreet = Date.now(); setMood("freude");
+      const fname = (cfg.firma || "").split(/[,.\n]/)[0].trim();
+      speak(pick([`Herzlich willkommen${fname ? " bei " + fname : ""}! Wie kann ich Ihnen helfen?`, `Hallo und willkommen${fname ? " bei " + fname : ""}! Sagen Sie einfach „Sentinel“ und Ihre Frage.`]), "neutral");
+      return;
+    }
     if (busy || speaking || !ich.name || nightActive) return;
     lastGreet = Date.now();
     const h = new Date().getHours(), tag = new Date().toDateString();
@@ -1799,13 +1828,22 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     ziele: "Wobei du am meisten helfen sollst (Termine, Arbeit, Fitness, Lernen, Haushalt, Projekte) und aktuelle Ziele",
     stil: "Wie du reden sollst: kurz oder ausführlich, locker oder förmlich, mit Humor, ehrlich widersprechen ja/nein",
     geraete: "Welche Smart-Home-Geräte, Handy, Fernseher es gibt – kurz erklären, was du davon steuern kannst und wie man es einrichtet",
+    lernen: "Alter bzw. Klasse, Lieblingsfächer und schwierige Fächer, wie lange am Stück gelernt werden soll",
+    familie: "Wer aus der Familie benachrichtigt werden soll (Telegram) und welche Tabletten/Termine regelmäßig anstehen (als Erinnerungen stellen)",
+    firma: "Firmenname, Branche, Angebot, Öffnungszeiten, Ansprechpartner und häufige Fragen von Besuchern – mit firmenwissen_speichern festhalten",
   };
+  function einrThemen() {
+    const z = zwecke(); if (!z.length) return Object.keys(EINR_THEMEN).filter(k => !["lernen", "familie", "firma"].includes(k));
+    const set = new Set(["name", "stil"]); z.forEach(k => ZWECKE[k].themen.forEach(t => set.add(t)));
+    return Object.keys(EINR_THEMEN).filter(k => set.has(k));
+  }
   let einr = Object.assign({ aktiv: false, erledigt: [] }, store.get("einrichtung", {}));
   const saveEinr = () => store.set("einrichtung", einr);
   function einrichtungInfo() {
     if (!einr.aktiv) return "";
-    const offen = Object.keys(EINR_THEMEN).filter(k => !einr.erledigt.includes(k));
-    return `\nEINRICHTUNG LÄUFT – du lernst ${ich.name || "deinen Menschen"} gerade richtig kennen, damit du ein wirklich nützlicher Partner im Alltag und bei der Arbeit wirst.
+    const offen = einrThemen().filter(k => !einr.erledigt.includes(k));
+    const fehlt = einrichtSchritte().filter(x => !x[0] && x[1] !== "Kennenlernen").map(x => x[1] + " (" + x[2] + ")");
+    return (fehlt.length ? `\nNOCH EINZURICHTEN (am Ende der Einrichtung kurz anbieten und erklären, eins nach dem anderen): ${fehlt.join("; ")}` : "") + `\nEINRICHTUNG LÄUFT – du lernst ${ich.name || "deinen Menschen"} gerade richtig kennen, damit du ein wirklich nützlicher Partner im Alltag und bei der Arbeit wirst.
 Stelle immer nur EINE Frage, kurz und herzlich. Reagiere kurz und persönlich auf jede Antwort (nicht nur „okay“), frag ruhig einmal nach, wenn etwas spannend oder unklar ist.
 Speichere ALLES Wichtige sofort mit den Werkzeugen (ich_kenne_dich, merke_dir, geburtstag_speichern, ort_setzen, gerichte_merken, ernaehrungsziel, nachtmodus_setzen). Ist ein Thema durch, melde es mit einrichtung (aktion thema_erledigt).
 Offene Themen: ${offen.map(k => k + " (" + EINR_THEMEN[k] + ")").join("; ") || "keine"}.
@@ -1814,6 +1852,71 @@ Sagt er „später“, „genug“ oder „stopp“, oder sind alle Themen durch
   function einrichtungStarten(neu) {
     einr = { aktiv: true, erledigt: neu ? [] : einr.erledigt }; saveEinr();
     followUntil = Date.now() + followMs(); elog("Einrichtung gestartet");
+  }
+
+  // ================= WOFÜR? (erste Auswahl) =================
+  const ZWECKE = {
+    zuhause: { ic: "🏠", name: "Zuhause", text: "Licht, Smart Home, Wachhund, Timer, Einkauf, Kochen",
+      themen: ["haushalt", "tagesablauf", "essen", "geraete"], anleitung: ["Licht (Govee)", "Smart Home (Alexa)", "Wachhund", "Kochen & Essen", "Listen", "Timer & Erinnerungen"],
+      hinweis: "Du bist das Herz des Zuhauses: Smart Home, Haushalt, Familie, Kochen, Sicherheit." },
+    assistent: { ic: "🧑‍💼", name: "Persönlicher Assistent", text: "Termine, Erinnerungen, Reisen, Wetter, Nachrichten aufs Handy",
+      themen: ["geburtstag", "wohnort", "tagesablauf", "ziele", "interessen"], anleitung: ["Timer & Erinnerungen", "Telegram", "Reisen", "Wetter", "Listen"],
+      hinweis: "Du bist persönlicher Assistent: denk an Termine, plane voraus, erinnere rechtzeitig, organisiere den Alltag." },
+    arbeit: { ic: "💼", name: "Arbeit & Coworker", text: "Dokumente, Recherche, Planung, Texte und E-Mails",
+      themen: ["arbeit", "ziele"], anleitung: ["Dokumente (Coworker)", "Reisen", "Telegram", "Timer & Erinnerungen"],
+      hinweis: "Du bist Coworker: arbeite mit, erledige Aufgaben selbstständig, erstelle Dokumente, recherchiere gründlich." },
+    lernen: { ic: "📚", name: "Lernen", text: "Für Kinder und Schüler: Lernspiele, Nachhilfe, Abfragen", phase: "schueler",
+      themen: ["lebensphase", "lernen", "interessen"], anleitung: ["Lernen", "Reden", "Aussehen & Stimme"],
+      hinweis: "Du bist Lernbegleiter: geduldig, motivierend, altersgerecht." },
+    senior: { ic: "💛", name: "Begleiter für Senioren", text: "Ruhig, Tabletten-Erinnerung, Lebenszeichen an die Familie", phase: "senior",
+      themen: ["haushalt", "tagesablauf", "familie", "interessen"], anleitung: ["Senioren-Begleiter", "Timer & Erinnerungen", "Telegram", "Reden"],
+      hinweis: "Du bist Begleiter: ruhig, geduldig, aufmerksam für das Wohlbefinden." },
+    firma: { ic: "🏢", name: "Firma / Empfang", text: "Besucher begrüßen und Fragen zum Betrieb beantworten",
+      themen: ["firma"], anleitung: ["Reden", "Sehen", "Telegram"],
+      hinweis: "Du arbeitest am Empfang einer Firma: begrüße Besucher freundlich, beantworte Fragen zum Betrieb nur aus dem Firmenwissen, gib keine privaten Infos über den Inhaber preis und sag ehrlich, wenn du etwas nicht weißt (dann anbieten, eine Nachricht weiterzugeben – nachricht_ans_handy)." },
+  };
+  const zwecke = () => (Array.isArray(cfg.zwecke) ? cfg.zwecke : []).filter(z => ZWECKE[z]);
+  function zweckeInfo() {
+    const z = zwecke(); if (!z.length) return "";
+    return `\nWOFÜR DU GENUTZT WIRST: ${z.map(k => ZWECKE[k].name).join(", ")}. ${z.map(k => ZWECKE[k].hinweis).join(" ")}` + (z.includes("firma") && cfg.firma ? `\nFIRMENWISSEN (nur das darfst du über die Firma sagen):\n${cfg.firma}` : "");
+  }
+  function zweckeZeigen(neustart) {
+    const gewaehlt = new Set(zwecke()), l = $("zweckListe"); l.replaceChildren();
+    for (const [k, z] of Object.entries(ZWECKE)) {
+      const b = el("button", "zweck" + (gewaehlt.has(k) ? " on" : "")); b.type = "button";
+      const ic = el("span", "ic", z.ic), t = el("span"); t.append(el("b", null, z.name), el("span", "hint", z.text)); b.append(ic, t);
+      b.onclick = () => { gewaehlt.has(k) ? gewaehlt.delete(k) : gewaehlt.add(k); b.classList.toggle("on"); $("zweckWeiter").disabled = !gewaehlt.size; };
+      l.append(b);
+    }
+    $("zweckWeiter").disabled = !gewaehlt.size;
+    $("zweckWeiter").onclick = () => {
+      cfg.zwecke = [...gewaehlt];
+      const ph = cfg.zwecke.includes("senior") ? "senior" : cfg.zwecke.includes("lernen") ? "schueler" : null;
+      if (ph && (!cfg.phase || cfg.phase === "erwachsen")) cfg.phase = ph;
+      if (!ph && (cfg.phase === "senior" || cfg.phase === "schueler" || cfg.phase === "kind")) cfg.phase = "erwachsen";
+      saveCfg(); $("zweckPanel").hidden = true; $("firmaFeld").hidden = !cfg.zwecke.includes("firma");
+      elog("Genutzt für: " + cfg.zwecke.join(", "));
+      if (neustart) begruessen(true, true); else note("Gespeichert – ich habe mich darauf eingestellt.", 3000);
+    };
+    $("zweckPanel").hidden = false;
+  }
+  // Was für die gewählten Zwecke noch eingerichtet werden sollte
+  function einrichtSchritte() {
+    const z = zwecke(), s = [];
+    const add = (fertig, titel, wie) => s.push([fertig, titel, wie]);
+    add(!!ich.name, "Kennenlernen", "Sag „Sentinel, starte die Einrichtung“.");
+    if (z.some(k => ["zuhause", "assistent", "senior", "arbeit", "firma"].includes(k)))
+      add(tgReady(), "Telegram (Nachrichten aufs Handy)", z.includes("senior") ? "Für die Familie: Bot bei @BotFather anlegen, Token und Chat-ID eines Angehörigen eintragen – dann kommen Lebenszeichen und Notfall-Nachrichten dort an." : "Bot bei @BotFather anlegen, Token in die Einstellungen, dem Bot „hallo“ schreiben, „Chat-ID automatisch finden“.");
+    if (z.some(k => ["zuhause", "assistent"].includes(k))) add(!!cfg.ort, "Wohnort (Wetter)", "Sag „Ich wohne in …“ oder trag ihn in den Einstellungen ein.");
+    if (z.includes("zuhause")) {
+      add(!!cfg.govee, "Licht (Govee)", "Govee-App → Profil → Einstellungen → API-Schlüssel beantragen → in die Einstellungen.");
+      add(smartCommands().length > 0, "Smart Home über Alexa", "Voice Monkey: Trigger anlegen, Alexa-Routine dazu, Link unter „Smart-Home-Befehle“ eintragen.");
+      add(!!cfg.eye, "Kamera an (für Wachhund)", "Auge-Knopf unten antippen und Kamera erlauben.");
+    }
+    if (z.includes("senior")) add(cfg.phase === "senior", "Senioren-Modus", "Ist eingestellt – ich spreche ruhig und langsamer.");
+    if (z.includes("lernen")) add(cfg.phase === "kind" || cfg.phase === "schueler" || cfg.phase === "teen", "Alter festlegen", "In den Einstellungen „Für wen ist Sentinel da?“: Kind, Schüler oder Teen.");
+    if (z.includes("firma")) add(!!cfg.firma, "Firmenwissen", "In den Einstellungen Name, Öffnungszeiten, Angebot und häufige Fragen eintragen – oder sag es mir.");
+    return s;
   }
 
   // ================= LEBENSPHASEN =================
@@ -2167,7 +2270,7 @@ Kommentiere nie frühere Versuche, Fehler oder Versionen („vorhin hatte es nic
 Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
 Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Sag nie, dass du dir etwas gemerkt hast, ohne das Werkzeug wirklich benutzt zu haben.
-Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\nDein aktuelles Gesicht: ${GESICHT_NAMEN[cfg.gesicht || "roboter"]}.\n${dekoInfo()}\n${geburtstagInfo()}\nDeine API-Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.monat === monat() ? kosten.usd : 0)}.${wach.on ? "\nDer WACHHUND ist gerade an" + (wach.alerts ? ` (${wach.alerts} Bewegungsmeldungen)` : "") + ". Wenn " + wer + " sagt, dass er wieder da ist, schalte ihn aus." : ""}${nightActive ? "\nEs ist Nachtmodus: antworte besonders kurz und ruhig." : ""}${phaseInfo()}${lernInfo()}${kochInfo()}${einrichtungInfo()}${dokumente.length ? "\nErstellte Dokumente: " + dokumente.slice(-6).map(d => d.titel).join(", ") : ""}${essenInfo()}${akkuInfo()}${cfg.govee ? "\nDeine Lampen (Werkzeug licht): " + (store.get("goveeNamen", []).join(", ") || "werden noch geladen") : ""}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
+Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\nDein aktuelles Gesicht: ${GESICHT_NAMEN[cfg.gesicht || "roboter"]}.\n${dekoInfo()}\n${geburtstagInfo()}\nDeine API-Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.monat === monat() ? kosten.usd : 0)}.${wach.on ? "\nDer WACHHUND ist gerade an" + (wach.alerts ? ` (${wach.alerts} Bewegungsmeldungen)` : "") + ". Wenn " + wer + " sagt, dass er wieder da ist, schalte ihn aus." : ""}${nightActive ? "\nEs ist Nachtmodus: antworte besonders kurz und ruhig." : ""}${zweckeInfo()}${phaseInfo()}${lernInfo()}${kochInfo()}${einrichtungInfo()}${dokumente.length ? "\nErstellte Dokumente: " + dokumente.slice(-6).map(d => d.titel).join(", ") : ""}${essenInfo()}${akkuInfo()}${cfg.govee ? "\nDeine Lampen (Werkzeug licht): " + (store.get("goveeNamen", []).join(", ") || "werden noch geladen") : ""}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
 Offene Timer und Erinnerungen: ${termText}
 Listen: ${listenText}
 ${zeile("Was du über " + wer + " weißt", ich.fakten)}
@@ -2248,6 +2351,10 @@ ${zeile("Menschen", ich.menschen)}`;
         input_schema: obj({ an: { type: "boolean" }, rezept: { type: "string" }, schritte: { type: "array", items: { type: "string" } } }, ["an"]) },
       { name: "kochschritt", description: "Merkt sich, welchen Rezeptschritt (ab 1) du gerade vorgelesen hast.",
         input_schema: obj({ nummer: { type: "integer" } }, ["nummer"]) },
+      { name: "firmenwissen_speichern", description: "Speichert Wissen über die Firma (Name, Angebot, Öffnungszeiten, Preise, häufige Fragen), das du am Empfang nutzen darfst. Wird an das vorhandene Wissen angehängt.",
+        input_schema: obj({ text: { type: "string" } }, ["text"]) },
+      { name: "nutzung_setzen", description: "Legt fest, wofür du genutzt wirst (mehrere möglich): zuhause, assistent, arbeit, lernen, senior, firma.",
+        input_schema: obj({ zwecke: { type: "array", items: { type: "string", enum: Object.keys(ZWECKE) } } }, ["zwecke"]) },
       { name: "lebensphase_setzen", description: "Stellt ein, für wen du da bist: kind (Lernspielzeug), schueler (Lehrer/Nachhilfe), teen (Kumpel), erwachsen (Assistent/Coworker), senior (Begleiter).",
         input_schema: obj({ phase: { type: "string", enum: Object.keys(PHASEN) } }, ["phase"]) },
       { name: "lernen", description: "Lernspiel/Abfrage. start = mit Fach beginnen (z. B. Mathe 3. Klasse, Englisch-Vokabeln, Hauptstädte), ergebnis = eine beantwortete Aufgabe werten (richtig true/false), ende = aufhören.",
@@ -2478,6 +2585,8 @@ ${zeile("Menschen", ich.menschen)}`;
           return ok(`Kochmodus an, ${st.length} Schritte. Lies jetzt Schritt 1 vor.`);
         }
         case "kochschritt": koch.schritt = Math.max(1, Math.min(koch.schritte.length, Math.round(Number(inp.nummer) || 1))); return ok("ok");
+        case "firmenwissen_speichern": cfg.firma = ((cfg.firma ? cfg.firma + "\n" : "") + String(inp.text || "").trim()).slice(-6000); saveCfg(); return ok("Firmenwissen gespeichert.");
+        case "nutzung_setzen": cfg.zwecke = (inp.zwecke || []).filter(z => ZWECKE[z]); saveCfg(); return ok("Genutzt für: " + cfg.zwecke.map(z => ZWECKE[z].name).join(", "));
         case "lebensphase_setzen": cfg.phase = inp.phase in PHASEN ? inp.phase : "erwachsen"; saveCfg(); return ok("Lebensphase: " + PHASEN[cfg.phase][0]);
         case "lernen": {
           if (inp.aktion === "start") { lern.aktiv = true; lern.fach = String(inp.fach || "Allgemeinwissen").slice(0, 60); saveLern(); followUntil = Date.now() + followMs(); return ok("Lernspiel läuft: " + lern.fach + ". Stell die erste Aufgabe."); }
@@ -2854,7 +2963,15 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   ];
   function hilfeZeigen() {
     const b = $("hilfeBody"); b.replaceChildren();
-    for (const [titel, text, bsp] of ANLEITUNG) {
+    const schritte = einrichtSchritte();
+    if (schritte.length) {
+      const g = el("div", "grp"); g.append(el("h3", null, `Für dich einrichten (${schritte.filter(x => x[0]).length}/${schritte.length} erledigt)`));
+      for (const [fertig, titel, wie] of schritte) { const p = el("p", null, (fertig ? "✅ " : "⬜ ") + titel + (fertig ? "" : " – " + wie)); if (fertig) p.style.opacity = ".6"; g.append(p); }
+      b.append(g);
+    }
+    const wichtig = new Set(zwecke().flatMap(k => ZWECKE[k].anleitung));
+    const liste = [...ANLEITUNG].sort((a, c) => (wichtig.has(c[0]) ? 1 : 0) - (wichtig.has(a[0]) ? 1 : 0));
+    for (const [titel, text, bsp] of liste) {
       const g = el("div", "grp"); g.append(el("h3", null, titel)); g.append(el("p", null, text));
       const c = el("div", "chips"); bsp.forEach(x => c.append(el("span", "chip", "„" + x + "“"))); g.append(c);
       b.append(g);
@@ -2900,7 +3017,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
 
   // ================= EINSTELLUNGEN =================
   function openSettings() {
-    $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sPhase").value = cfg.phase || "erwachsen"; $("sGesicht").value = cfg.gesicht || "roboter"; stimmFelder(); stimmListe(); $("sBudget").value = cfg.budget || 10; $("sOrt").value = cfg.ort;
+    $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sPhase").value = cfg.phase || "erwachsen"; $("firmaFeld").hidden = !zwecke().includes("firma"); $("sFirma").value = cfg.firma || ""; $("sGesicht").value = cfg.gesicht || "roboter"; stimmFelder(); stimmListe(); $("sBudget").value = cfg.budget || 10; $("sOrt").value = cfg.ort;
     $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
     $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || ""; $("sGroq").value = cfg.groqKey || ""; $("sMuteBeep").checked = cfg.muteBeep !== false;
     $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about; $("sName").value = ich.name || ""; $("sBday").value = /^\d{4}-/.test(ich.geburtstag || "") ? ich.geburtstag : ""; $("sSmart").value = cfg.smart || "";
@@ -2910,6 +3027,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     $("setPanel").hidden = false;
   }
   $("setBtn").addEventListener("click", openSettings);
+  $("sZwecke").addEventListener("click", () => { $("setPanel").hidden = true; zweckeZeigen(false); });
   let stimmFuerGesicht = "roboter";
   function stimmFelder() {
     stimmFuerGesicht = $("sGesicht").value; const st = stimmeFuer(stimmFuerGesicht);
@@ -2944,7 +3062,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   });
   $("setClose").addEventListener("click", () => { $("setPanel").hidden = true; });
   $("setSave").addEventListener("click", () => {
-    cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.gesicht = $("sGesicht").value; cfg.phase = $("sPhase").value; stimmMerken(); cfg.budget = Math.max(1, Math.min(500, parseInt($("sBudget").value, 10) || 10)); cfg.ort = $("sOrt").value.trim();
+    cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.gesicht = $("sGesicht").value; cfg.phase = $("sPhase").value; cfg.firma = $("sFirma").value.trim().slice(0, 6000); stimmMerken(); cfg.budget = Math.max(1, Math.min(500, parseInt($("sBudget").value, 10) || 10)); cfg.ort = $("sOrt").value.trim();
     cfg.limit = Math.max(10, Math.min(5000, parseInt($("sLimit").value, 10) || 300));
     cfg.search = $("sSearch").checked; cfg.wake = $("sWake").checked; cfg.look = $("sLook").checked;
     cfg.muteBeep = $("sMuteBeep").checked;
@@ -2967,17 +3085,24 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   });
 
   // ================= START =================
-  function begruessen(spoken) {
+  function begruessen(spoken, nachAuswahl) {
     const h = new Date().getHours();
     const gruss = h < 5 ? "Guten Abend" : h < 11 ? "Guten Morgen" : h < 18 ? "Hallo" : "Guten Abend";
     const neu = !ich.name && !ich.fakten.length && !einr.fertig;
     if (neu && !einr.aktiv) einrichtungStarten(true);
     const t = ich.name ? (einr.aktiv ? `${gruss}, ${ich.name}. Wollen wir mit dem Kennenlernen weitermachen?` : `${gruss}, ${ich.name}. Alle Systeme sind bereit.`)
-      : `${gruss}! Ich bin Sentinel, dein persönlicher Assistent. Bevor wir loslegen, möchte ich dich richtig kennenlernen, damit ich dir im Alltag wirklich helfen kann. Das dauert etwa zehn Minuten, und du kannst jederzeit „später“ sagen. Fangen wir an: Wie soll ich dich nennen?`;
+      : `${gruss}! Ich bin Sentinel. ${willkommenText()} Damit ich dir wirklich helfe, möchte ich dich kurz kennenlernen. Das dauert ein paar Minuten, und du kannst jederzeit „später“ sagen. Fangen wir an: Wie soll ich dich nennen?`;
     lastGreet = Date.now();
     show(""); setMood(ich.name ? "freude" : "ueberrascht");
     if (spoken) speak(t, "neutral").then(() => { if (einr.aktiv) followUntil = Date.now() + followMs(); }); else setTimeout(() => { if (!busy && !speaking) setMood("neutral"); }, 2000);
     status(cfg.ear ? "hört zu" : "bereit");
+  }
+  function willkommenText() {
+    const z = zwecke();
+    if (z.includes("firma") && z.length === 1) return "Ich kümmere mich hier um den Empfang, begrüße Besucher und beantworte Fragen zum Betrieb.";
+    const T = { zuhause: "dein Zuhause – Licht, Smart Home und Wachhund", assistent: "deine Termine und Erinnerungen", arbeit: "deine Arbeit mit Dokumenten und Recherche", lernen: "das Lernen mit Spielen und Nachhilfe", senior: "deinen Alltag in Ruhe, mit einem Draht zur Familie", firma: "den Empfang in deiner Firma" };
+    const t = z.map(k => T[k]);
+    return t.length ? "Ich kümmere mich um " + (t.length > 1 ? t.slice(0, -1).join(", ") + " und " + t[t.length - 1] : t[0]) + "." : "Ich bin dein persönlicher Assistent.";
   }
   if (!cfg.key) $("keyField").hidden = false;
   const aboMoeglich = () => !/HIER-DEIN-NAME/.test(serverUrl());
@@ -3004,7 +3129,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     // Stimme und Audio SOFORT beim Antippen freischalten – Android erlaubt Ton nur direkt nach einer Berührung
     if (cfg.engine === "vosk") voskPrepareCtx();
     earUI();
-    begruessen(true);
+    if (!cfg.zwecke) zweckeZeigen(true); else begruessen(true);
     try { await document.documentElement.requestFullscreen(); } catch (e) {}
     if (cfg.engine === "vosk" && cfg.ear) voskStart();
     if (NATIVE && cfg.ear) nativeEarsOn();
