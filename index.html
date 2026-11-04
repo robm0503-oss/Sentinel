@@ -166,6 +166,17 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       </select>
     </div>
     <div class="field">
+      <label for="sStimme">Stimme für dieses Gesicht</label>
+      <select id="sStimme"><option value="">Standardstimme</option></select>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:8px">
+        <label for="sPitch" style="margin:0;min-width:70px">Tonhöhe</label><input id="sPitch" type="range" min="0.5" max="2" step="0.05" style="flex:1">
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:6px">
+        <label for="sRate" style="margin:0;min-width:70px">Tempo</label><input id="sRate" type="range" min="0.6" max="1.6" step="0.05" style="flex:1">
+      </div>
+      <button class="ghost" id="sProbe" type="button" style="margin-top:8px">Probehören</button>
+    </div>
+    <div class="field">
       <label for="sOrt">Ort (für Wetter und Suche in der Nähe)</label>
       <input id="sOrt" type="text" placeholder="z. B. Wittenberge">
     </div>
@@ -248,7 +259,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 42</div>
+    <div class="hint" id="verHint">Sentinel Version 43</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -470,6 +481,22 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       c.fillStyle = "rgba(0,0,0,.18)"; for (let y = 0; y < 240; y += 3) c.fillRect(0, y, 240, 1);
     },
   };
+  // Jede Gesichtsform hat ihre eigene Stimme (Stimme, Tonhöhe, Tempo)
+  const STIMM_VORGABE = {
+    roboter: { pitch: 1.0, rate: 1.05 },
+    holo: { pitch: .82, rate: .97 },     // ruhig und tief, wie ein Butler-Computer
+    welle: { pitch: 1.0, rate: 1.12 },   // klar und zügig
+    partikel: { pitch: 1.12, rate: 1.0 },// hell und schwebend
+    pixel: { pitch: 1.45, rate: 1.15 },  // verspielt
+  };
+  function stimmeFuer(g = cfg.gesicht || "roboter") { return Object.assign({ voice: "" }, STIMM_VORGABE[g] || STIMM_VORGABE.roboter, (cfg.stimmen || {})[g] || {}); }
+  let aktiveStimme = "";
+  function stimmeAnwenden(st) {
+    const v = st.voice || "";
+    if (NATIVE && SV && SV.setVoice && v !== aktiveStimme && (v || aktiveStimme)) { SV.setVoice({ name: v }).catch(() => {}); }
+    aktiveStimme = v;
+  }
+  const stimmName = n => { const m = String(n).match(/de-de-x-(\w+)-(local|network)/i); return m ? `Stimme ${m[1].toUpperCase()} (${m[2] === "local" ? "offline" : "online, natürlicher"})` : n; };
   const GESICHT_NAMEN = { roboter: "Roboter", holo: "Hologramm-Kern", welle: "Stimmwelle", partikel: "Partikel-Kugel", pixel: "Retro-Pixel" };
 
   function frame(t) {
@@ -650,7 +677,8 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
         ttsWait[uid] = done;
         speaking = true; status("spricht");
         ttsWait[uid] = () => { done(); if (cfg.ear && !earsSleeping) nativeEarsOn(); };
-        SV.speak({ text: String(text), id: uid, rate: 1.05, volume: nightActive ? .35 : 1 }).catch(done);
+        const st = stimmeFuer(); stimmeAnwenden(st);
+        SV.speak({ text: String(text), id: uid, rate: st.rate, pitch: st.pitch, volume: nightActive ? .35 : 1 }).catch(done);
         setTimeout(done, 8000 + String(text).length * 120); // Sicherheitsnetz
         return;
       }
@@ -666,7 +694,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
           if (i >= parts.length) return done();
           const part = parts[i++];
           const u = new SpeechSynthesisUtterance(part); if (nightActive) u.volume = .35;
-          u.lang = "de-DE"; if (voice) u.voice = voice; u.rate = 1.05;
+          u.lang = "de-DE"; if (voice) u.voice = voice; { const st = stimmeFuer(); u.rate = st.rate; u.pitch = st.pitch; }
           let moved = false;
           const go = () => { if (moved) return; moved = true; clearTimeout(guard); next(); };
           u.onend = go; u.onerror = go;
@@ -2031,8 +2059,10 @@ ${zeile("Menschen", ich.menschen)}`;
         input_schema: obj({ an: { type: "boolean" }, rezept: { type: "string" }, schritte: { type: "array", items: { type: "string" } } }, ["an"]) },
       { name: "kochschritt", description: "Merkt sich, welchen Rezeptschritt (ab 1) du gerade vorgelesen hast.",
         input_schema: obj({ nummer: { type: "integer" } }, ["nummer"]) },
-      { name: "gesicht_waehlen", description: "Wechselt dein Aussehen. roboter = Augen und Mund, holo = Hologramm-Kern mit kreisenden Lichtringen, welle = leuchtende Stimmwelle, partikel = schwebende Kugel aus Lichtpunkten, pixel = Retro-8-Bit-Augen.",
+      { name: "gesicht_waehlen", description: "Wechselt dein Aussehen (jedes Gesicht hat seine eigene passende Stimme). roboter = Augen und Mund, holo = Hologramm-Kern mit kreisenden Lichtringen, welle = leuchtende Stimmwelle, partikel = schwebende Kugel aus Lichtpunkten, pixel = Retro-8-Bit-Augen.",
         input_schema: obj({ stil: { type: "string", enum: Object.keys(GESICHT_NAMEN) } }, ["stil"]) },
+      { name: "stimme_anpassen", description: "Ändert Tonhöhe und/oder Tempo deiner Stimme für das aktuelle Gesicht (1 = normal; tiefer < 1 < höher, langsamer < 1 < schneller). Nur ändern, was gewünscht ist.",
+        input_schema: obj({ tonhoehe: { type: "number" }, tempo: { type: "number" } }) },
       { name: "outfit", description: "Deine Outfits zu Jahreszeiten und Feiertagen (Wintermütze, Sonnenbrille, Halloween-Kostüm, Weihnachtsmütze usw.). modus auto = automatisch nach Datum, aus = keine Outfits, vorschau = ein bestimmtes Outfit 60 Sekunden zeigen (anlass angeben).",
         input_schema: obj({ modus: { type: "string", enum: ["auto", "aus", "vorschau"] }, anlass: { type: "string", enum: Object.keys(DEKO) } }, ["modus"]) },
     );
@@ -2228,6 +2258,13 @@ ${zeile("Menschen", ich.menschen)}`;
         }
         case "kochschritt": koch.schritt = Math.max(1, Math.min(koch.schritte.length, Math.round(Number(inp.nummer) || 1))); return ok("ok");
         case "gesicht_waehlen": cfg.gesicht = inp.stil in GESICHT_NAMEN ? inp.stil : "roboter"; saveCfg(); return ok("Gesicht jetzt: " + GESICHT_NAMEN[cfg.gesicht]);
+        case "stimme_anpassen": {
+          const g = cfg.gesicht || "roboter", st = stimmeFuer(g);
+          if (inp.tonhoehe != null) st.pitch = Math.max(.5, Math.min(2, Number(inp.tonhoehe)));
+          if (inp.tempo != null) st.rate = Math.max(.6, Math.min(1.6, Number(inp.tempo)));
+          cfg.stimmen = cfg.stimmen || {}; cfg.stimmen[g] = st; saveCfg();
+          return ok(`Stimme: Tonhöhe ${st.pitch.toFixed(2)}, Tempo ${st.rate.toFixed(2)}`);
+        }
         case "outfit": {
           if (inp.modus === "vorschau") {
             if (!DEKO[inp.anlass]) return fail("Unbekannter Anlass.");
@@ -2503,7 +2540,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
 
   // ================= EINSTELLUNGEN =================
   function openSettings() {
-    $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sGesicht").value = cfg.gesicht || "roboter"; $("sBudget").value = cfg.budget || 10; $("sOrt").value = cfg.ort;
+    $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sGesicht").value = cfg.gesicht || "roboter"; stimmFelder(); stimmListe(); $("sBudget").value = cfg.budget || 10; $("sOrt").value = cfg.ort;
     $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
     $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || ""; $("sGroq").value = cfg.groqKey || ""; $("sMuteBeep").checked = cfg.muteBeep !== false;
     $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about; $("sName").value = ich.name || ""; $("sBday").value = /^\d{4}-/.test(ich.geburtstag || "") ? ich.geburtstag : ""; $("sSmart").value = cfg.smart || "";
@@ -2513,6 +2550,29 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     $("setPanel").hidden = false;
   }
   $("setBtn").addEventListener("click", openSettings);
+  let stimmFuerGesicht = "roboter";
+  function stimmFelder() {
+    stimmFuerGesicht = $("sGesicht").value; const st = stimmeFuer(stimmFuerGesicht);
+    $("sStimme").value = st.voice || ""; $("sPitch").value = st.pitch; $("sRate").value = st.rate;
+  }
+  function stimmMerken() {
+    cfg.stimmen = cfg.stimmen || {};
+    cfg.stimmen[stimmFuerGesicht] = { voice: $("sStimme").value, pitch: Number($("sPitch").value), rate: Number($("sRate").value) };
+  }
+  async function stimmListe() {
+    if (!(NATIVE && SV && SV.voices)) return;
+    try {
+      const r = await SV.voices(), sel = $("sStimme"), jetzt = sel.value;
+      const vs = ((r && r.voices) || []).sort((a, b) => (a.network - b.network) || a.name.localeCompare(b.name));
+      sel.replaceChildren(new Option("Standardstimme", ""), ...vs.map(v => new Option(stimmName(v.name), v.name)));
+      sel.value = jetzt || stimmeFuer(stimmFuerGesicht).voice || "";
+    } catch (e) {}
+  }
+  $("sGesicht").addEventListener("change", () => { stimmMerken(); stimmFelder(); });
+  $("sProbe").addEventListener("click", () => {
+    stimmMerken(); const alt = cfg.gesicht; cfg.gesicht = stimmFuerGesicht;
+    speak(`Hallo${ich.name ? " " + ich.name : ""}, so klinge ich als ${GESICHT_NAMEN[stimmFuerGesicht]}.`, "neutral").finally(() => { cfg.gesicht = alt; });
+  });
   $("sTgFind").addEventListener("click", async () => {
     const tok = $("sTgToken").value.trim(); if (!tok) { note("Erst den Bot-Token eintragen.", 4000); return; }
     try {
@@ -2524,7 +2584,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   });
   $("setClose").addEventListener("click", () => { $("setPanel").hidden = true; });
   $("setSave").addEventListener("click", () => {
-    cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.gesicht = $("sGesicht").value; cfg.budget = Math.max(1, Math.min(500, parseInt($("sBudget").value, 10) || 10)); cfg.ort = $("sOrt").value.trim();
+    cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.gesicht = $("sGesicht").value; stimmMerken(); cfg.budget = Math.max(1, Math.min(500, parseInt($("sBudget").value, 10) || 10)); cfg.ort = $("sOrt").value.trim();
     cfg.limit = Math.max(10, Math.min(5000, parseInt($("sLimit").value, 10) || 300));
     cfg.search = $("sSearch").checked; cfg.wake = $("sWake").checked; cfg.look = $("sLook").checked;
     cfg.muteBeep = $("sMuteBeep").checked;

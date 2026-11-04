@@ -361,6 +361,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
 
     private void applyVoice() {
         if (!ttsReady || voiceName == null || tts.getVoices() == null) return;
+        if (voiceName.isEmpty()) { try { if (tts.getDefaultVoice() != null) tts.setVoice(tts.getDefaultVoice()); } catch (Exception ignored) {} return; }
         for (Voice v : tts.getVoices()) {
             if (v.getName().equals(voiceName)) { tts.setVoice(v); return; }
         }
