@@ -389,7 +389,6 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
 
     @PluginMethod
     public void launchApp(PluginCall call) {
-        if (call.getBoolean("pip", true)) pipVorher();
         String pkg = call.getString("package", "");
         Intent i = getContext().getPackageManager().getLaunchIntentForPackage(pkg);
         if (i == null) { call.reject("App nicht gefunden"); return; }
@@ -400,7 +399,6 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
 
     @PluginMethod
     public void openUrl(PluginCall call) {
-        if (call.getBoolean("pip", true)) pipVorher();
         String url = call.getString("url", "");
         String pkg = call.getString("package");
         Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
