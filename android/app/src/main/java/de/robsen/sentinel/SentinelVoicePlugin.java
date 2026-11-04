@@ -536,6 +536,32 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         call.resolve(r);
     }
 
+    // Dokument speichern: ab Android 10 in „Downloads/Sentinel“, davor im App-Ordner „Dokumente“
+    @PluginMethod
+    public void saveFile(PluginCall call) {
+        String name = call.getString("name", "Dokument.txt"), mime = call.getString("mime", "text/plain"), data = call.getString("base64", "");
+        try {
+            byte[] bytes = android.util.Base64.decode(data, android.util.Base64.DEFAULT);
+            String where;
+            if (Build.VERSION.SDK_INT >= 29) {
+                android.content.ContentValues v = new android.content.ContentValues();
+                v.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name);
+                v.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime);
+                v.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/Sentinel");
+                Uri u = getContext().getContentResolver().insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                try (java.io.OutputStream o = getContext().getContentResolver().openOutputStream(u)) { o.write(bytes); }
+                where = "Downloads/Sentinel/" + name;
+            } else {
+                java.io.File dir = new java.io.File(getContext().getExternalFilesDir(android.os.Environment.DIRECTORY_DOCUMENTS), "Sentinel");
+                dir.mkdirs();
+                java.io.File f = new java.io.File(dir, name);
+                try (java.io.FileOutputStream o = new java.io.FileOutputStream(f)) { o.write(bytes); }
+                where = f.getAbsolutePath();
+            }
+            JSObject r = new JSObject(); r.put("path", where); call.resolve(r);
+        } catch (Exception e) { call.reject("Speichern ging nicht: " + e.getMessage()); }
+    }
+
     // Android-Einstellungsseite öffnen, z. B. Bildschirm übertragen (android.settings.CAST_SETTINGS)
     @PluginMethod
     public void openSettingsPage(PluginCall call) {

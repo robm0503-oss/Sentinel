@@ -159,6 +159,16 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       </select>
     </div>
     <div class="field">
+      <label for="sPhase">Für wen ist Sentinel da?</label>
+      <select id="sPhase">
+        <option value="kind">Kind · Lernspielzeug und Spielkamerad</option>
+        <option value="schueler">Schüler · Lehrer und Nachhilfe</option>
+        <option value="teen">Teen · Kumpel im Alltag</option>
+        <option value="erwachsen">Erwachsener · Assistent und Coworker</option>
+        <option value="senior">Senior · Begleiter (mit Lebenszeichen ans Handy der Familie)</option>
+      </select>
+    </div>
+    <div class="field">
       <label for="sGesicht">Gesicht</label>
       <select id="sGesicht">
         <option value="roboter">Roboter · Augen und Mund</option>
@@ -262,7 +272,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 44</div>
+    <div class="hint" id="verHint">Sentinel Version 45</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -500,7 +510,10 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     partikel: { pitch: 1.12, rate: 1.0 },// hell und schwebend
     pixel: { pitch: 1.45, rate: 1.15 },  // verspielt
   };
-  function stimmeFuer(g = cfg.gesicht || "roboter") { return Object.assign({ voice: "" }, STIMM_VORGABE[g] || STIMM_VORGABE.roboter, (cfg.stimmen || {})[g] || {}); }
+  function stimmeFuer(g = cfg.gesicht || "roboter") {
+    const st = Object.assign({ voice: "" }, STIMM_VORGABE[g] || STIMM_VORGABE.roboter, (cfg.stimmen || {})[g] || {});
+    return cfg.phase === "senior" ? { ...st, rate: st.rate * .88 } : cfg.phase === "kind" ? { ...st, rate: st.rate * .93 } : st;
+  }
   let aktiveStimme = "";
   function stimmeAnwenden(st) {
     const v = st.voice || "";
@@ -551,6 +564,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
         ctx.restore(); drawDekoOverlay(dk, t);
       }
     }
+    if (Date.now() < feierBis) drawDekoOverlay({ fx: "konfetti" }, t);
     if (mood === "muede") {
       ctx.fillStyle = eyeColor; ctx.globalAlpha = .55 + Math.sin(t / 700) * .35;
       ctx.font = '600 14px "Chakra Petch", sans-serif'; ctx.fillText("z", 168, 66);
@@ -729,7 +743,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   }
   let WAKE = buildWake();
   const FOLLOW_MS = 15000; // so lange darf man nach seiner Antwort ohne "Sentinel" weiterreden
-  const followMs = () => (koch.on || einr.aktiv) ? 120000 : FOLLOW_MS; // beim Kochen und in der Einrichtung 2 Minuten
+  const followMs = () => (koch.on || einr.aktiv || lern.aktiv) ? 120000 : FOLLOW_MS; // beim Kochen und in der Einrichtung 2 Minuten
   let rec = null, recRunning = false, lastRecErr = null, followUntil = 0, oneShot = false;
   const earBtn = $("earBtn");
   function earUI() { earBtn.classList.toggle("on", cfg.ear); earBtn.setAttribute("aria-pressed", String(cfg.ear)); }
@@ -1754,6 +1768,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   // ================= EINRICHTUNG: Sentinel lernt seinen Menschen kennen =================
   const EINR_THEMEN = {
     name: "Wie er/sie heißt und angesprochen werden will",
+    lebensphase: "Für wen du da bist: Kind, Schüler, Teen, Erwachsener oder Senior – mit lebensphase_setzen speichern (bei Kindern richtet meist ein Elternteil ein; dann frag auch nach dem Kind)",
     geburtstag: "Geburtstag",
     wohnort: "Wohnort (für Wetter) – mit ort_setzen speichern",
     haushalt: "Wer im Haushalt lebt, Haustiere, wichtige Menschen",
@@ -1780,6 +1795,84 @@ Sagt er „später“, „genug“ oder „stopp“, oder sind alle Themen durch
     einr = { aktiv: true, erledigt: neu ? [] : einr.erledigt }; saveEinr();
     followUntil = Date.now() + followMs(); elog("Einrichtung gestartet");
   }
+
+  // ================= LEBENSPHASEN =================
+  const PHASEN = {
+    kind: ["Kind", `Du sprichst mit einem Kind (etwa 4 bis 10 Jahre). Sehr kurze, einfache Sätze, fröhlich, geduldig, viel ehrliches Lob. Erkläre mit Beispielen aus dem Alltag, Tieren und Spielzeug. Biete gern Lernspiele an (Zählen, Rechnen, Buchstaben, Farben, Tiere, erste Englisch-Wörter, Rätsel) und erfinde kurze Geschichten. Nur kindgerechte Inhalte. Bei Fragen zu Gefahren, Gewalt, Krankheit, Körper oder Sorgen antwortest du ruhig, einfach und ehrlich und sagst, dass Mama, Papa oder eine erwachsene Vertrauensperson dabei hilft. Frag nie nach Adresse, Schule, Passwörtern oder Fotos, kauf nichts, öffne keine Chats mit Fremden.`],
+    schueler: ["Schüler", `Du bist Lehrer und Nachhilfe für ein Schulkind (etwa 10 bis 15). Erkläre Schritt für Schritt, mit Beispielen, prüf das Verständnis mit einer kurzen Rückfrage. Bei Hausaufgaben gibst du Hinweise und lässt selbst denken, statt die fertige Lösung zu sagen – außer man hat es schon versucht. Biete Abfragen an (Vokabeln, Einmaleins, Fakten, Prüfungsvorbereitung) und nutze dafür das Werkzeug lernen. Altersgerechte Inhalte, motivierend, nie herablassend.`],
+    teen: ["Teen", `Du bist Kumpel und Helfer für Jugendliche (etwa 14 bis 19). Locker, auf Augenhöhe, ehrlich, ohne peinliche Jugendsprache. Hilf bei Schule, Lernen, Bewerbungen, Führerschein, Geld, Plänen und Motivation. Wenn jemand ernsthafte Sorgen hat, nimm das ernst, hör zu und erwähne die Nummer gegen Kummer (116 111, kostenlos und anonym) oder eine Vertrauensperson.`],
+    erwachsen: ["Erwachsener", `Du bist Alltagsassistent und Coworker: effizient, mitdenkend, erledigst Aufgaben im Hintergrund, recherchierst, planst, erstellst Dokumente und legst sie ab.`],
+    senior: ["Senior", `Du bist Begleiter für einen älteren Menschen. Sprich klar, ruhig, freundlich und geduldig, eher kurze Sätze, wiederhole Wichtiges gern. Erinnere an Termine und Tabletten (Erinnerungen), frag morgens nach dem Befinden, hör zu, erzähl gern, schlag kleine Gedächtnisspiele oder Bewegung vor. Bei Notfällen (Sturz, Brustschmerz, Atemnot, Verwirrung) sofort 112 anrufen lassen und die Familie per nachricht_ans_handy informieren.`],
+  };
+  const phaseInfo = () => { const p = PHASEN[cfg.phase || "erwachsen"]; return `\nFÜR WEN DU DA BIST: ${p[0]}. ${p[1]}`; };
+
+  // ================= LERNEN (Quiz, Abfragen, Sterne) =================
+  let lern = Object.assign({ aktiv: false, fach: "", sterne: 0, serie: 0, letzterTag: "", faecher: {} }, store.get("lernen", {}));
+  const saveLern = () => store.set("lernen", lern);
+  let feierBis = 0;
+  function lernInfo() {
+    if (!lern.aktiv) return lern.sterne ? `\nLern-Sterne bisher: ${lern.sterne} (Serie: ${lern.serie} Tage).` : "";
+    const f = lern.faecher[lern.fach] || { richtig: 0, falsch: 0 };
+    return `\nLERNSPIEL LÄUFT: Fach „${lern.fach}“ (heute bisher ${f.richtig} richtig, ${f.falsch} falsch, insgesamt ${lern.sterne} Sterne). Stell immer EINE Aufgabe passend zu Alter und Niveau, warte auf die Antwort, bewerte sie mit lernen (aktion ergebnis, richtig true/false), lob kurz oder erklär den Fehler freundlich, dann die nächste Aufgabe. Werde langsam schwerer, wenn viel richtig ist, leichter bei Fehlern. Man muss dabei nicht „Sentinel“ sagen. Bei „Schluss“ oder „Pause“: lernen (aktion ende) und Sterne loben.`;
+  }
+
+  // ================= DOKUMENTE =================
+  let dokumente = store.get("dokumente", []);
+  function mdZuHtml(md) {
+    const esc = x => x.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const inl = x => esc(x).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\*(.+?)\*/g, "<i>$1</i>");
+    let h = "", liste = false;
+    for (const z of String(md).split(/\r?\n/)) {
+      const l = z.trim();
+      if (/^[-*•] /.test(l)) { if (!liste) { h += "<ul>"; liste = true; } h += "<li>" + inl(l.slice(2)) + "</li>"; continue; }
+      if (liste) { h += "</ul>"; liste = false; }
+      if (!l) continue;
+      const m = l.match(/^(#{1,3}) (.*)/);
+      if (m) h += `<h${m[1].length}>${inl(m[2])}</h${m[1].length}>`;
+      else if (/^---+$/.test(l)) h += "<hr>";
+      else h += "<p>" + inl(l) + "</p>";
+    }
+    if (liste) h += "</ul>";
+    return h;
+  }
+  async function dokumentErstellen(titel, datei, inhalt) {
+    const name = (String(datei || titel || "Dokument").replace(/[^\wäöüÄÖÜß .-]/g, "").trim().slice(0, 60) || "Dokument").replace(/\.(docx?|html?)$/i, "") + ".doc";
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><title>${titel}</title>
+<style>body{font-family:Calibri,Arial,sans-serif;font-size:11pt;line-height:1.4;color:#222;max-width:17cm;margin:1.5cm auto}h1{font-size:20pt;margin:0 0 4pt;color:#1f3a5f}h2{font-size:13pt;color:#1f3a5f;border-bottom:1px solid #9bb;padding-bottom:2pt;margin:14pt 0 6pt}h3{font-size:11pt;margin:10pt 0 2pt}p{margin:0 0 6pt}ul{margin:0 0 6pt 16pt;padding:0}li{margin:0 0 2pt}hr{border:0;border-top:1px solid #ccc}</style></head><body>${mdZuHtml(inhalt)}</body></html>`;
+    const b64 = btoa(unescape(encodeURIComponent(html)));
+    let ort = "";
+    if (NATIVE && SV && SV.saveFile) { try { ort = (await SV.saveFile({ name, mime: "application/msword", base64: b64 })).path; } catch (e) { elog("Speichern: " + (e.message || e)); } }
+    let handy = false;
+    if (tgReady()) {
+      try {
+        const fd = new FormData(); fd.append("chat_id", cfg.tgChat); fd.append("caption", "📄 " + titel);
+        fd.append("document", new Blob([html], { type: "application/msword" }), name);
+        const r = await fetch(`https://api.telegram.org/bot${cfg.tgToken}/sendDocument`, { method: "POST", body: fd });
+        handy = !!(await r.json()).ok;
+      } catch (e) { elog("Dokument per Telegram: " + e.message); }
+    }
+    dokumente = [...dokumente, { titel, name, ort, am: new Date().toISOString() }].slice(-50); store.set("dokumente", dokumente);
+    return `Dokument „${titel}“ erstellt (${name}).${ort ? " Gespeichert unter " + ort + "." : ""}${handy ? " Per Telegram aufs Handy geschickt – lässt sich in Word oder Google Docs öffnen und bearbeiten." : ""}`;
+  }
+
+  // ================= REISEN =================
+  function reiseLink(inp) {
+    const von = String(inp.von || cfg.ort || "").trim(), nach = String(inp.nach || "").trim();
+    const datum = /^\d{4}-\d{2}-\d{2}$/.test(inp.datum || "") ? inp.datum : heute(), zeit = /^\d{1,2}:\d{2}$/.test(inp.zeit || "") ? inp.zeit.padStart(5, "0") : "08:00";
+    if (inp.art === "flug") return "https://www.google.com/travel/flights?hl=de&q=" + encodeURIComponent(`Flüge von ${von} nach ${nach} am ${datum}${inp.rueck ? " zurück am " + inp.rueck : ""}`);
+    if (inp.art === "auto") return "https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=" + encodeURIComponent(von) + "&destination=" + encodeURIComponent(nach);
+    if (inp.art === "hotel") return "https://www.google.com/travel/hotels?hl=de&q=" + encodeURIComponent(`Hotels in ${nach} ${datum}`);
+    return "https://www.bahn.de/buchung/fahrplan/suche#sts=true&so=" + encodeURIComponent(von) + "&zo=" + encodeURIComponent(nach) + "&hd=" + datum + "T" + zeit + ":00";
+  }
+
+  // ================= LEBENSZEICHEN (Senioren) =================
+  setInterval(() => {
+    if (cfg.phase !== "senior" || cfg.lebenszeichen === false || !tgReady()) return;
+    const h = new Date().getHours(), still = Date.now() - Math.max(lastTalk, faceSeenAt ? Date.now() - (performance.now() - faceSeenAt) : 0);
+    if (h < 9 || h >= 21 || still < (cfg.lzStunden || 6) * 3600000 || store.get("lzGemeldet", "") === heute()) return;
+    store.set("lzGemeldet", heute());
+    tgText(`💛 Sentinel: Ich habe seit über ${cfg.lzStunden || 6} Stunden nichts von ${ich.name || "deinem Angehörigen"} gehört oder gesehen. Vielleicht kurz anrufen?`).catch(() => {});
+  }, 10 * 60000);
 
   // ================= KOCHMODUS =================
   const koch = { on: false, rezept: "", schritte: [], schritt: 0, seit: 0 };
@@ -2020,12 +2113,13 @@ Du bist auch Ernährungsberater für den Haushalt. Erzählt ${wer}, was es bei e
 Gibt es ein Ernährungsziel (z. B. abnehmen), speichere es mit ernaehrungsziel und richte alle Pläne danach aus: leichtere Varianten eurer Gerichte, mehr Gemüse und Eiweiß, satt machende Beilagen, sinnvolle Portionen, ab und zu ein Lieblingsessen, damit es durchhaltbar bleibt. Plane ein gesundes Tempo (etwa ein halbes Kilo pro Woche), nie Crash-Diäten oder extrem wenig essen. Bei Krankheiten oder sehr viel Gewicht rätst du zusätzlich zu ärztlicher Begleitung.
 Nachrichten, die mit „(per Telegram von unterwegs)“ beginnen, schickt ${wer} per Telegram, er ist also nicht vor dir. Führe Befehle direkt aus und antworte kurz als Text (es wird nicht vorgelesen). Kamera-Fragen beantwortest du mit kamera_bild.
 Soll Musik oder ein Video von YouTube laufen: suche mit der Websuche den passenden youtube.com/watch-Link und nutze youtube_abspielen – der Player läuft klein in deinem Gesicht und du bleibst im Vordergrund. Öffnest du andere Apps für etwas, das im Hintergrund weiterlaufen soll, setze zurueck=true.
+Als Coworker erledigst du Aufgaben selbstständig: Sagt jemand, was er braucht (z. B. einen Lebenslauf, eine Bewerbung, einen Brief), frag nacheinander nach allem Nötigen, dann erstell das Dokument mit dokument_erstellen und sag kurz, wo es liegt. Für Reisen öffne mit reise_suchen die passende Suche und recherchiere bei Bedarf mit der Websuche.
 Fragt jemand, was du kannst oder wie man etwas einrichtet, zeig die Anleitung (anleitung_zeigen) und fasse das Wichtigste kurz zusammen. Neue Fähigkeiten kommen über die Einstellungen dazu (Smart-Home-Befehle, Govee, Telegram) – erkläre das konkret.
 Für Wetterfragen nutze immer das Werkzeug wetter, nie die Websuche. Will ${wer} etwas kochen oder backen, biete den Kochmodus an: Dann führst du Schritt für Schritt durchs Rezept und man muss nicht jedes Mal „Sentinel“ sagen. Geht ${wer} aus dem Haus, kannst du den Wachhund anbieten. Nachrichten aufs Handy gehen über Telegram${tgReady() ? "" : " (noch nicht eingerichtet: in den Einstellungen Bot-Token und Chat-ID eintragen)"}.
 Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
 Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Sag nie, dass du dir etwas gemerkt hast, ohne das Werkzeug wirklich benutzt zu haben.
-Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\nDein aktuelles Gesicht: ${GESICHT_NAMEN[cfg.gesicht || "roboter"]}.\n${dekoInfo()}\n${geburtstagInfo()}\nDeine API-Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.monat === monat() ? kosten.usd : 0)}.${wach.on ? "\nDer WACHHUND ist gerade an" + (wach.alerts ? ` (${wach.alerts} Bewegungsmeldungen)` : "") + ". Wenn " + wer + " sagt, dass er wieder da ist, schalte ihn aus." : ""}${nightActive ? "\nEs ist Nachtmodus: antworte besonders kurz und ruhig." : ""}${kochInfo()}${einrichtungInfo()}${essenInfo()}${akkuInfo()}${cfg.govee ? "\nDeine Lampen (Werkzeug licht): " + (store.get("goveeNamen", []).join(", ") || "werden noch geladen") : ""}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
+Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\nDein aktuelles Gesicht: ${GESICHT_NAMEN[cfg.gesicht || "roboter"]}.\n${dekoInfo()}\n${geburtstagInfo()}\nDeine API-Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.monat === monat() ? kosten.usd : 0)}.${wach.on ? "\nDer WACHHUND ist gerade an" + (wach.alerts ? ` (${wach.alerts} Bewegungsmeldungen)` : "") + ". Wenn " + wer + " sagt, dass er wieder da ist, schalte ihn aus." : ""}${nightActive ? "\nEs ist Nachtmodus: antworte besonders kurz und ruhig." : ""}${phaseInfo()}${lernInfo()}${kochInfo()}${einrichtungInfo()}${dokumente.length ? "\nErstellte Dokumente: " + dokumente.slice(-6).map(d => d.titel).join(", ") : ""}${essenInfo()}${akkuInfo()}${cfg.govee ? "\nDeine Lampen (Werkzeug licht): " + (store.get("goveeNamen", []).join(", ") || "werden noch geladen") : ""}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
 Offene Timer und Erinnerungen: ${termText}
 Listen: ${listenText}
 ${zeile("Was du über " + wer + " weißt", ich.fakten)}
@@ -2101,6 +2195,14 @@ ${zeile("Menschen", ich.menschen)}`;
         input_schema: obj({ an: { type: "boolean" }, rezept: { type: "string" }, schritte: { type: "array", items: { type: "string" } } }, ["an"]) },
       { name: "kochschritt", description: "Merkt sich, welchen Rezeptschritt (ab 1) du gerade vorgelesen hast.",
         input_schema: obj({ nummer: { type: "integer" } }, ["nummer"]) },
+      { name: "lebensphase_setzen", description: "Stellt ein, für wen du da bist: kind (Lernspielzeug), schueler (Lehrer/Nachhilfe), teen (Kumpel), erwachsen (Assistent/Coworker), senior (Begleiter).",
+        input_schema: obj({ phase: { type: "string", enum: Object.keys(PHASEN) } }, ["phase"]) },
+      { name: "lernen", description: "Lernspiel/Abfrage. start = mit Fach beginnen (z. B. Mathe 3. Klasse, Englisch-Vokabeln, Hauptstädte), ergebnis = eine beantwortete Aufgabe werten (richtig true/false), ende = aufhören.",
+        input_schema: obj({ aktion: { type: "string", enum: ["start", "ergebnis", "ende"] }, fach: { type: "string" }, richtig: { type: "boolean" } }, ["aktion"]) },
+      { name: "dokument_erstellen", description: "Erstellt ein fertiges Dokument (Lebenslauf, Bewerbung, Brief, Kündigung, Zusammenfassung, Plan, Liste …) als Word-Datei, speichert es auf dem Tablet und schickt es per Telegram aufs Handy. Vorher alle nötigen Angaben erfragen (eine Frage nach der anderen). inhalt als Markdown (# Titel, ## Abschnitte, - Listen, **fett**), vollständig und sauber formuliert.",
+        input_schema: obj({ titel: { type: "string" }, dateiname: { type: "string" }, inhalt: { type: "string" } }, ["titel", "inhalt"]) },
+      { name: "reise_suchen", description: "Öffnet die passende Suche für Zug (Deutsche Bahn), Flug (Google Flüge), Hotel oder Autoroute und schickt den Link aufs Handy. von leer = Wohnort. datum JJJJ-MM-TT, zeit HH:MM.",
+        input_schema: obj({ art: { type: "string", enum: ["zug", "flug", "hotel", "auto"] }, von: { type: "string" }, nach: { type: "string" }, datum: { type: "string" }, zeit: { type: "string" }, rueck: { type: "string" } }, ["art", "nach"]) },
       { name: "einrichtung", description: "Einrichtungsgespräch zum Kennenlernen. start = beginnen (oder neu beginnen), thema_erledigt = ein Thema abhaken (thema angeben), beenden = fertig.",
         input_schema: obj({ aktion: { type: "string", enum: ["start", "thema_erledigt", "beenden"] }, thema: { type: "string", enum: Object.keys(EINR_THEMEN) } }, ["aktion"]) },
       { name: "ort_setzen", description: "Speichert den Wohnort (für Wetter und Suchen in der Nähe).", input_schema: obj({ ort: { type: "string" } }, ["ort"]) },
@@ -2306,6 +2408,26 @@ ${zeile("Menschen", ich.menschen)}`;
           return ok(`Kochmodus an, ${st.length} Schritte. Lies jetzt Schritt 1 vor.`);
         }
         case "kochschritt": koch.schritt = Math.max(1, Math.min(koch.schritte.length, Math.round(Number(inp.nummer) || 1))); return ok("ok");
+        case "lebensphase_setzen": cfg.phase = inp.phase in PHASEN ? inp.phase : "erwachsen"; saveCfg(); return ok("Lebensphase: " + PHASEN[cfg.phase][0]);
+        case "lernen": {
+          if (inp.aktion === "start") { lern.aktiv = true; lern.fach = String(inp.fach || "Allgemeinwissen").slice(0, 60); saveLern(); followUntil = Date.now() + followMs(); return ok("Lernspiel läuft: " + lern.fach + ". Stell die erste Aufgabe."); }
+          if (inp.aktion === "ergebnis") {
+            const f = lern.faecher[lern.fach] = lern.faecher[lern.fach] || { richtig: 0, falsch: 0 };
+            if (inp.richtig) {
+              f.richtig++; lern.sterne++; feierBis = Date.now() + 2200;
+              if (lern.letzterTag !== heute()) { const gestern = new Date(Date.now() - 864e5).toISOString().slice(0, 10); lern.serie = lern.letzterTag === gestern ? lern.serie + 1 : 1; lern.letzterTag = heute(); }
+            } else f.falsch++;
+            saveLern(); return ok(`${inp.richtig ? "⭐ Stern! " : ""}Sterne gesamt: ${lern.sterne}`);
+          }
+          lern.aktiv = false; saveLern(); return ok(`Lernspiel beendet. Sterne gesamt: ${lern.sterne}, Serie ${lern.serie} Tage.`);
+        }
+        case "dokument_erstellen": status("schreibt ein Dokument"); return ok(await dokumentErstellen(String(inp.titel || "Dokument"), inp.dateiname, String(inp.inhalt || "")));
+        case "reise_suchen": {
+          const url = reiseLink(inp);
+          if (NATIVE && SV) await SV.openUrl({ url }).catch(() => {});
+          if (tgReady()) tgText("🧭 " + (inp.art === "zug" ? "Zugverbindungen" : inp.art === "flug" ? "Flüge" : inp.art === "hotel" ? "Hotels" : "Route") + " nach " + inp.nach + ":\n" + url).catch(() => {});
+          return ok("Suche geöffnet" + (tgReady() ? " und Link aufs Handy geschickt" : "") + ". Für konkrete Preise und Zeiten kannst du zusätzlich die Websuche nutzen.");
+        }
         case "einrichtung": {
           if (inp.aktion === "start") { einrichtungStarten(true); return ok("Einrichtung läuft. Stell jetzt die erste Frage."); }
           if (inp.aktion === "thema_erledigt") { if (inp.thema && !einr.erledigt.includes(inp.thema)) einr.erledigt.push(inp.thema); saveEinr(); return ok("abgehakt"); }
@@ -2369,7 +2491,7 @@ ${zeile("Menschen", ich.menschen)}`;
 
   // ---- Automatik: welches Gehirn für welche Frage ----
   const HAIKU = "claude-haiku-5-5", SONNET = "claude-sonnet-5-5";
-  const SCHWER_RE = /\b(warum|wieso|weshalb|erklär|erklaer|wie funktioniert|was bedeutet|unterschied|vergleich|vor- und nachteil|soll ich|was meinst du|rat|tipp|hilf mir|problem|plan|planen|strategie|idee|ideen|überleg|ueberleg|analys|rechne|berechne|schreib|formulier|text für|brief|mail|rezept|kochen|backen|essensplan|nächste woche|abnehmen|ernährung|geschichte|witz|gedicht|trading|steuer|recht|vertrag|code|programm)\w*/i;
+  const SCHWER_RE = /\b(warum|wieso|weshalb|erklär|erklaer|wie funktioniert|was bedeutet|unterschied|vergleich|vor- und nachteil|soll ich|was meinst du|rat|tipp|hilf mir|problem|plan|planen|strategie|idee|ideen|überleg|ueberleg|analys|rechne|berechne|schreib|formulier|text für|brief|mail|rezept|kochen|backen|essensplan|nächste woche|abnehmen|ernährung|geschichte|witz|gedicht|trading|steuer|recht|vertrag|code|programm|erstell|lebenslauf|bewerbung|dokument|anschreiben|präsentation|zusammenfass|flug|reise|urlaub|hausaufgabe)\w*/i;
   let lastSonnet = 0;
   const budgetEuro = () => (kosten.monat === monat() ? kosten.usd : 0) * 0.92; // grob in Euro
   function gehirnFuer(text, img) {
@@ -2410,7 +2532,7 @@ ${zeile("Menschen", ich.menschen)}`;
       try {
         const sys = systemBlocks();
         if (cfg.model === "auto" && model === HAIKU && !hochgestuft && Array.isArray(sys)) sys.push({ type: "text", text: "Wenn diese Frage echtes Nachdenken, Planen, Erklären oder einen längeren Text braucht, antworte NUR mit [hoch] und sonst nichts. Einfache Dinge erledigst du direkt." });
-        data = await api({ model, max_tokens: 1000, system: sys, tools: tools(), messages: work });
+        data = await api({ model, max_tokens: 4000, system: sys, tools: tools(), messages: work });
       } catch (e) {
         if (e.kind === "search" && cfg.search) { cfg.search = false; saveCfg(); note("Websuche ist für deinen API-Key nicht freigeschaltet. Sie ist jetzt aus.", 6000); round--; continue; }
         throw e;
@@ -2468,7 +2590,10 @@ ${zeile("Menschen", ich.menschen)}`;
   };
 
   // Werkzeuge, die nur etwas nachschauen – dafür keine Bestätigung aufs Handy
-  const NUR_LESEN = new Set(["wetter", "termine_anzeigen", "kochschritt", "kamera_bild", "ha_geraete", "wlan_scannen", "web_search"]);
+  const NUR_LESEN = new Set(["wetter", "termine_anzeigen", "kochschritt", "kamera_bild", "ha_geraete", "wlan_scannen", "web_search",
+    // die melden sich selbst oder sind nur Gesprächsbegleitung
+    "lernen", "einrichtung", "anleitung_zeigen", "gerichte_merken", "merke_dir", "ich_kenne_dich", "vergiss", "lebensphase_setzen", "stimme_anpassen",
+    "dokument_erstellen", "reise_suchen", "nachricht_ans_handy", "geburtstag_speichern", "ort_setzen", "ernaehrungsziel", "kochmodus"]);
   async function send(text, via = "sprache") {
     text = String(text || "").trim();
     if (busy || !text) return;
@@ -2585,6 +2710,10 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     ["Sehen", "Mit Kamera an schaue ich, wenn du mich darum bittest, und folge dir mit den Augen.", ["Was siehst du?", "Was halte ich in der Hand?"]],
     ["Kochen & Essen", "Kochmodus Schritt für Schritt ohne „Sentinel“-Sagen. Ich kenne eure Gerichte, plane Wochen und passe sie an dein Ziel an.", ["Lass uns Pfannkuchen machen", "Was essen wir nächste Woche?", "Ich will bis Ostern 5 Kilo abnehmen"]],
     ["Tablet & Apps", "Apps öffnen, YouTube direkt in meinem Gesicht, Lautstärke, Helligkeit, Wecker. Bei Spotify & Co. komme ich danach selbst wieder nach vorne.", ["Spiel Thunderstruck auf YouTube", "Öffne Spotify", "Lautstärke 40 Prozent"]],
+    ["Lernen", "Quiz und Abfragen für jedes Alter mit Sternen und Lernserie – vom Zählen bis zur Prüfungsvorbereitung. Unter „Für wen ist Sentinel da?“ stellst du Kind, Schüler, Teen, Erwachsener oder Senior ein.", ["Lass uns Mathe üben", "Frag mich Englisch-Vokabeln ab", "Erklär mir Brüche"]],
+    ["Dokumente (Coworker)", "Ich frage alles Nötige ab, erstelle das Dokument als Word-Datei, speichere es unter Downloads/Sentinel und schicke es per Telegram.", ["Erstell mir einen Lebenslauf", "Schreib eine Kündigung für mein Fitnessstudio"]],
+    ["Reisen", "Zug, Flug, Hotel oder Route – ich öffne die Suche und schicke den Link aufs Handy.", ["Nächster Zug nach Berlin", "Flüge nach Dubai am 27. Dezember"]],
+    ["Senioren-Begleiter", "Ruhiger, langsamer, erinnert an Tabletten und meldet sich per Telegram bei der Familie, wenn er lange nichts gehört hat.", ["Erinnere mich jeden Morgen um 8 an meine Tabletten"]],
     ["Aussehen & Stimme", "5 Gesichter mit eigener Stimme, Outfits zu Feiertagen und Geburtstag.", ["Nimm das Hologramm-Gesicht", "Sprich etwas tiefer", "Outfits aus"]],
     ["Nacht & Kosten", "Nachtmodus: dunkel, leise, hört nur nach Antippen. Automatik-Gehirn und Monatsbudget halten die Kosten klein.", ["Was hast du diesen Monat gekostet?"]],
     ["Auf andere Bildschirme", "Ich laufe auf jedem Android-Gerät (Handy, Tablet, Fire TV, Android TV). Mein Bild kann ich auf Fernseher mit Bildschirmübertragung (Smart View, Chromecast, Miracast) schicken.", ["Übertrag dich auf den Fernseher"]],
@@ -2622,6 +2751,8 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     if (plan) pBody.append(grp("Essensplan ab " + new Date(plan.start + "T12:00").toLocaleDateString("de-DE"), plan.tage.map(t => `${t.tag}: ${t.essen}`)));
     if (essen.ziel || essen.hinweise) pBody.append(grp("Ernährung", [essen.ziel && "Ziel: " + essen.ziel, essen.hinweise].filter(Boolean)));
     pBody.append(grp(`Unsere Gerichte (${essen.gerichte.length})`, essen.gerichte));
+    if (lern.sterne) pBody.append(grp("Lernen", [`⭐ ${lern.sterne} Sterne`, `🔥 ${lern.serie} Tage Serie`, ...Object.entries(lern.faecher).map(([f, x]) => `${f}: ${x.richtig} richtig`)]));
+    if (dokumente.length) pBody.append(grp("Dokumente", dokumente.slice(-12).reverse().map(d => d.titel + " · " + new Date(d.am).toLocaleDateString("de-DE"))));
   }
   $("ichBtn").addEventListener("click", () => { renderIch(); resetArmed = false; pReset.textContent = "Gedächtnis löschen"; $("ichPanel").hidden = false; });
   $("ichClose").addEventListener("click", () => { $("ichPanel").hidden = true; });
@@ -2629,13 +2760,13 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     if (!resetArmed) { resetArmed = true; pReset.textContent = "Wirklich alles vergessen? Nochmal tippen"; return; }
     resetArmed = false; pReset.textContent = "Gedächtnis löschen";
     ich = frisch(); saveIch(); history = []; sessionLog = []; store.set("session", []);
-    termine = []; saveTermine(); listen = {}; saveListen(); essen = { gerichte: [], plaene: [], ziel: "", hinweise: "" }; saveEssen(); einr = { aktiv: false, erledigt: [] }; saveEinr();
+    termine = []; saveTermine(); listen = {}; saveListen(); essen = { gerichte: [], plaene: [], ziel: "", hinweise: "" }; saveEssen(); einr = { aktiv: false, erledigt: [] }; saveEinr(); lern = { aktiv: false, fach: "", sterne: 0, serie: 0, letzterTag: "", faecher: {} }; saveLern();
     $("ichPanel").hidden = true; begruessen(true);
   });
 
   // ================= EINSTELLUNGEN =================
   function openSettings() {
-    $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sGesicht").value = cfg.gesicht || "roboter"; stimmFelder(); stimmListe(); $("sBudget").value = cfg.budget || 10; $("sOrt").value = cfg.ort;
+    $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sPhase").value = cfg.phase || "erwachsen"; $("sGesicht").value = cfg.gesicht || "roboter"; stimmFelder(); stimmListe(); $("sBudget").value = cfg.budget || 10; $("sOrt").value = cfg.ort;
     $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
     $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || ""; $("sGroq").value = cfg.groqKey || ""; $("sMuteBeep").checked = cfg.muteBeep !== false;
     $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about; $("sName").value = ich.name || ""; $("sBday").value = /^\d{4}-/.test(ich.geburtstag || "") ? ich.geburtstag : ""; $("sSmart").value = cfg.smart || "";
@@ -2679,7 +2810,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   });
   $("setClose").addEventListener("click", () => { $("setPanel").hidden = true; });
   $("setSave").addEventListener("click", () => {
-    cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.gesicht = $("sGesicht").value; stimmMerken(); cfg.budget = Math.max(1, Math.min(500, parseInt($("sBudget").value, 10) || 10)); cfg.ort = $("sOrt").value.trim();
+    cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.gesicht = $("sGesicht").value; cfg.phase = $("sPhase").value; stimmMerken(); cfg.budget = Math.max(1, Math.min(500, parseInt($("sBudget").value, 10) || 10)); cfg.ort = $("sOrt").value.trim();
     cfg.limit = Math.max(10, Math.min(5000, parseInt($("sLimit").value, 10) || 300));
     cfg.search = $("sSearch").checked; cfg.wake = $("sWake").checked; cfg.look = $("sLook").checked;
     cfg.muteBeep = $("sMuteBeep").checked;
