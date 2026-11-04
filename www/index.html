@@ -34,6 +34,11 @@ body { background: var(--bg); color: var(--text); font-family: var(--display); o
   padding: max(8px, env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) max(10px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
 }
 .stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; position: relative; }
+@media (max-width: 360px) and (max-height: 360px) {
+  .top, .bar, .say, #hint, .panel, #ytBox { display: none !important; }
+  body { padding: 0 !important; }
+  canvas#face { width: 100vmin; height: 100vmin; }
+}
 body.night canvas#face { filter: brightness(.45); }
 canvas#face { display: block; height: 100%; max-height: 100%; aspect-ratio: 1; max-width: 100%; touch-action: none; cursor: pointer; }
 .top {
@@ -237,6 +242,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       <input id="sAkkuOn" type="text" autocomplete="off" placeholder="Befehl: z. B. Ladestecker an" style="flex:1">
       <input id="sAkkuOff" type="text" autocomplete="off" placeholder="Befehl: z. B. Ladestecker aus" style="flex:1">
     </div>
+    <label class="check"><input id="sPip" type="checkbox"> Bild in Bild: beim Verlassen und bei anderen Apps klein unten rechts weiterlaufen</label>
     <label class="check"><input id="sNight" type="checkbox"> Nachtmodus (dunkel, leise, hört nur nach Antippen)</label>
     <div class="field" style="display:flex;gap:10px;align-items:center">
       <label for="sNightFrom" style="margin:0">von</label><input id="sNightFrom" type="time" style="flex:1">
@@ -274,7 +280,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 46</div>
+    <div class="hint" id="verHint">Sentinel Version 47</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -2205,6 +2211,7 @@ ${zeile("Menschen", ich.menschen)}`;
         input_schema: obj({ app: { type: "string" }, zurueck: { type: "boolean" } }, ["app"]) },
       { name: "youtube_abspielen", description: "Spielt ein YouTube-Video bzw. Lied direkt in deinem Gesicht ab (kleiner Player, du bleibst im Vordergrund). Vorher mit der Websuche den passenden Link youtube.com/watch?v=… finden. url = dieser Link.",
         input_schema: obj({ url: { type: "string" } }, ["url"]) },
+      { name: "bild_in_bild", description: "Macht dich klein (Bild in Bild unten rechts) – du hörst weiter zu. Antippen des kleinen Fensters macht dich wieder groß.", input_schema: obj({}) },
       { name: "youtube_stoppen", description: "Stoppt die YouTube-Wiedergabe in deinem Gesicht.", input_schema: obj({}) },
       { name: "medien_oeffnen", description: "Öffnet YouTube, Spotify, Google Maps, WhatsApp oder die Websuche direkt mit einer Suche bzw. einem Text. Bei WhatsApp wird die Nachricht nur vorbereitet, abschicken muss der Mensch selbst.",
         input_schema: obj({ dienst: { type: "string", enum: ["youtube", "spotify", "maps", "whatsapp", "web"] }, suche: { type: "string" }, zurueck: { type: "boolean" } }, ["dienst", "suche"]) },
@@ -2365,13 +2372,14 @@ ${zeile("Menschen", ich.menschen)}`;
           if (!id) return fail("Kein gültiger YouTube-Link. Erst mit der Websuche einen youtube.com/watch?v=…-Link finden.");
           ytPlayer(id); return ok("läuft jetzt in deinem Gesicht");
         }
+        case "bild_in_bild": if (!(SV && SV.pip)) return fail("Geht nur in der App."); setTimeout(() => SV.pip({ enter: true }).catch(() => {}), 1500); return ok("Ich mache mich gleich klein.");
         case "youtube_stoppen": ytPlayer(null); return ok("gestoppt");
         case "app_oeffnen": {
           if (!appCache) { const r = await SV.listApps(); appCache = (r && r.apps) || []; }
           const q = String(inp.app || "").toLowerCase().trim();
           const a = appCache.find(x => x.name.toLowerCase() === q) || appCache.find(x => x.name.toLowerCase().includes(q)) || appCache.find(x => q.includes(x.name.toLowerCase()));
           if (!a) return fail("Diese App ist nicht installiert. Installiert sind: " + appCache.map(x => x.name).slice(0, 60).join(", "));
-          await SV.launchApp({ package: a.package }); elog("App geöffnet: " + a.name);
+          await SV.launchApp({ package: a.package, pip: cfg.pip !== false }); elog("App geöffnet: " + a.name);
           if (inp.zurueck) { zurueckHolen(10000); return ok("geöffnet: " + a.name + ". In 10 Sekunden bist du wieder im Vordergrund."); }
           return ok("geöffnet: " + a.name + ". Zurück zu Sentinel geht es mit dem Sentinel-Symbol oder der Zurück-Taste.");
         }
@@ -2385,7 +2393,7 @@ ${zeile("Menschen", ich.menschen)}`;
             web: ["https://www.google.com/search?q=" + q, null],
           };
           const m = M[inp.dienst]; if (!m) return fail("Unbekannter Dienst");
-          await SV.openUrl({ url: m[0], package: m[1] || undefined }); elog("Geöffnet: " + inp.dienst);
+          await SV.openUrl({ url: m[0], package: m[1] || undefined, pip: cfg.pip !== false }); elog("Geöffnet: " + inp.dienst);
           if (inp.zurueck) { zurueckHolen(12000); return ok("geöffnet, in 12 Sekunden bist du wieder im Vordergrund"); }
           return ok("geöffnet");
         }
@@ -2811,6 +2819,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     ["Senioren-Begleiter", "Ruhiger, langsamer, erinnert an Tabletten und meldet sich per Telegram bei der Familie, wenn er lange nichts gehört hat.", ["Erinnere mich jeden Morgen um 8 an meine Tabletten"]],
     ["Aussehen & Stimme", "5 Gesichter mit eigener Stimme, Outfits zu Feiertagen und Geburtstag.", ["Nimm das Hologramm-Gesicht", "Sprich etwas tiefer", "Outfits aus"]],
     ["Nacht & Kosten", "Nachtmodus: dunkel, leise, hört nur nach Antippen. Automatik-Gehirn und Monatsbudget halten die Kosten klein.", ["Was hast du diesen Monat gekostet?"]],
+    ["Bild in Bild", "Drückst du die Home-Taste oder öffne ich eine andere App, werde ich klein unten rechts und höre trotzdem weiter zu. Antippen macht mich wieder groß.", ["Mach dich klein"]],
     ["Auf andere Bildschirme", "Ich laufe auf jedem Android-Gerät (Handy, Tablet, Fire TV, Android TV). Mein Bild kann ich auf Fernseher mit Bildschirmübertragung (Smart View, Chromecast, Miracast) schicken.", ["Übertrag dich auf den Fernseher"]],
   ];
   function hilfeZeigen() {
@@ -2865,7 +2874,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
     $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || ""; $("sGroq").value = cfg.groqKey || ""; $("sMuteBeep").checked = cfg.muteBeep !== false;
     $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about; $("sName").value = ich.name || ""; $("sBday").value = /^\d{4}-/.test(ich.geburtstag || "") ? ich.geburtstag : ""; $("sSmart").value = cfg.smart || "";
-    $("sTgToken").value = cfg.tgToken || ""; $("sGovee").value = cfg.govee || ""; $("sTgChat").value = cfg.tgChat || ""; $("sNight").checked = !!cfg.night; $("sAkku").checked = !!cfg.akku; $("sTgRemind").checked = cfg.tgRemind !== false; $("sTgConfirm").checked = cfg.tgConfirm !== false; $("sAkkuMin").value = cfg.akkuMin; $("sAkkuMax").value = cfg.akkuMax; $("sAkkuOn").value = cfg.akkuOn || ""; $("sAkkuOff").value = cfg.akkuOff || ""; $("sNightFrom").value = cfg.nightFrom || "22:30"; $("sNightTo").value = cfg.nightTo || "06:30";
+    $("sTgToken").value = cfg.tgToken || ""; $("sGovee").value = cfg.govee || ""; $("sTgChat").value = cfg.tgChat || ""; $("sNight").checked = !!cfg.night; $("sPip").checked = cfg.pip !== false; $("sAkku").checked = !!cfg.akku; $("sTgRemind").checked = cfg.tgRemind !== false; $("sTgConfirm").checked = cfg.tgConfirm !== false; $("sAkkuMin").value = cfg.akkuMin; $("sAkkuMax").value = cfg.akkuMax; $("sAkkuOn").value = cfg.akkuOn || ""; $("sAkkuOff").value = cfg.akkuOff || ""; $("sNightFrom").value = cfg.nightFrom || "22:30"; $("sNightTo").value = cfg.nightTo || "06:30";
     const u = usage.tag === heute() ? usage : { n: 0, inTok: 0, outTok: 0 };
     $("sUsage").textContent = `Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.usd)} · Heute: ${u.n} Anfragen · ${u.inTok.toLocaleString("de-DE")} Tokens rein · ${(u.cacheTok || 0).toLocaleString("de-DE")} günstig aus dem Zwischenspeicher · ${u.outTok.toLocaleString("de-DE")} Tokens raus`;
     $("setPanel").hidden = false;
@@ -2921,6 +2930,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     cfg.tgToken = $("sTgToken").value.trim(); cfg.tgChat = $("sTgChat").value.trim();
     cfg.tgRemind = $("sTgRemind").checked; cfg.tgConfirm = $("sTgConfirm").checked; cfg.akku = $("sAkku").checked; cfg.akkuOn = $("sAkkuOn").value.trim(); cfg.akkuOff = $("sAkkuOff").value.trim();
     cfg.akkuMin = Math.max(5, Math.min(90, parseInt($("sAkkuMin").value, 10) || 15)); cfg.akkuMax = Math.max(cfg.akkuMin + 5, Math.min(100, parseInt($("sAkkuMax").value, 10) || 100));
+    cfg.pip = $("sPip").checked; if (NATIVE && SV && SV.pip) SV.pip({ auto: cfg.pip }).catch(() => {});
     cfg.night = $("sNight").checked; cfg.nightFrom = $("sNightFrom").value || "22:30"; cfg.nightTo = $("sNightTo").value || "06:30";
     const bd = $("sBday").value; if (bd && bd !== ich.geburtstag) { ich.geburtstag = bd; saveIch(); }
     saveCfg(); $("setPanel").hidden = true; note("Gespeichert.", 2000);
@@ -2960,6 +2970,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     }
     $("startPanel").hidden = true;
     keepAwake(); rcStart();
+    if (NATIVE && SV && SV.pip) SV.pip({ auto: cfg.pip !== false }).catch(() => {});
     // Stimme und Audio SOFORT beim Antippen freischalten – Android erlaubt Ton nur direkt nach einer Berührung
     if (cfg.engine === "vosk") voskPrepareCtx();
     earUI();

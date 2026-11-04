@@ -389,6 +389,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
 
     @PluginMethod
     public void launchApp(PluginCall call) {
+        if (call.getBoolean("pip", true)) pipVorher();
         String pkg = call.getString("package", "");
         Intent i = getContext().getPackageManager().getLaunchIntentForPackage(pkg);
         if (i == null) { call.reject("App nicht gefunden"); return; }
@@ -399,6 +400,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
 
     @PluginMethod
     public void openUrl(PluginCall call) {
+        if (call.getBoolean("pip", true)) pipVorher();
         String url = call.getString("url", "");
         String pkg = call.getString("package");
         Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
@@ -575,6 +577,21 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         }
     }
 
+    private void pipVorher() {
+        if (getActivity() instanceof MainActivity) {
+            final MainActivity m = (MainActivity) getActivity();
+            getActivity().runOnUiThread(m::enterPip);
+            try { Thread.sleep(250); } catch (InterruptedException ignored) {}
+        }
+    }
+
+    @PluginMethod
+    public void pip(PluginCall call) {
+        if (call.getBoolean("auto") != null) { MainActivity.autoPip = call.getBoolean("auto"); if (getActivity() instanceof MainActivity) getActivity().runOnUiThread(((MainActivity) getActivity())::refreshPip); }
+        if (call.getBoolean("enter", false) && getActivity() instanceof MainActivity) getActivity().runOnUiThread(((MainActivity) getActivity())::enterPip);
+        call.resolve();
+    }
+
     @PluginMethod
     public void bringToFront(PluginCall call) {
         Intent i = getContext().getPackageManager().getLaunchIntentForPackage(getContext().getPackageName());
@@ -724,6 +741,8 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
     @Override
     protected void handleOnPause() {
         super.handleOnPause();
+        // Im Bild-in-Bild-Fenster bleibt Sentinel sichtbar und hört weiter zu
+        if (Build.VERSION.SDK_INT >= 24 && getActivity() != null && getActivity().isInPictureInPictureMode()) return;
         paused = true;
         main.removeCallbacks(listenRunnable);
         destroyRecognizer();

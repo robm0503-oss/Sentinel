@@ -4,12 +4,33 @@ import android.content.Context;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
+import android.app.PictureInPictureParams;
+import android.util.Rational;
 import android.view.WindowManager;
 
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
     private PowerManager.WakeLock screenLock;
+    static boolean autoPip = true;
+
+    // Bild-in-Bild: Sentinel wird klein unten rechts, hört aber weiter zu
+    private PictureInPictureParams pipParams() {
+        PictureInPictureParams.Builder b = new PictureInPictureParams.Builder().setAspectRatio(new Rational(1, 1));
+        if (Build.VERSION.SDK_INT >= 31) { b.setAutoEnterEnabled(autoPip); b.setSeamlessResizeEnabled(true); }
+        return b.build();
+    }
+    public boolean enterPip() {
+        if (Build.VERSION.SDK_INT < 26) return false;
+        try { return enterPictureInPictureMode(pipParams()); } catch (Exception e) { return false; }
+    }
+    public void refreshPip() { if (Build.VERSION.SDK_INT >= 26) try { setPictureInPictureParams(pipParams()); } catch (Exception ignored) {} }
+
+    @Override
+    public void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        if (autoPip && Build.VERSION.SDK_INT >= 26 && Build.VERSION.SDK_INT < 31) enterPip();
+    }
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -34,6 +55,7 @@ public class MainActivity extends BridgeActivity {
     public void onResume() {
         super.onResume();
         keepOn();
+        refreshPip();
         try {
             if (screenLock == null) {
                 PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
@@ -47,6 +69,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onPause() {
         super.onPause();
+        if (Build.VERSION.SDK_INT >= 24 && isInPictureInPictureMode()) return; // klein, aber weiter wach
         try { if (screenLock != null && screenLock.isHeld()) screenLock.release(); } catch (Exception ignored) {}
     }
 }
