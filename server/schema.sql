@@ -1,0 +1,15 @@
+-- Sentinel-Server: Nutzer, Verbrauch, Nachschub-Käufe
+CREATE TABLE IF NOT EXISTS users (
+  uid TEXT PRIMARY KEY,
+  tier TEXT DEFAULT 'probe',
+  tier_checked INTEGER DEFAULT 0,
+  month TEXT DEFAULT '',
+  used_usd REAL DEFAULT 0,
+  topup_usd REAL DEFAULT 0,
+  day TEXT DEFAULT '',
+  req_day INTEGER DEFAULT 0,
+  probe_used INTEGER DEFAULT 0,
+  created INTEGER
+);
+CREATE TABLE IF NOT EXISTS topups (tx TEXT PRIMARY KEY, uid TEXT, month TEXT, usd REAL);
+CREATE TABLE IF NOT EXISTS stats (day TEXT PRIMARY KEY, probe_req INTEGER DEFAULT 0, req INTEGER DEFAULT 0, usd REAL DEFAULT 0);

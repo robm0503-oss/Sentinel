@@ -47,6 +47,24 @@ jobs:
       - name: APK umbenennen
         run: cp android/app/build/outputs/apk/debug/app-debug.apk Sentinel.apk
 
+      - name: Store-Paket (AAB) bauen
+        env:
+          UPLOAD_B64: ${{ secrets.UPLOAD_KEYSTORE_B64 }}
+          SENTINEL_UPLOAD_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$UPLOAD_B64" ]; then echo "Kein Upload-Schlüssel hinterlegt – AAB wird übersprungen"; exit 0; fi
+          echo "$UPLOAD_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          export SENTINEL_UPLOAD_STORE="$RUNNER_TEMP/upload.jks"
+          cd android && ./gradlew bundleRelease --no-daemon
+          cp app/build/outputs/bundle/release/app-release.aab ../Sentinel-Store.aab
+
+      - name: Store-Paket als Datei ablegen
+        if: hashFiles('Sentinel-Store.aab') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sentinel-Store-AAB
+          path: Sentinel-Store.aab
+
       - name: Als Download veröffentlichen
         uses: softprops/action-gh-release@v2
         with:

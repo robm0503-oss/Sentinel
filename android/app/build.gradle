@@ -21,6 +21,16 @@ android {
     }
     // Fester Schlüssel: Nur so kann jede neue Version über die alte installiert werden
     signingConfigs {
+        // Store-Version: Upload-Schlüssel kommt aus den GitHub-Secrets (nie im Repo)
+        release {
+            def up = System.getenv("SENTINEL_UPLOAD_STORE")
+            if (up) {
+                storeFile file(up)
+                storePassword System.getenv("SENTINEL_UPLOAD_PASSWORD")
+                keyAlias "sentinel"
+                keyPassword System.getenv("SENTINEL_UPLOAD_PASSWORD")
+            }
+        }
         debug {
             storeFile file('sentinel-debug.keystore')
             storePassword 'android'
@@ -33,6 +43,7 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
+            if (System.getenv("SENTINEL_UPLOAD_STORE")) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

@@ -67,7 +67,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
 .sheet h2 { margin: 0; font-size: 1rem; letter-spacing: .16em; text-transform: uppercase; }
 .sheet p { margin: 0; color: var(--muted); line-height: 1.5; font-size: .95rem; }
 .field { display: flex; flex-direction: column; gap: 6px; }
-#hilfeBody .grp { margin-bottom: 20px; }
+#hilfeBody .grp, #aboListe .grp { margin-bottom: 20px; }
 .grp p { margin: 6px 0 8px; font-size: .9rem; line-height: 1.45; opacity: .85; }
 .field label, .grp h3 { font: 500 .7rem var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0; }
 .field textarea { resize: vertical; line-height: 1.4; }
@@ -101,6 +101,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <div class="top">
       <span id="status">SENTINEL</span>
       <span class="tbtns">
+        <button class="ghost" id="aboBtn" type="button" hidden>Abo</button>
         <button class="ghost" id="hilfeBtn" type="button">Anleitung</button>
         <button class="ghost" id="ichBtn" type="button">Gedächtnis</button>
         <button class="ghost" id="setBtn" type="button">Einstellungen</button>
@@ -138,6 +139,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     </div>
     <div class="err" id="startErr" hidden></div>
     <button class="btn" id="startBtn" type="button">Aufwecken</button>
+    <button class="ghost" id="startAbo" type="button" hidden style="margin-top:10px;width:100%">Ohne Key starten · 30 Fragen gratis, danach Abo</button>
   </div>
 </div>
 
@@ -272,7 +274,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 45</div>
+    <div class="hint" id="verHint">Sentinel Version 46</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -282,6 +284,18 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   <div class="sheet">
     <div class="phead"><h2>Ohren-Protokoll</h2><button class="ghost" id="logClose" type="button">Schließen</button></div>
     <pre id="logBody" style="margin:0;white-space:pre-wrap;font:.8rem var(--mono);color:var(--muted)"></pre>
+  </div>
+</div>
+
+<!-- Abo -->
+<div class="panel" id="aboPanel" hidden>
+  <div class="sheet">
+    <div class="phead"><h2>Dein Sentinel-Abo</h2><button class="ghost" id="aboClose" type="button">Schließen</button></div>
+    <div class="hint" id="aboStand">Lade …</div>
+    <div id="aboListe"></div>
+    <button class="ghost" id="aboNachschub" type="button" hidden style="width:100%;margin-top:8px">Nachschub-Paket kaufen (+10 € Budget)</button>
+    <button class="ghost" id="aboRestore" type="button" style="width:100%;margin-top:8px">Käufe wiederherstellen</button>
+    <div class="hint" style="margin-top:10px">Abos laufen über Google Play und sind dort jederzeit kündbar. Budget und Limits gelten pro Monat bzw. Tag.</div>
   </div>
 </div>
 
@@ -2039,7 +2053,34 @@ Lies immer nur EINEN Schritt vor, kurz und klar, und melde ihn mit kochschritt. 
   const overLimit = () => usage.tag === heute() && usage.n >= (Number(cfg.limit) || 300);
 
   class ApiError extends Error { constructor(msg, kind) { super(msg); this.kind = kind; } }
+  // ---- Sentinel-Abo: Server statt eigenem Key ----
+  const SENTINEL_SERVER = "https://sentinel-server.HIER-DEIN-NAME.workers.dev"; // nach dem Einrichten von Cloudflare eintragen
+  const RC_KEY = "goog_HIER_REVENUECAT_PUBLIC_KEY";                              // RevenueCat → Projekt → API Keys (öffentlich)
+  const serverUrl = () => (cfg.server || SENTINEL_SERVER).replace(/\/+$/, "");
+  const aboModus = () => !cfg.key && !/HIER-DEIN-NAME/.test(serverUrl());
+  let uid = store.get("uid", ""); if (!uid) { uid = (crypto.randomUUID ? crypto.randomUUID() : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16))); store.set("uid", uid); }
+  let aboStand = store.get("aboStand", null);
+  async function serverApi(body) {
+    let res;
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 90000);
+    try {
+      res = await fetch(serverUrl() + "/v1/messages", { method: "POST", signal: ctl.signal, headers: { "content-type": "application/json", authorization: "Bearer " + uid }, body: JSON.stringify(body) });
+    } catch (e) { clearTimeout(timer); throw new ApiError("Kein Internet", ctl.signal.aborted ? "timeout" : "net"); }
+    clearTimeout(timer);
+    const data = await res.json().catch(() => null);
+    if (data && data.stand) { aboStand = data.stand; store.set("aboStand", aboStand); }
+    if (!res.ok) {
+      const t = (data && data.error && data.error.type) || "", m = (data && data.error && data.error.message) || ("HTTP " + res.status);
+      if (["abo_noetig", "budget_leer", "nachschub_noetig", "tageslimit", "probe_voll"].includes(t)) { const e = new ApiError(m, "abo"); e.aboTyp = t; throw e; }
+      if (res.status === 429) throw new ApiError(m, "rate");
+      if (res.status >= 500) throw new ApiError(m, "busy");
+      throw new ApiError(m, "other");
+    }
+    if (data.sentinel) { aboStand = data.sentinel; store.set("aboStand", aboStand); }
+    return data;
+  }
   async function api(body) {
+    if (aboModus()) { const d = await serverApi(body); countUsage(d.usage, (d.sentinel && d.sentinel.modell) || body.model); return d; }
     if (!cfg.key) throw new ApiError("Kein API-Key", "nokey");
     let res;
     const ctl = new AbortController();
@@ -2608,7 +2649,7 @@ ${zeile("Menschen", ich.menschen)}`;
       if (tg) setTimeout(() => { if (!busy && !speaking) setMood("neutral"); }, 2500);
       return;
     }
-    if (overLimit()) { setMood("muede"); sag("Das Tageslimit ist erreicht. Morgen bin ich wieder voll für dich da.", "muede"); return; }
+    if (!aboModus() && overLimit()) { setMood("muede"); sag("Das Tageslimit ist erreicht. Morgen bin ich wieder voll für dich da.", "muede"); return; }
     wake(); keepAwake();
     if (!tg) { if (synth) synth.cancel(); earPause(); }
     busy = true; sendBtn.disabled = true; msg.value = ""; msg.blur();
@@ -2633,7 +2674,8 @@ ${zeile("Menschen", ich.menschen)}`;
     } catch (e) {
       busy = false; sendBtn.disabled = false;
       setMood("skeptisch");
-      const t = ERRTEXT[e && e.kind] || "Da ist etwas schiefgegangen: " + ((e && e.message) || "unbekannt");
+      const t = (e && e.kind === "abo") ? e.message : ERRTEXT[e && e.kind] || "Da ist etwas schiefgegangen: " + ((e && e.message) || "unbekannt");
+      if (e && e.kind === "abo") { aboHinweis(e.aboTyp); if (!tg) { busy = false; sendBtn.disabled = false; setMood("muede"); speak(t, "neutral"); return; } }
       if (tg) { sag("❌ " + t); setTimeout(() => { if (mood === "skeptisch" && !busy) setMood("neutral"); }, 2500); return; }
       show(t, true); setTimeout(() => show(""), 8000);
       setTimeout(() => { if (mood === "skeptisch" && !busy) setMood("neutral"); afterSpeaking(); }, 2500);
@@ -2694,6 +2736,59 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   const pBody = $("pBody"), pReset = $("pReset");
   let resetArmed = false;
   function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  // ================= ABO & KÄUFE (Google Play über RevenueCat) =================
+  const STUFEN_INFO = [
+    ["basis", "Basis", "4,99 €", "Alle Funktionen, schnelles Gehirn, 40 Anfragen am Tag"],
+    ["plus", "Plus", "9,99 €", "Automatik-Gehirn mit Kostenregelung, 80 Anfragen am Tag, Websuche"],
+    ["pro", "Pro", "19,99 €", "Schlaues Gehirn für komplexe Arbeit und Dokumente, 150 Anfragen am Tag"],
+    ["business", "Business", "49,99 €", "Für Gewerbe: ohne Tageslimit, stärkstes Gehirn, Nachschub-Pakete"],
+  ];
+  const RC = () => window.Capacitor && window.Capacitor.registerPlugin ? (window.__rc = window.__rc || window.Capacitor.registerPlugin("Purchases")) : null;
+  let rcBereit = false;
+  async function rcStart() {
+    if (rcBereit || !NATIVE || /HIER_/.test(RC_KEY) || !RC()) return rcBereit;
+    try { await RC().configure({ apiKey: RC_KEY, appUserID: uid }); rcBereit = true; } catch (e) { elog("Abo-System: " + (e.message || e)); }
+    return rcBereit;
+  }
+  async function aboLaden() {
+    $("aboStand").textContent = "Lade …";
+    try { const r = await fetch(serverUrl() + "/v1/me", { headers: { authorization: "Bearer " + uid } }); aboStand = await r.json(); store.set("aboStand", aboStand); } catch (e) {}
+    const a = aboStand || {};
+    $("aboStand").textContent = a.stufe ? (a.stufe === "probe" ? `Probe: noch ${a.probe_rest ?? "?"} kostenlose Fragen.` : `Stufe ${a.name}: diesen Monat ${String(a.verbraucht_eur).replace(".", ",")} € von ${String(a.budget_eur).replace(".", ",")} € verbraucht · heute ${a.anfragen_heute}${a.limit_heute ? " von " + a.limit_heute : ""} Anfragen.`) : "Server nicht erreichbar.";
+    $("aboNachschub").hidden = a.stufe !== "business";
+    let pakete = {};
+    if (await rcStart()) {
+      try { const o = await RC().getOfferings(); for (const p of ((o.current && o.current.availablePackages) || [])) pakete[(p.product && p.product.identifier || "").split(":")[0]] = p; } catch (e) { elog("Angebote: " + (e.message || e)); }
+    }
+    const l = $("aboListe"); l.replaceChildren();
+    for (const [id, name, preis, text] of STUFEN_INFO) {
+      const g = el("div", "grp"); g.append(el("h3", null, `${name} · ${(pakete[id] && pakete[id].product && pakete[id].product.priceString) || preis} im Monat${a.stufe === id ? " · aktiv ✓" : ""}`)); g.append(el("p", null, text));
+      if (a.stufe !== id) { const b = el("button", "btn", "Wählen"); b.type = "button"; b.onclick = () => kaufen(pakete[id], name); g.append(b); }
+      l.append(g);
+    }
+  }
+  async function kaufen(paket, name) {
+    if (!paket) { note("Abos sind erst in der Google-Play-Version verfügbar.", 5000); return; }
+    try { await RC().purchasePackage({ aPackage: paket }); note("Danke! " + name + " ist aktiv.", 4000); setTimeout(aboLaden, 1500); }
+    catch (e) { if (!/cancel/i.test(String(e && (e.code || e.message)))) note("Kauf ging nicht: " + (e.message || e), 6000); }
+  }
+  async function nachschubKaufen() {
+    if (!(await rcStart())) { note("Nachschub gibt es in der Google-Play-Version.", 5000); return; }
+    try {
+      const r = await RC().getProducts({ productIdentifiers: ["nachschub_10"], type: "inapp" });
+      const prod = (r.products || [])[0]; if (!prod) throw new Error("Nachschub nicht gefunden");
+      await RC().purchaseStoreProduct({ product: prod }); note("Nachschub ist da – weiter geht's!", 4000); setTimeout(aboLaden, 1500);
+    } catch (e) { if (!/cancel/i.test(String(e && (e.code || e.message)))) note("Kauf ging nicht: " + (e.message || e), 6000); }
+  }
+  function aboHinweis(typ) {
+    if (typ === "nachschub_noetig" && tgReady()) tgText("💶 Sentinel: Das Monatsbudget ist aufgebraucht. Tippe am Tablet auf „Abo“ → Nachschub, dann geht es sofort weiter.").catch(() => {});
+    if (typ === "abo_noetig" || typ === "budget_leer" || typ === "nachschub_noetig") { aboLaden(); $("aboPanel").hidden = false; }
+  }
+  $("aboBtn").addEventListener("click", () => { aboLaden(); $("aboPanel").hidden = false; });
+  $("aboClose").addEventListener("click", () => { $("aboPanel").hidden = true; });
+  $("aboRestore").addEventListener("click", async () => { if (await rcStart()) { try { await RC().restorePurchases(); note("Käufe wiederhergestellt.", 3000); setTimeout(aboLaden, 1500); } catch (e) { note("Ging nicht: " + (e.message || e), 5000); } } });
+  $("aboNachschub").addEventListener("click", nachschubKaufen);
+
   // ================= BEDIENUNGSANLEITUNG =================
   const ANLEITUNG = [
     ["Reden", "Sag „Sentinel“ und dann, was du willst. Nach meiner Antwort darfst du 15 Sekunden ohne „Sentinel“ weiterreden. Antippen meines Gesichts = ich höre sofort zu.", ["Sentinel, wie spät ist es?", "Sentinel, erzähl mir einen Witz"]],
@@ -2845,23 +2940,26 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     status(cfg.ear ? "hört zu" : "bereit");
   }
   if (!cfg.key) $("keyField").hidden = false;
+  const aboMoeglich = () => !/HIER-DEIN-NAME/.test(serverUrl());
+  if (aboMoeglich()) { $("aboBtn").hidden = !!cfg.key; if (!cfg.key) $("startAbo").hidden = false; }
+  $("startAbo").addEventListener("click", () => { cfg.aboStart = true; saveCfg(); $("aboBtn").hidden = false; $("startBtn").click(); });
   if (NATIVE) {
     // In der App braucht es kein "Aufwecken" mehr, wenn der Key schon da ist
     $("startText").textContent = "Willkommen. Trag einmal deinen API-Key ein, danach startet Sentinel automatisch.";
     $("sEngine").closest(".field").hidden = true;
     $("sGroq").closest(".field").hidden = true;
     $("muteBeepRow").hidden = false;
-    if (cfg.key) setTimeout(() => $("startBtn").click(), 300);
+    if (cfg.key || (cfg.aboStart && aboMoeglich())) setTimeout(() => $("startBtn").click(), 300);
   }
   $("startBtn").addEventListener("click", async () => {
     const errEl = $("startErr"); errEl.hidden = true;
-    if (!cfg.key) {
+    if (!cfg.key && !(cfg.aboStart && aboMoeglich())) {
       const k = $("keyInput").value.trim();
       if (!/^sk-ant-/.test(k)) { errEl.textContent = "Der Key beginnt mit sk-ant-. Du findest ihn auf console.anthropic.com unter API Keys."; errEl.hidden = false; return; }
       cfg.key = k; saveCfg();
     }
     $("startPanel").hidden = true;
-    keepAwake();
+    keepAwake(); rcStart();
     // Stimme und Audio SOFORT beim Antippen freischalten – Android erlaubt Ton nur direkt nach einer Berührung
     if (cfg.engine === "vosk") voskPrepareCtx();
     earUI();

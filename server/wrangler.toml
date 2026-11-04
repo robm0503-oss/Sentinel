@@ -1,0 +1,18 @@
+name = "sentinel-server"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# Die Datenbank legst du einmal an mit:  npx wrangler d1 create sentinel
+# und trägst die angezeigte database_id hier ein.
+[[d1_databases]]
+binding = "DB"
+database_name = "sentinel"
+database_id = "HIER_DIE_DATABASE_ID_EINTRAGEN"
+
+[vars]
+# Wie viele kostenlose Probe-Anfragen insgesamt pro Tag (Schutz vor Missbrauch)
+PROBE_DAY_CAP = "3000"
+
+# Geheimnisse (NICHT hier eintragen, sondern per Befehl):
+#   npx wrangler secret put ANTHROPIC_KEY      -> dein Anthropic-API-Key
+#   npx wrangler secret put RC_SECRET          -> RevenueCat Secret API Key (sk_...)
