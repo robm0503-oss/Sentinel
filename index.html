@@ -280,7 +280,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 49</div>
+    <div class="hint" id="verHint">Sentinel Version 50</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -2163,6 +2163,7 @@ Soll Musik oder ein Video von YouTube laufen: suche mit der Websuche den passend
 Als Coworker erledigst du Aufgaben selbstständig: Sagt jemand, was er braucht (z. B. einen Lebenslauf, eine Bewerbung, einen Brief), frag nacheinander nach allem Nötigen, dann erstell das Dokument mit dokument_erstellen und sag kurz, wo es liegt. Für Reisen öffne mit reise_suchen die passende Suche und recherchiere bei Bedarf mit der Websuche.
 Fragt jemand, was du kannst oder wie man etwas einrichtet, zeig die Anleitung (anleitung_zeigen) und fasse das Wichtigste kurz zusammen. Neue Fähigkeiten kommen über die Einstellungen dazu (Smart-Home-Befehle, Govee, Telegram) – erkläre das konkret.
 Für Wetterfragen nutze immer das Werkzeug wetter, nie die Websuche. Will ${wer} etwas kochen oder backen, biete den Kochmodus an: Dann führst du Schritt für Schritt durchs Rezept und man muss nicht jedes Mal „Sentinel“ sagen. Geht ${wer} aus dem Haus, kannst du den Wachhund anbieten. Nachrichten aufs Handy gehen über Telegram${tgReady() ? "" : " (noch nicht eingerichtet: in den Einstellungen Bot-Token und Chat-ID eintragen)"}.
+Kommentiere nie frühere Versuche, Fehler oder Versionen („vorhin hatte es nicht geklappt, jetzt aber“) – außer man fragt ausdrücklich danach. Sag nur kurz, was du JETZT getan hast, und nur, wenn das Werkzeug es bestätigt hat.
 Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
 Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Sag nie, dass du dir etwas gemerkt hast, ohne das Werkzeug wirklich benutzt zu haben.
@@ -2253,6 +2254,8 @@ ${zeile("Menschen", ich.menschen)}`;
         input_schema: obj({ aktion: { type: "string", enum: ["start", "ergebnis", "ende"] }, fach: { type: "string" }, richtig: { type: "boolean" } }, ["aktion"]) },
       { name: "dokument_erstellen", description: "Erstellt ein fertiges Dokument (Lebenslauf, Bewerbung, Brief, Kündigung, Zusammenfassung, Plan, Liste …) als Word-Datei, speichert es auf dem Tablet und schickt es per Telegram aufs Handy. Vorher alle nötigen Angaben erfragen (eine Frage nach der anderen). inhalt als Markdown (# Titel, ## Abschnitte, - Listen, **fett**), vollständig und sauber formuliert.",
         input_schema: obj({ titel: { type: "string" }, dateiname: { type: "string" }, inhalt: { type: "string" } }, ["titel", "inhalt"]) },
+      { name: "navigation_starten", description: "Startet sofort die Navigation in Google Maps zum Ziel (Turn-by-Turn). modus: auto, zu_fuss, fahrrad, oepnv. Nutzen bei „Route starten“, „navigier mich zu …“, „fahr los“.",
+        input_schema: obj({ ziel: { type: "string" }, modus: { type: "string", enum: ["auto", "zu_fuss", "fahrrad", "oepnv"] } }, ["ziel"]) },
       { name: "reise_suchen", description: "Öffnet die passende Suche für Zug (Deutsche Bahn), Flug (Google Flüge), Hotel oder Autoroute und schickt den Link aufs Handy. von leer = Wohnort. datum JJJJ-MM-TT, zeit HH:MM.",
         input_schema: obj({ art: { type: "string", enum: ["zug", "flug", "hotel", "auto"] }, von: { type: "string" }, nach: { type: "string" }, datum: { type: "string" }, zeit: { type: "string" }, rueck: { type: "string" } }, ["art", "nach"]) },
       { name: "einrichtung", description: "Einrichtungsgespräch zum Kennenlernen. start = beginnen (oder neu beginnen), thema_erledigt = ein Thema abhaken (thema angeben), beenden = fertig.",
@@ -2489,6 +2492,14 @@ ${zeile("Menschen", ich.menschen)}`;
           lern.aktiv = false; saveLern(); return ok(`Lernspiel beendet. Sterne gesamt: ${lern.sterne}, Serie ${lern.serie} Tage.`);
         }
         case "dokument_erstellen": status("schreibt ein Dokument"); return ok(await dokumentErstellen(String(inp.titel || "Dokument"), inp.dateiname, String(inp.inhalt || "")));
+        case "navigation_starten": {
+          if (!(NATIVE && SV)) return fail("Geht nur in der App.");
+          const md = { auto: "d", zu_fuss: "w", fahrrad: "b", oepnv: "r" }[inp.modus || "auto"] || "d";
+          const ziel = String(inp.ziel || "").trim(); if (!ziel) return fail("Kein Ziel");
+          try { await SV.openUrl({ url: `google.navigation:q=${encodeURIComponent(ziel)}&mode=${md}`, package: "com.google.android.apps.maps" }); }
+          catch (e) { await SV.openUrl({ url: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(ziel)}&dir_action=navigate` }); }
+          return ok("Navigation nach " + ziel + " gestartet.");
+        }
         case "reise_suchen": {
           const url = reiseLink(inp);
           if (NATIVE && SV) await SV.openUrl({ url }).catch(() => {});
