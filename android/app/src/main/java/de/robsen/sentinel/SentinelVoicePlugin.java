@@ -592,6 +592,32 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         call.resolve();
     }
 
+    // Musik/Video steuern wie mit Kopfhörer-Tasten (geht bei Spotify, YouTube, Amazon Music …)
+    @PluginMethod
+    public void mediaKey(PluginCall call) {
+        String k = call.getString("key", "pause");
+        int code = "play".equals(k) ? android.view.KeyEvent.KEYCODE_MEDIA_PLAY
+                 : "weiter".equals(k) ? android.view.KeyEvent.KEYCODE_MEDIA_NEXT
+                 : "zurueck".equals(k) ? android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS
+                 : "stopp".equals(k) ? android.view.KeyEvent.KEYCODE_MEDIA_STOP
+                 : android.view.KeyEvent.KEYCODE_MEDIA_PAUSE;
+        audio.dispatchMediaKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, code));
+        audio.dispatchMediaKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, code));
+        call.resolve();
+    }
+
+    // Andere App "schließen": Sentinel nach vorne holen und die App im Hintergrund beenden
+    @PluginMethod
+    public void closeApp(PluginCall call) {
+        final String pkg = call.getString("package", "");
+        Intent i = getContext().getPackageManager().getLaunchIntentForPackage(getContext().getPackageName());
+        if (i != null) { i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT); getContext().startActivity(i); }
+        if (!pkg.isEmpty()) main.postDelayed(() -> {
+            try { ((android.app.ActivityManager) getContext().getSystemService(android.content.Context.ACTIVITY_SERVICE)).killBackgroundProcesses(pkg); } catch (Exception ignored) {}
+        }, 1500);
+        call.resolve();
+    }
+
     @PluginMethod
     public void bringToFront(PluginCall call) {
         Intent i = getContext().getPackageManager().getLaunchIntentForPackage(getContext().getPackageName());

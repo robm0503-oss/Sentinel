@@ -280,7 +280,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 47</div>
+    <div class="hint" id="verHint">Sentinel Version 48</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -2211,6 +2211,10 @@ ${zeile("Menschen", ich.menschen)}`;
         input_schema: obj({ app: { type: "string" }, zurueck: { type: "boolean" } }, ["app"]) },
       { name: "youtube_abspielen", description: "Spielt ein YouTube-Video bzw. Lied direkt in deinem Gesicht ab (kleiner Player, du bleibst im Vordergrund). Vorher mit der Websuche den passenden Link youtube.com/watch?v=… finden. url = dieser Link.",
         input_schema: obj({ url: { type: "string" } }, ["url"]) },
+      { name: "app_schliessen", description: "Schließt eine geöffnete App: stoppt laufende Musik/Videos, holt dich wieder groß nach vorne und beendet die App im Hintergrund. app = Name der App (leer = einfach alles stoppen und zurück).",
+        input_schema: obj({ app: { type: "string" } }) },
+      { name: "medien_steuern", description: "Steuert laufende Musik oder Videos in anderen Apps (Spotify, YouTube, Amazon Music …): pause, play, weiter, zurueck, stopp.",
+        input_schema: obj({ aktion: { type: "string", enum: ["pause", "play", "weiter", "zurueck", "stopp"] } }, ["aktion"]) },
       { name: "bild_in_bild", description: "Macht dich klein (Bild in Bild unten rechts) – du hörst weiter zu. Antippen des kleinen Fensters macht dich wieder groß.", input_schema: obj({}) },
       { name: "youtube_stoppen", description: "Stoppt die YouTube-Wiedergabe in deinem Gesicht.", input_schema: obj({}) },
       { name: "medien_oeffnen", description: "Öffnet YouTube, Spotify, Google Maps, WhatsApp oder die Websuche direkt mit einer Suche bzw. einem Text. Bei WhatsApp wird die Nachricht nur vorbereitet, abschicken muss der Mensch selbst.",
@@ -2372,6 +2376,20 @@ ${zeile("Menschen", ich.menschen)}`;
           if (!id) return fail("Kein gültiger YouTube-Link. Erst mit der Websuche einen youtube.com/watch?v=…-Link finden.");
           ytPlayer(id); return ok("läuft jetzt in deinem Gesicht");
         }
+        case "app_schliessen": {
+          await SV.mediaKey({ key: "pause" }).catch(() => {});
+          ytPlayer(null);
+          let pkg = "";
+          if (inp.app) {
+            if (!appCache) { const r = await SV.listApps(); appCache = (r && r.apps) || []; }
+            const q = String(inp.app).toLowerCase().trim();
+            const a = appCache.find(x => x.name.toLowerCase() === q) || appCache.find(x => x.name.toLowerCase().includes(q)) || appCache.find(x => q.includes(x.name.toLowerCase()));
+            if (a) pkg = a.package;
+          }
+          await SV.closeApp({ package: pkg });
+          return ok(pkg ? "App geschlossen, du bist wieder vorne." : "Wiedergabe gestoppt, du bist wieder vorne.");
+        }
+        case "medien_steuern": await SV.mediaKey({ key: inp.aktion }); return ok("erledigt: " + inp.aktion);
         case "bild_in_bild": if (!(SV && SV.pip)) return fail("Geht nur in der App."); setTimeout(() => SV.pip({ enter: true }).catch(() => {}), 1500); return ok("Ich mache mich gleich klein.");
         case "youtube_stoppen": ytPlayer(null); return ok("gestoppt");
         case "app_oeffnen": {
@@ -2819,6 +2837,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     ["Senioren-Begleiter", "Ruhiger, langsamer, erinnert an Tabletten und meldet sich per Telegram bei der Familie, wenn er lange nichts gehört hat.", ["Erinnere mich jeden Morgen um 8 an meine Tabletten"]],
     ["Aussehen & Stimme", "5 Gesichter mit eigener Stimme, Outfits zu Feiertagen und Geburtstag.", ["Nimm das Hologramm-Gesicht", "Sprich etwas tiefer", "Outfits aus"]],
     ["Nacht & Kosten", "Nachtmodus: dunkel, leise, hört nur nach Antippen. Automatik-Gehirn und Monatsbudget halten die Kosten klein.", ["Was hast du diesen Monat gekostet?"]],
+    ["Apps schließen & Musik steuern", "Ich stoppe Musik und Videos, springe zum nächsten Lied und schließe Apps wieder – Android lässt mich das über einen kleinen Umweg.", ["Schließ Spotify", "Pause", "Nächstes Lied"]],
     ["Bild in Bild", "Drückst du die Home-Taste oder öffne ich eine andere App, werde ich klein unten rechts und höre trotzdem weiter zu. Antippen macht mich wieder groß.", ["Mach dich klein"]],
     ["Auf andere Bildschirme", "Ich laufe auf jedem Android-Gerät (Handy, Tablet, Fire TV, Android TV). Mein Bild kann ich auf Fernseher mit Bildschirmübertragung (Smart View, Chromecast, Miracast) schicken.", ["Übertrag dich auf den Fernseher"]],
   ];
