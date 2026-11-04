@@ -112,6 +112,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
     @PluginMethod
     public void start(PluginCall call) {
         muteBeep = call.getBoolean("muteBeep", true);
+        if (call.getBoolean("trotzMusik", false)) trotzMusikBis = System.currentTimeMillis() + 15000;
         if (getPermissionState("mic") != PermissionState.GRANTED) {
             requestPermissionForAlias("mic", call, "micCallback");
             return;
@@ -169,8 +170,20 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
 
     // Jede Zuhör-Runde bekommt einen frischen Erkenner. Das vermeidet "Fehler 8 – Erkenner beschäftigt",
     // den manche Tablets werfen, wenn man denselben Erkenner sofort wieder startet.
+    private boolean musikLief = false;
+    private long trotzMusikBis = 0;
     private void listen() {
         if (!wanted || speaking || listening || paused) return;
+        // Läuft Musik oder ein Video in einer anderen App, nicht zuhören: Das Zuhören würde die Musik
+        // jedes Mal anhalten bzw. stumm schalten. Alle 3 Sekunden nachsehen, ob sie vorbei ist.
+        boolean musik = audio != null && audio.isMusicActive() && System.currentTimeMillis() > trotzMusikBis;
+        if (musik) {
+            if (beepMuted) unmuteBeep();
+            if (!musikLief) { musikLief = true; notifyListeners("musik", new JSObject().put("aktiv", true)); }
+            restart(3000);
+            return;
+        }
+        if (musikLief) { musikLief = false; notifyListeners("musik", new JSObject().put("aktiv", false)); }
         try {
             destroyRecognizer();
             recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());

@@ -292,7 +292,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 51</div>
+    <div class="hint" id="verHint">Sentinel Version 52</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -652,7 +652,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     // Antippen = "Ich will mit dir reden": Ohren frisch starten (Android erlaubt das nur direkt nach einer Berührung)
     // und die nächsten 15 Sekunden ohne "Sentinel" zuhören.
     if (earsSleeping) { earsSleeping = false; elog("Nachts angetippt – ich höre"); }
-    if (NATIVE && cfg.ear && !busy && !speaking) { followUntil = Date.now() + followMs(); nativeEarsOn(); setMood("zuhoeren"); }
+    if (NATIVE && cfg.ear && !busy && !speaking) { followUntil = Date.now() + followMs(); nativeEarsOn(true); setMood("zuhoeren"); }
     if (cfg.engine === "google" && SR && !busy && !speaking) {
       cfg.ear = true; earUI(); followUntil = Date.now() + followMs();
       hardReset("Antippen"); earStart(); setMood("zuhoeren"); status("hört zu");
@@ -1103,22 +1103,23 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       }
       elog("Ohren: " + (ERRNAME[c] || ("Fehler " + c)) + (ev && ev.message ? " " + ev.message : ""));
     });
+    SV.addListener("musik", ev => { musikLaeuft = !!(ev && ev.aktiv); lastReady = Date.now(); elog(musikLaeuft ? "Musik läuft – Ohren machen Pause (antippen zum Reden)" : "Musik aus – ich höre wieder zu"); if (!busy && !speaking) status(musikLaeuft ? "Musik läuft" : "hört zu"); });
     SV.addListener("ttsDone", ev => { const f = ttsWait[ev && ev.id]; if (f) { delete ttsWait[ev.id]; f(); } });
   }
-  function nativeEarsOn() {
+  function nativeEarsOn(trotzMusik) {
     if (!SV) { elog("Ohren-Modul fehlt"); return; }
     lastAlive = Date.now();
-    SV.start({ muteBeep: cfg.muteBeep !== false })
+    SV.start({ muteBeep: cfg.muteBeep !== false, trotzMusik: !!trotzMusik })
       .then(() => { elog("Ohren an (Android)"); if (!busy && !speaking) status("hört zu"); })
       .catch(() => { elog("Mikrofon nicht erlaubt"); note("Bitte erlaube Sentinel das Mikrofon in den Android-Einstellungen."); });
   }
   function nativeEarsOff() { if (SV) SV.stop().catch(() => {}); }
   if (NATIVE) nativeEarsInit();
   elog("Start: " + (NATIVE ? "Android-App" : "Browser") + (NATIVE ? (SV ? ", Ohren-Modul gefunden" : ", Ohren-Modul FEHLT") : ""));
-  let lastHard = Date.now();
+  let lastHard = Date.now(), musikLaeuft = false;
   // Wächter für die App: falls Android die Ohren doch mal verliert, nach einer Minute Stille neu anwerfen
   setInterval(() => {
-    if (!NATIVE || !cfg.ear || busy || speaking || earsSleeping || wach.recording || !$("startPanel").hidden) return;
+    if (!NATIVE || !cfg.ear || busy || speaking || earsSleeping || wach.recording || musikLaeuft || !$("startPanel").hidden) return;
     if (Date.now() - Math.max(lastResultAt, lastHard) > 300000) {
       lastHard = Date.now(); elog("Ohren: 5 Minuten nichts verstanden – starte sie frisch");
       SV.stop().catch(() => {}).finally(() => setTimeout(() => { if (cfg.ear && !earsSleeping) nativeEarsOn(); lastReady = Date.now(); }, 800));
@@ -2957,7 +2958,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     ["Senioren-Begleiter", "Ruhiger, langsamer, erinnert an Tabletten und meldet sich per Telegram bei der Familie, wenn er lange nichts gehört hat.", ["Erinnere mich jeden Morgen um 8 an meine Tabletten"]],
     ["Aussehen & Stimme", "5 Gesichter mit eigener Stimme, Outfits zu Feiertagen und Geburtstag.", ["Nimm das Hologramm-Gesicht", "Sprich etwas tiefer", "Outfits aus"]],
     ["Nacht & Kosten", "Nachtmodus: dunkel, leise, hört nur nach Antippen. Automatik-Gehirn und Monatsbudget halten die Kosten klein.", ["Was hast du diesen Monat gekostet?"]],
-    ["Apps schließen & Musik steuern", "Ich stoppe Musik und Videos, springe zum nächsten Lied und schließe Apps wieder – Android lässt mich das über einen kleinen Umweg.", ["Schließ Spotify", "Pause", "Nächstes Lied"]],
+    ["Apps schließen & Musik steuern", "Läuft Musik, mache ich mit dem Zuhören Pause, damit sie nicht abbricht – tipp mich an, dann höre ich zu. Ich stoppe Musik und Videos, springe zum nächsten Lied und schließe Apps wieder – Android lässt mich das über einen kleinen Umweg.", ["Schließ Spotify", "Pause", "Nächstes Lied"]],
     ["Bild in Bild", "Drückst du die Home-Taste oder öffne ich eine andere App, werde ich klein unten rechts und höre trotzdem weiter zu. Antippen macht mich wieder groß.", ["Mach dich klein"]],
     ["Auf andere Bildschirme", "Ich laufe auf jedem Android-Gerät (Handy, Tablet, Fire TV, Android TV). Mein Bild kann ich auf Fernseher mit Bildschirmübertragung (Smart View, Chromecast, Miracast) schicken.", ["Übertrag dich auf den Fernseher"]],
   ];
