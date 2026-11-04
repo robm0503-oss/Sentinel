@@ -536,6 +536,19 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         call.resolve(r);
     }
 
+    // Android-Einstellungsseite öffnen, z. B. Bildschirm übertragen (android.settings.CAST_SETTINGS)
+    @PluginMethod
+    public void openSettingsPage(PluginCall call) {
+        String action = call.getString("action", "android.settings.CAST_SETTINGS");
+        try {
+            Intent i = new Intent(action); i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(i); call.resolve();
+        } catch (Exception e) {
+            try { Intent i = new Intent(android.provider.Settings.ACTION_SETTINGS); i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); getContext().startActivity(i); call.resolve(); }
+            catch (Exception e2) { call.reject("Einstellungen nicht gefunden"); }
+        }
+    }
+
     @PluginMethod
     public void bringToFront(PluginCall call) {
         Intent i = getContext().getPackageManager().getLaunchIntentForPackage(getContext().getPackageName());

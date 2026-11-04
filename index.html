@@ -67,6 +67,8 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
 .sheet h2 { margin: 0; font-size: 1rem; letter-spacing: .16em; text-transform: uppercase; }
 .sheet p { margin: 0; color: var(--muted); line-height: 1.5; font-size: .95rem; }
 .field { display: flex; flex-direction: column; gap: 6px; }
+#hilfeBody .grp { margin-bottom: 20px; }
+.grp p { margin: 6px 0 8px; font-size: .9rem; line-height: 1.45; opacity: .85; }
 .field label, .grp h3 { font: 500 .7rem var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0; }
 .field textarea { resize: vertical; line-height: 1.4; }
 .field input[type=text], .field input[type=password], .field input[type=number], .field select, .field textarea {
@@ -99,6 +101,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <div class="top">
       <span id="status">SENTINEL</span>
       <span class="tbtns">
+        <button class="ghost" id="hilfeBtn" type="button">Anleitung</button>
         <button class="ghost" id="ichBtn" type="button">Gedächtnis</button>
         <button class="ghost" id="setBtn" type="button">Einstellungen</button>
         <button class="ghost" id="fullBtn" type="button">Vollbild</button>
@@ -259,7 +262,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 43</div>
+    <div class="hint" id="verHint">Sentinel Version 44</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -269,6 +272,14 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   <div class="sheet">
     <div class="phead"><h2>Ohren-Protokoll</h2><button class="ghost" id="logClose" type="button">Schließen</button></div>
     <pre id="logBody" style="margin:0;white-space:pre-wrap;font:.8rem var(--mono);color:var(--muted)"></pre>
+  </div>
+</div>
+
+<!-- Bedienungsanleitung -->
+<div class="panel" id="hilfePanel" hidden>
+  <div class="sheet">
+    <div class="phead"><h2>Was ich kann</h2><button class="ghost" id="hilfeClose" type="button">Schließen</button></div>
+    <div id="hilfeBody"></div>
   </div>
 </div>
 
@@ -718,7 +729,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   }
   let WAKE = buildWake();
   const FOLLOW_MS = 15000; // so lange darf man nach seiner Antwort ohne "Sentinel" weiterreden
-  const followMs = () => koch.on ? 120000 : FOLLOW_MS; // beim Kochen 2 Minuten
+  const followMs = () => (koch.on || einr.aktiv) ? 120000 : FOLLOW_MS; // beim Kochen und in der Einrichtung 2 Minuten
   let rec = null, recRunning = false, lastRecErr = null, followUntil = 0, oneShot = false;
   const earBtn = $("earBtn");
   function earUI() { earBtn.classList.toggle("on", cfg.ear); earBtn.setAttribute("aria-pressed", String(cfg.ear)); }
@@ -1740,6 +1751,36 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     return zeilen.join("\n");
   }
 
+  // ================= EINRICHTUNG: Sentinel lernt seinen Menschen kennen =================
+  const EINR_THEMEN = {
+    name: "Wie er/sie heißt und angesprochen werden will",
+    geburtstag: "Geburtstag",
+    wohnort: "Wohnort (für Wetter) – mit ort_setzen speichern",
+    haushalt: "Wer im Haushalt lebt, Haustiere, wichtige Menschen",
+    arbeit: "Beruf, Arbeitszeiten, freie Tage, was bei der Arbeit nervt oder hilft",
+    tagesablauf: "Wann aufstehen/schlafen (daraus Nachtmodus vorschlagen und mit nachtmodus_setzen einstellen), Morgen- und Abendroutine",
+    interessen: "Hobbys, Sport, Musik, Serien, was ihn/sie begeistert",
+    essen: "Was es zu Hause oft gibt (gerichte_merken), Vorlieben, Abneigungen, Ernährungsziele",
+    ziele: "Wobei du am meisten helfen sollst (Termine, Arbeit, Fitness, Lernen, Haushalt, Projekte) und aktuelle Ziele",
+    stil: "Wie du reden sollst: kurz oder ausführlich, locker oder förmlich, mit Humor, ehrlich widersprechen ja/nein",
+    geraete: "Welche Smart-Home-Geräte, Handy, Fernseher es gibt – kurz erklären, was du davon steuern kannst und wie man es einrichtet",
+  };
+  let einr = Object.assign({ aktiv: false, erledigt: [] }, store.get("einrichtung", {}));
+  const saveEinr = () => store.set("einrichtung", einr);
+  function einrichtungInfo() {
+    if (!einr.aktiv) return "";
+    const offen = Object.keys(EINR_THEMEN).filter(k => !einr.erledigt.includes(k));
+    return `\nEINRICHTUNG LÄUFT – du lernst ${ich.name || "deinen Menschen"} gerade richtig kennen, damit du ein wirklich nützlicher Partner im Alltag und bei der Arbeit wirst.
+Stelle immer nur EINE Frage, kurz und herzlich. Reagiere kurz und persönlich auf jede Antwort (nicht nur „okay“), frag ruhig einmal nach, wenn etwas spannend oder unklar ist.
+Speichere ALLES Wichtige sofort mit den Werkzeugen (ich_kenne_dich, merke_dir, geburtstag_speichern, ort_setzen, gerichte_merken, ernaehrungsziel, nachtmodus_setzen). Ist ein Thema durch, melde es mit einrichtung (aktion thema_erledigt).
+Offene Themen: ${offen.map(k => k + " (" + EINR_THEMEN[k] + ")").join("; ") || "keine"}.
+Sagt er „später“, „genug“ oder „stopp“, oder sind alle Themen durch: einrichtung (aktion beenden), dann in 2–3 Sätzen sagen, wobei du ab jetzt helfen kannst, und dass „Was kannst du?“ die Anleitung zeigt.`;
+  }
+  function einrichtungStarten(neu) {
+    einr = { aktiv: true, erledigt: neu ? [] : einr.erledigt }; saveEinr();
+    followUntil = Date.now() + followMs(); elog("Einrichtung gestartet");
+  }
+
   // ================= KOCHMODUS =================
   const koch = { on: false, rezept: "", schritte: [], schritt: 0, seit: 0 };
   function kochInfo() {
@@ -1979,11 +2020,12 @@ Du bist auch Ernährungsberater für den Haushalt. Erzählt ${wer}, was es bei e
 Gibt es ein Ernährungsziel (z. B. abnehmen), speichere es mit ernaehrungsziel und richte alle Pläne danach aus: leichtere Varianten eurer Gerichte, mehr Gemüse und Eiweiß, satt machende Beilagen, sinnvolle Portionen, ab und zu ein Lieblingsessen, damit es durchhaltbar bleibt. Plane ein gesundes Tempo (etwa ein halbes Kilo pro Woche), nie Crash-Diäten oder extrem wenig essen. Bei Krankheiten oder sehr viel Gewicht rätst du zusätzlich zu ärztlicher Begleitung.
 Nachrichten, die mit „(per Telegram von unterwegs)“ beginnen, schickt ${wer} per Telegram, er ist also nicht vor dir. Führe Befehle direkt aus und antworte kurz als Text (es wird nicht vorgelesen). Kamera-Fragen beantwortest du mit kamera_bild.
 Soll Musik oder ein Video von YouTube laufen: suche mit der Websuche den passenden youtube.com/watch-Link und nutze youtube_abspielen – der Player läuft klein in deinem Gesicht und du bleibst im Vordergrund. Öffnest du andere Apps für etwas, das im Hintergrund weiterlaufen soll, setze zurueck=true.
+Fragt jemand, was du kannst oder wie man etwas einrichtet, zeig die Anleitung (anleitung_zeigen) und fasse das Wichtigste kurz zusammen. Neue Fähigkeiten kommen über die Einstellungen dazu (Smart-Home-Befehle, Govee, Telegram) – erkläre das konkret.
 Für Wetterfragen nutze immer das Werkzeug wetter, nie die Websuche. Will ${wer} etwas kochen oder backen, biete den Kochmodus an: Dann führst du Schritt für Schritt durchs Rezept und man muss nicht jedes Mal „Sentinel“ sagen. Geht ${wer} aus dem Haus, kannst du den Wachhund anbieten. Nachrichten aufs Handy gehen über Telegram${tgReady() ? "" : " (noch nicht eingerichtet: in den Einstellungen Bot-Token und Chat-ID eintragen)"}.
 Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
 Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Sag nie, dass du dir etwas gemerkt hast, ohne das Werkzeug wirklich benutzt zu haben.
-Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\nDein aktuelles Gesicht: ${GESICHT_NAMEN[cfg.gesicht || "roboter"]}.\n${dekoInfo()}\n${geburtstagInfo()}\nDeine API-Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.monat === monat() ? kosten.usd : 0)}.${wach.on ? "\nDer WACHHUND ist gerade an" + (wach.alerts ? ` (${wach.alerts} Bewegungsmeldungen)` : "") + ". Wenn " + wer + " sagt, dass er wieder da ist, schalte ihn aus." : ""}${nightActive ? "\nEs ist Nachtmodus: antworte besonders kurz und ruhig." : ""}${kochInfo()}${essenInfo()}${akkuInfo()}${cfg.govee ? "\nDeine Lampen (Werkzeug licht): " + (store.get("goveeNamen", []).join(", ") || "werden noch geladen") : ""}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
+Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\nDein aktuelles Gesicht: ${GESICHT_NAMEN[cfg.gesicht || "roboter"]}.\n${dekoInfo()}\n${geburtstagInfo()}\nDeine API-Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.monat === monat() ? kosten.usd : 0)}.${wach.on ? "\nDer WACHHUND ist gerade an" + (wach.alerts ? ` (${wach.alerts} Bewegungsmeldungen)` : "") + ". Wenn " + wer + " sagt, dass er wieder da ist, schalte ihn aus." : ""}${nightActive ? "\nEs ist Nachtmodus: antworte besonders kurz und ruhig." : ""}${kochInfo()}${einrichtungInfo()}${essenInfo()}${akkuInfo()}${cfg.govee ? "\nDeine Lampen (Werkzeug licht): " + (store.get("goveeNamen", []).join(", ") || "werden noch geladen") : ""}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
 Offene Timer und Erinnerungen: ${termText}
 Listen: ${listenText}
 ${zeile("Was du über " + wer + " weißt", ich.fakten)}
@@ -2059,6 +2101,13 @@ ${zeile("Menschen", ich.menschen)}`;
         input_schema: obj({ an: { type: "boolean" }, rezept: { type: "string" }, schritte: { type: "array", items: { type: "string" } } }, ["an"]) },
       { name: "kochschritt", description: "Merkt sich, welchen Rezeptschritt (ab 1) du gerade vorgelesen hast.",
         input_schema: obj({ nummer: { type: "integer" } }, ["nummer"]) },
+      { name: "einrichtung", description: "Einrichtungsgespräch zum Kennenlernen. start = beginnen (oder neu beginnen), thema_erledigt = ein Thema abhaken (thema angeben), beenden = fertig.",
+        input_schema: obj({ aktion: { type: "string", enum: ["start", "thema_erledigt", "beenden"] }, thema: { type: "string", enum: Object.keys(EINR_THEMEN) } }, ["aktion"]) },
+      { name: "ort_setzen", description: "Speichert den Wohnort (für Wetter und Suchen in der Nähe).", input_schema: obj({ ort: { type: "string" } }, ["ort"]) },
+      { name: "nachtmodus_setzen", description: "Schaltet den Nachtmodus (dunkel, leise, hört nur nach Antippen) und stellt die Uhrzeiten ein (HH:MM).",
+        input_schema: obj({ an: { type: "boolean" }, von: { type: "string" }, bis: { type: "string" } }, ["an"]) },
+      { name: "anleitung_zeigen", description: "Zeigt die Bedienungsanleitung mit allem, was du kannst, auf dem Bildschirm. Nutzen bei „Was kannst du?“ oder „Wie richte ich … ein?“.", input_schema: obj({}) },
+      { name: "bildschirm_uebertragen", description: "Öffnet die Android-Bildschirmübertragung (Smart View / Chromecast / Miracast), damit dein Gesicht auf einem Fernseher erscheint.", input_schema: obj({}) },
       { name: "gesicht_waehlen", description: "Wechselt dein Aussehen (jedes Gesicht hat seine eigene passende Stimme). roboter = Augen und Mund, holo = Hologramm-Kern mit kreisenden Lichtringen, welle = leuchtende Stimmwelle, partikel = schwebende Kugel aus Lichtpunkten, pixel = Retro-8-Bit-Augen.",
         input_schema: obj({ stil: { type: "string", enum: Object.keys(GESICHT_NAMEN) } }, ["stil"]) },
       { name: "stimme_anpassen", description: "Ändert Tonhöhe und/oder Tempo deiner Stimme für das aktuelle Gesicht (1 = normal; tiefer < 1 < höher, langsamer < 1 < schneller). Nur ändern, was gewünscht ist.",
@@ -2257,6 +2306,20 @@ ${zeile("Menschen", ich.menschen)}`;
           return ok(`Kochmodus an, ${st.length} Schritte. Lies jetzt Schritt 1 vor.`);
         }
         case "kochschritt": koch.schritt = Math.max(1, Math.min(koch.schritte.length, Math.round(Number(inp.nummer) || 1))); return ok("ok");
+        case "einrichtung": {
+          if (inp.aktion === "start") { einrichtungStarten(true); return ok("Einrichtung läuft. Stell jetzt die erste Frage."); }
+          if (inp.aktion === "thema_erledigt") { if (inp.thema && !einr.erledigt.includes(inp.thema)) einr.erledigt.push(inp.thema); saveEinr(); return ok("abgehakt"); }
+          einr.aktiv = false; einr.fertig = new Date().toISOString(); saveEinr(); elog("Einrichtung beendet"); return ok("Einrichtung beendet.");
+        }
+        case "ort_setzen": cfg.ort = String(inp.ort || "").trim().slice(0, 80); saveCfg(); return ok("Ort: " + cfg.ort);
+        case "nachtmodus_setzen": {
+          cfg.night = !!inp.an; if (/^\d{1,2}:\d{2}$/.test(inp.von || "")) cfg.nightFrom = inp.von.padStart(5, "0"); if (/^\d{1,2}:\d{2}$/.test(inp.bis || "")) cfg.nightTo = inp.bis.padStart(5, "0");
+          saveCfg(); return ok(cfg.night ? `Nachtmodus an, ${cfg.nightFrom}–${cfg.nightTo}` : "Nachtmodus aus");
+        }
+        case "anleitung_zeigen": hilfeZeigen(); return ok("Anleitung wird angezeigt.");
+        case "bildschirm_uebertragen":
+          if (!(NATIVE && SV && SV.openSettingsPage)) return fail("Geht nur in der App.");
+          await SV.openSettingsPage({ action: "android.settings.CAST_SETTINGS" }); return ok("Übertragungs-Einstellungen geöffnet – dort den Fernseher antippen.");
         case "gesicht_waehlen": cfg.gesicht = inp.stil in GESICHT_NAMEN ? inp.stil : "roboter"; saveCfg(); return ok("Gesicht jetzt: " + GESICHT_NAMEN[cfg.gesicht]);
         case "stimme_anpassen": {
           const g = cfg.gesicht || "roboter", st = stimmeFuer(g);
@@ -2313,7 +2376,7 @@ ${zeile("Menschen", ich.menschen)}`;
     const knapp = budgetEuro() >= (cfg.budget || 10) * 0.8;
     if (cfg.model !== "auto") return knapp ? HAIKU : cfg.model;
     if (knapp) return HAIKU;
-    if (img || koch.on || text.length > 140 || SCHWER_RE.test(text)) return SONNET;
+    if (img || koch.on || einr.aktiv || text.length > 140 || SCHWER_RE.test(text)) return SONNET;
     if (Date.now() - lastSonnet < 90000 && text.split(/\s+/).length > 4) return SONNET; // laufendes tiefes Gespräch
     return HAIKU;
   }
@@ -2506,6 +2569,38 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   const pBody = $("pBody"), pReset = $("pReset");
   let resetArmed = false;
   function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  // ================= BEDIENUNGSANLEITUNG =================
+  const ANLEITUNG = [
+    ["Reden", "Sag „Sentinel“ und dann, was du willst. Nach meiner Antwort darfst du 15 Sekunden ohne „Sentinel“ weiterreden. Antippen meines Gesichts = ich höre sofort zu.", ["Sentinel, wie spät ist es?", "Sentinel, erzähl mir einen Witz"]],
+    ["Einrichtung", "Ich lerne dich in einem Gespräch kennen, damit ich wirklich hilfreich bin. Jederzeit wiederholbar.", ["Sentinel, starte die Einrichtung"]],
+    ["Gedächtnis", "Ich merke mir Dauerhaftes über dich und sortiere nach Gesprächen selbst. Oben unter „Gedächtnis“ siehst und löschst du alles.", ["Merk dir, dass ich Kaffee schwarz trinke", "Vergiss das mit dem Kaffee"]],
+    ["Timer & Erinnerungen", "Mit Gong und Ansage. Erinnerungen landen auch im Google-Kalender und melden sich aufs Handy – selbst wenn ich aus bin.", ["Timer 10 Minuten Nudeln", "Erinnere mich morgen um 8 an den Müll", "Welche Erinnerungen habe ich?"]],
+    ["Listen", "Einkauf, Aufgaben, alles was du willst – auf Wunsch per Telegram aufs Handy.", ["Setz Milch auf die Einkaufsliste", "Schick mir die Einkaufsliste"]],
+    ["Wetter", "Direkt und kostenlos, bis 7 Tage, mit Wind und Regen.", ["Wird's morgen windig?", "Wetter am Wochenende"]],
+    ["Licht (Govee)", "Einrichtung: Govee-App → Profil → Einstellungen → API-Schlüssel beantragen, Key in meine Einstellungen.", ["Großes Licht an", "Mach es gemütlich", "Kleines Licht blau auf 30 Prozent"]],
+    ["Smart Home (Alexa)", "Alles, was Alexa kann: Voice-Monkey-Trigger + Alexa-Routine anlegen, Link in „Smart-Home-Befehle“ eintragen (Name = Link). Den Namen sagen reicht dann.", ["Ladestecker an"]],
+    ["Akku", "Ich schalte meine Ladesteckdose selbst – Einstellung „Akku selbst laden“.", ["Wie voll ist dein Akku?"]],
+    ["Telegram", "Bot bei @BotFather anlegen, Token + Chat-ID eintragen. Dann kannst du mir von überall schreiben, ich bestätige Aktionen und schicke Erinnerungen. Schnellbefehle: wachhund an/aus, foto, status, hilfe.", ["Schick mir eine Nachricht: Test"]],
+    ["Wachhund", "Ich passe auf, wenn du weg bist: Foto + Video mit Ton bei Bewegung, ganz still. Aus nur auf deinen Befehl.", ["Wachhund an", "Ich bin wieder da, Wachhund aus"]],
+    ["Sehen", "Mit Kamera an schaue ich, wenn du mich darum bittest, und folge dir mit den Augen.", ["Was siehst du?", "Was halte ich in der Hand?"]],
+    ["Kochen & Essen", "Kochmodus Schritt für Schritt ohne „Sentinel“-Sagen. Ich kenne eure Gerichte, plane Wochen und passe sie an dein Ziel an.", ["Lass uns Pfannkuchen machen", "Was essen wir nächste Woche?", "Ich will bis Ostern 5 Kilo abnehmen"]],
+    ["Tablet & Apps", "Apps öffnen, YouTube direkt in meinem Gesicht, Lautstärke, Helligkeit, Wecker. Bei Spotify & Co. komme ich danach selbst wieder nach vorne.", ["Spiel Thunderstruck auf YouTube", "Öffne Spotify", "Lautstärke 40 Prozent"]],
+    ["Aussehen & Stimme", "5 Gesichter mit eigener Stimme, Outfits zu Feiertagen und Geburtstag.", ["Nimm das Hologramm-Gesicht", "Sprich etwas tiefer", "Outfits aus"]],
+    ["Nacht & Kosten", "Nachtmodus: dunkel, leise, hört nur nach Antippen. Automatik-Gehirn und Monatsbudget halten die Kosten klein.", ["Was hast du diesen Monat gekostet?"]],
+    ["Auf andere Bildschirme", "Ich laufe auf jedem Android-Gerät (Handy, Tablet, Fire TV, Android TV). Mein Bild kann ich auf Fernseher mit Bildschirmübertragung (Smart View, Chromecast, Miracast) schicken.", ["Übertrag dich auf den Fernseher"]],
+  ];
+  function hilfeZeigen() {
+    const b = $("hilfeBody"); b.replaceChildren();
+    for (const [titel, text, bsp] of ANLEITUNG) {
+      const g = el("div", "grp"); g.append(el("h3", null, titel)); g.append(el("p", null, text));
+      const c = el("div", "chips"); bsp.forEach(x => c.append(el("span", "chip", "„" + x + "“"))); g.append(c);
+      b.append(g);
+    }
+    $("hilfePanel").hidden = false;
+  }
+  $("hilfeBtn").addEventListener("click", hilfeZeigen);
+  $("hilfeClose").addEventListener("click", () => { $("hilfePanel").hidden = true; });
+
   function grp(titel, items) {
     const g = el("div", "grp"); g.append(el("h3", null, titel));
     const c = el("div", "chips");
@@ -2534,7 +2629,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     if (!resetArmed) { resetArmed = true; pReset.textContent = "Wirklich alles vergessen? Nochmal tippen"; return; }
     resetArmed = false; pReset.textContent = "Gedächtnis löschen";
     ich = frisch(); saveIch(); history = []; sessionLog = []; store.set("session", []);
-    termine = []; saveTermine(); listen = {}; saveListen(); essen = { gerichte: [], plaene: [], ziel: "", hinweise: "" }; saveEssen();
+    termine = []; saveTermine(); listen = {}; saveListen(); essen = { gerichte: [], plaene: [], ziel: "", hinweise: "" }; saveEssen(); einr = { aktiv: false, erledigt: [] }; saveEinr();
     $("ichPanel").hidden = true; begruessen(true);
   });
 
@@ -2609,10 +2704,13 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   function begruessen(spoken) {
     const h = new Date().getHours();
     const gruss = h < 5 ? "Guten Abend" : h < 11 ? "Guten Morgen" : h < 18 ? "Hallo" : "Guten Abend";
-    const t = ich.name ? `${gruss}, ${ich.name}. Alle Systeme sind bereit.` : `${gruss}. Ich bin Sentinel, dein persönlicher Assistent. Wie heißt du?`;
+    const neu = !ich.name && !ich.fakten.length && !einr.fertig;
+    if (neu && !einr.aktiv) einrichtungStarten(true);
+    const t = ich.name ? (einr.aktiv ? `${gruss}, ${ich.name}. Wollen wir mit dem Kennenlernen weitermachen?` : `${gruss}, ${ich.name}. Alle Systeme sind bereit.`)
+      : `${gruss}! Ich bin Sentinel, dein persönlicher Assistent. Bevor wir loslegen, möchte ich dich richtig kennenlernen, damit ich dir im Alltag wirklich helfen kann. Das dauert etwa zehn Minuten, und du kannst jederzeit „später“ sagen. Fangen wir an: Wie soll ich dich nennen?`;
     lastGreet = Date.now();
     show(""); setMood(ich.name ? "freude" : "ueberrascht");
-    if (spoken) speak(t, "neutral"); else setTimeout(() => { if (!busy && !speaking) setMood("neutral"); }, 2000);
+    if (spoken) speak(t, "neutral").then(() => { if (einr.aktiv) followUntil = Date.now() + followMs(); }); else setTimeout(() => { if (!busy && !speaking) setMood("neutral"); }, 2000);
     status(cfg.ear ? "hört zu" : "bereit");
   }
   if (!cfg.key) $("keyField").hidden = false;
