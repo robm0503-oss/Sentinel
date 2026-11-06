@@ -259,7 +259,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       <input id="sGovee" type="password" autocomplete="off" placeholder="aus der Govee-App: Profil → Einstellungen → API-Schlüssel beantragen">
     </div>
     <div class="field">
-      <label for="sGemini">Google-Gemini-API-Key (Bilder erstellen und bearbeiten, ca. 6 Cent pro Bild)</label>
+      <label for="sGemini">Google-Gemini-API-Key (optional: Bilder in Spitzenqualität, ca. 6 Cent pro Bild – sonst gratis über den Server)</label>
       <input id="sGemini" type="password" autocomplete="off" placeholder="aistudio.google.com → Get API key (Abrechnung aktivieren)">
     </div>
     <div class="field">
@@ -320,7 +320,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 58</div>
+    <div class="hint" id="verHint">Sentinel Version 59</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -2107,7 +2107,45 @@ Sagt er „später“, „genug“ oder „stopp“, oder sind alle Themen durch
     await tgPhoto(letztesBild.data, "🎨 Von Sentinel"); note("Ist auf deinem Handy.", 3000);
   });
   const BILD_MODELLE = ["gemini-3.1-flash-image", "gemini-3.1-flash-lite-image"];
+  function bildKlein(b64, mime, max = 512) { // FLUX braucht Eingabebilder unter 512 px
+    return bildVerkleinern(new Blob([Uint8Array.from(atob(b64), c => c.charCodeAt(0))], { type: mime }), max);
+  }
+  async function bildFertig(data, mime, inp, bearbeiten, wer) {
+    letztesBild = { mime, data }; bildZeigen(data, mime);
+    const name = "Sentinel-Bild-" + heute() + "-" + Date.now().toString().slice(-5) + (mime.includes("jpeg") ? ".jpg" : ".png");
+    let ort = "";
+    if (NATIVE && SV && SV.saveFile) { try { ort = (await SV.saveFile({ name, mime, base64: data })).path; } catch (e) { elog("Bild speichern: " + (e.message || e)); } }
+    let handy = false;
+    if (tgReady() && (inp.aufs_handy || tgGerade)) {
+      try {
+        const bin = atob(data), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+        const fd = new FormData(); fd.append("chat_id", cfg.tgChat); fd.append("caption", "🎨 " + String(inp.beschreibung || "").slice(0, 200));
+        fd.append("photo", new Blob([a], { type: mime }), name);
+        handy = !!(await (await fetch(`https://api.telegram.org/bot${cfg.tgToken}/sendPhoto`, { method: "POST", body: fd })).json()).ok;
+      } catch (e) { elog("Bild per Telegram: " + e.message); }
+    }
+    elog("Bild erstellt mit " + wer);
+    return (bearbeiten ? "Bild bearbeitet" : "Bild erstellt") + " und auf dem Bildschirm angezeigt." + (ort ? " Gespeichert unter " + ort + "." : "") + (handy ? " Per Telegram aufs Handy geschickt." : " Mit „Aufs Handy“ kann es per Telegram verschickt werden.");
+  }
+  async function bildUeberServer(inp, bearbeiten) {
+    const body = { prompt: String(inp.beschreibung || ""), format: inp.format || "quadrat" };
+    if (bearbeiten) { body.bild = await bildKlein(letztesBild.data, letztesBild.mime); body.mime = "image/jpeg"; }
+    let r, j;
+    try { r = await fetch(serverUrl() + "/v1/bild", { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + uid }, body: JSON.stringify(body) }); j = await r.json(); }
+    catch (e) { throw new Error("Mein Bild-Server ist gerade nicht erreichbar."); }
+    if (!r.ok || !j.data) throw new Error((j && j.error && j.error.message) || "Bild-Server: Fehler " + r.status);
+    return bildFertig(j.data, j.mime || "image/jpeg", inp, bearbeiten, "Cloudflare FLUX" + (j.rest != null ? " (heute noch " + j.rest + ")" : ""));
+  }
   async function bildErstellen(inp) {
+    if (inp.bearbeiten && !letztesBild) throw new Error("Ich habe gerade kein Bild zum Bearbeiten. Häng eins mit der Büroklammer an oder schick es mir per Telegram.");
+    const gutGewollt = inp.qualitaet === "hoch" && cfg.gemini;
+    if (aboMoeglich() && !gutGewollt) {
+      try { return await bildUeberServer(inp, !!inp.bearbeiten); }
+      catch (e) { if (!cfg.gemini) throw e; elog("Server-Bild ging nicht (" + e.message + "), nehme Gemini"); }
+    }
+    return bildGemini(inp);
+  }
+  async function bildGemini(inp) {
     if (!cfg.gemini) throw new Error("Für Bilder brauche ich einen Google-Gemini-API-Key: auf aistudio.google.com „Get API key“, Abrechnung aktivieren, dann den Key in meine Einstellungen. Ein Bild kostet etwa 6 Cent.");
     const bearbeiten = !!inp.bearbeiten && !!letztesBild;
     if (inp.bearbeiten && !letztesBild) throw new Error("Ich habe gerade kein Bild zum Bearbeiten. Häng eins mit der Büroklammer an oder schick es mir per Telegram.");
@@ -2136,21 +2174,7 @@ Sagt er „später“, „genug“ oder „stopp“, oder sind alle Themen durch
       // Kosten mitzählen (grob)
       if (kosten.monat !== monat()) kosten = { monat: monat(), usd: 0, tage: {} };
       const usd = m.includes("lite") ? 0.035 : 0.07; kosten.usd += usd; kosten.tage[heute()] = (kosten.tage[heute()] || 0) + usd; store.set("kosten", kosten);
-      letztesBild = { mime, data }; bildZeigen(data, mime);
-      const name = "Sentinel-Bild-" + heute() + "-" + Date.now().toString().slice(-5) + (mime.includes("jpeg") ? ".jpg" : ".png");
-      let ort = "";
-      if (NATIVE && SV && SV.saveFile) { try { ort = (await SV.saveFile({ name, mime, base64: data })).path; } catch (e) { elog("Bild speichern: " + (e.message || e)); } }
-      let handy = false;
-      if (tgReady() && (inp.aufs_handy || tgGerade)) {
-        try {
-          const bin = atob(data), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
-          const fd = new FormData(); fd.append("chat_id", cfg.tgChat); fd.append("caption", "🎨 " + String(inp.beschreibung || "").slice(0, 200));
-          fd.append("photo", new Blob([a], { type: mime }), name);
-          handy = !!(await (await fetch(`https://api.telegram.org/bot${cfg.tgToken}/sendPhoto`, { method: "POST", body: fd })).json()).ok;
-        } catch (e) { elog("Bild per Telegram: " + e.message); }
-      }
-      elog("Bild erstellt mit " + m);
-      return (bearbeiten ? "Bild bearbeitet" : "Bild erstellt") + " und auf dem Bildschirm angezeigt." + (ort ? " Gespeichert unter " + ort + "." : "") + (handy ? " Per Telegram aufs Handy geschickt." : " Mit „Aufs Handy“ kann es per Telegram verschickt werden.");
+      return bildFertig(data, mime, inp, bearbeiten, m);
     }
     throw new Error("Kein Bildmodell verfügbar: " + letzterFehler.slice(0, 150));
   }
@@ -2356,7 +2380,7 @@ Lies immer nur EINEN Schritt vor, kurz und klar, und melde ihn mit kochschritt. 
 
   class ApiError extends Error { constructor(msg, kind) { super(msg); this.kind = kind; } }
   // ---- Sentinel-Abo: Server statt eigenem Key ----
-  const SENTINEL_SERVER = "https://sentinel-server.HIER-DEIN-NAME.workers.dev"; // nach dem Einrichten von Cloudflare eintragen
+  const SENTINEL_SERVER = "https://sentinel-server.robsen-sentinel.workers.dev";
   const RC_KEY = "goog_HIER_REVENUECAT_PUBLIC_KEY";                              // RevenueCat → Projekt → API Keys (öffentlich)
   const serverUrl = () => (cfg.server || SENTINEL_SERVER).replace(/\/+$/, "");
   const aboModus = () => !cfg.key && !/HIER-DEIN-NAME/.test(serverUrl());
@@ -2557,7 +2581,7 @@ ${zeile("Menschen", ich.menschen)}`;
       { name: "dokument_erstellen", description: "Erstellt ein fertiges Dokument (Lebenslauf, Bewerbung, Brief, Kündigung, Zusammenfassung, Plan, Liste …) als Word-Datei, speichert es auf dem Tablet und schickt es per Telegram aufs Handy. Vorher alle nötigen Angaben erfragen (eine Frage nach der anderen). inhalt als Markdown (# Titel, ## Abschnitte, - Listen, **fett**), vollständig und sauber formuliert.",
         input_schema: obj({ titel: { type: "string" }, dateiname: { type: "string" }, inhalt: { type: "string" } }, ["titel", "inhalt"]) },
       { name: "bild_erstellen", description: "Erstellt ein Bild (Foto, Zeichnung, Logo, Einladung, Poster, Comic …) oder bearbeitet das zuletzt angehängte/erstellte Bild (bearbeiten=true, z. B. Hintergrund ändern, Person entfernen, Stil ändern, Text einfügen). beschreibung: genaue, bildhafte Beschreibung bzw. Änderungsanweisung (gern auf Englisch, Texte im Bild in Anführungszeichen). Das Bild erscheint auf dem Bildschirm und wird gespeichert.",
-        input_schema: obj({ beschreibung: { type: "string" }, bearbeiten: { type: "boolean" }, format: { type: "string", enum: ["quadrat", "hoch", "quer"] }, aufs_handy: { type: "boolean" } }, ["beschreibung"]) },
+        input_schema: obj({ beschreibung: { type: "string" }, bearbeiten: { type: "boolean" }, format: { type: "string", enum: ["quadrat", "hoch", "quer"] }, qualitaet: { type: "string", enum: ["normal", "hoch"], description: "hoch nur wenn ausdrücklich beste Qualität gewünscht oder viel Text im Bild (kostet Geld)" }, aufs_handy: { type: "boolean" } }, ["beschreibung"]) },
       { name: "navigation_starten", description: "Startet sofort die Navigation in Google Maps zum Ziel (Turn-by-Turn). modus: auto, zu_fuss, fahrrad, oepnv. Nutzen bei „Route starten“, „navigier mich zu …“, „fahr los“.",
         input_schema: obj({ ziel: { type: "string" }, modus: { type: "string", enum: ["auto", "zu_fuss", "fahrrad", "oepnv"] } }, ["ziel"]) },
       { name: "reise_suchen", description: "Öffnet die passende Suche für Zug (Deutsche Bahn), Flug (Google Flüge), Hotel oder Autoroute und schickt den Link aufs Handy. von leer = Wohnort. datum JJJJ-MM-TT, zeit HH:MM.",
@@ -3154,7 +3178,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     ["Listen", "Einkauf, Aufgaben, alles was du willst – auf Wunsch per Telegram aufs Handy.", ["Setz Milch auf die Einkaufsliste", "Schick mir die Einkaufsliste"]],
     ["Wetter", "Direkt und kostenlos, bis 7 Tage, mit Wind und Regen.", ["Wird's morgen windig?", "Wetter am Wochenende"]],
     ["Fotos & Dateien zeigen", "Büroklammer unten antippen (Foto, Kamera, PDF, Text) oder per Telegram ein Foto/PDF an deinen Bot schicken – dann sagen, was ich damit machen soll.", ["Was steht in diesem Brief?", "Fass mir das PDF zusammen", "Was ist das für eine Pflanze?"]],
-    ["Bilder malen & bearbeiten", "Braucht einen Google-Gemini-Key in den Einstellungen (ca. 6 Cent pro Bild). Bearbeiten klappt mit dem zuletzt angehängten oder gemalten Bild.", ["Mal mir ein Bild von einem Paddleboard im Sonnenuntergang", "Mach den Himmel auf dem Foto blauer", "Mach daraus ein Comic"]],
+    ["Bilder malen & bearbeiten", "Gratis über meinen Server (einige Bilder pro Tag). Für Spitzenqualität optional ein Google-Gemini-Key in den Einstellungen (ca. 6 Cent pro Bild, „in richtig gut“ sagen). Bearbeiten klappt mit dem zuletzt angehängten oder gemalten Bild.", ["Mal mir ein Bild von einem Paddleboard im Sonnenuntergang", "Mach den Himmel auf dem Foto blauer", "Mach daraus ein Comic"]],
     ["Licht (Govee)", "Einrichtung: Govee-App → Profil → Einstellungen → API-Schlüssel beantragen, Key in meine Einstellungen.", ["Großes Licht an", "Mach es gemütlich", "Kleines Licht blau auf 30 Prozent"]],
     ["Smart Home (Alexa)", "Alles, was Alexa kann: Voice-Monkey-Trigger + Alexa-Routine anlegen, Link in „Smart-Home-Befehle“ eintragen (Name = Link). Den Namen sagen reicht dann.", ["Ladestecker an"]],
     ["Akku", "Ich schalte meine Ladesteckdose selbst – Einstellung „Akku selbst laden“.", ["Wie voll ist dein Akku?"]],
@@ -3352,11 +3376,22 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   }
   if (!cfg.key) $("keyField").hidden = false;
   const aboMoeglich = () => !/HIER-DEIN-NAME/.test(serverUrl());
-  if (aboMoeglich()) { $("aboBtn").hidden = !!cfg.key; if (!cfg.key) $("startAbo").hidden = false; }
-  $("startAbo").addEventListener("click", () => { cfg.aboStart = true; saveCfg(); $("aboBtn").hidden = false; $("startBtn").click(); });
+  let eigenerKey = false;
+  if (aboMoeglich()) {
+    $("aboBtn").hidden = !!cfg.key;
+    if (!cfg.key) {
+      $("keyField").hidden = true; $("startAbo").hidden = false;
+      $("startAbo").textContent = "Ich habe einen eigenen Anthropic-API-Key";
+      $("startBtn").textContent = "Los geht's · 30 Fragen gratis";
+    }
+  }
+  $("startAbo").addEventListener("click", () => {
+    eigenerKey = true; $("keyField").hidden = false; $("startAbo").hidden = true;
+    $("startBtn").textContent = "Mit eigenem Key starten"; $("keyInput").focus();
+  });
   if (NATIVE) {
     // In der App braucht es kein "Aufwecken" mehr, wenn der Key schon da ist
-    $("startText").textContent = "Willkommen. Trag einmal deinen API-Key ein, danach startet Sentinel automatisch.";
+    $("startText").textContent = aboMoeglich() ? "Willkommen! Ich bin Sentinel, dein KI-Kumpel. Tipp auf „Los geht's“ – die ersten 30 Fragen sind gratis." : "Willkommen. Trag einmal deinen API-Key ein, danach startet Sentinel automatisch.";
     $("sEngine").closest(".field").hidden = true;
     $("sGroq").closest(".field").hidden = true;
     $("muteBeepRow").hidden = false;
@@ -3364,6 +3399,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   }
   $("startBtn").addEventListener("click", async () => {
     const errEl = $("startErr"); errEl.hidden = true;
+    if (!cfg.key && !cfg.aboStart && aboMoeglich() && !eigenerKey) { cfg.aboStart = true; saveCfg(); $("aboBtn").hidden = false; }
     if (!cfg.key && !(cfg.aboStart && aboMoeglich())) {
       const k = $("keyInput").value.trim();
       if (!/^sk-ant-/.test(k)) { errEl.textContent = "Der Key beginnt mit sk-ant-. Du findest ihn auf console.anthropic.com unter API Keys."; errEl.hidden = false; return; }
