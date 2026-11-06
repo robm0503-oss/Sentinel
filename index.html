@@ -296,7 +296,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 53</div>
+    <div class="hint" id="verHint">Sentinel Version 54</div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -316,6 +316,16 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <p class="hint" style="text-align:left">Tippe alles an, was passt – ich stelle mich darauf ein. Ändern geht jederzeit in den Einstellungen.</p>
     <div id="zweckListe" style="display:grid;gap:10px;margin:12px 0"></div>
     <button class="btn" id="zweckWeiter" type="button" disabled>Weiter</button>
+  </div>
+</div>
+
+<!-- WLAN -->
+<div class="panel" id="wlanPanel" hidden>
+  <div class="sheet">
+    <h2>Erst ins WLAN</h2>
+    <p class="hint" style="text-align:left">Verbinde dieses Gerät mit dem WLAN zu Hause. Dann kann ich nach Smart-Home-Geräten suchen und mich mit ihnen verbinden – und spare dein mobiles Datenvolumen.</p>
+    <button class="btn" id="wlanOeffnen" type="button" style="margin-top:12px">WLAN-Einstellungen öffnen</button>
+    <button class="ghost" id="wlanWeiter" type="button" style="margin-top:10px;width:100%">Bin verbunden – weiter</button>
   </div>
 </div>
 
@@ -1836,10 +1846,13 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     lernen: "Alter bzw. Klasse, Lieblingsfächer und schwierige Fächer, wie lange am Stück gelernt werden soll",
     familie: "Wer aus der Familie benachrichtigt werden soll (Telegram) und welche Tabletten/Termine regelmäßig anstehen (als Erinnerungen stellen)",
     firma: "Firmenname, Branche, Angebot, Öffnungszeiten, Ansprechpartner und häufige Fragen von Besuchern – mit firmenwissen_speichern festhalten",
+    geraetescan: "ALS LETZTES THEMA: Kündige an, dass du jetzt im WLAN nach Geräten suchst (dauert ca. 20 Sekunden), und nutze wlan_scannen. Erkläre danach in einfachen Worten jedes gefundene Gerät: was es vermutlich ist und ob bzw. WIE du es steuern kannst (Govee-Lampen: API-Key aus der Govee-App; Geräte in der Alexa-App wie Tapo, Steckdosen, Lampen: über Voice Monkey; Fire TV oder Smart-TV: Bild per Bildschirmübertragung; Chromecast: Übertragen; Router, Drucker, Handys: nicht steuerbar). Biete an, das erste davon gleich gemeinsam einzurichten. Findest du nichts Steuerbares: frag, ob du passende Smart-Home-Geräte im Internet suchen und zeigen sollst (geraete_vorschlagen aktion suchen). Sagt er nein: geraete_vorschlagen aktion ablehnen – dann nie wieder danach fragen.",
   };
   function einrThemen() {
     const z = zwecke(); if (!z.length) return Object.keys(EINR_THEMEN).filter(k => !["lernen", "familie", "firma"].includes(k));
+    // (Geräte-Scan ist bei „ohne Auswahl“ automatisch dabei)
     const set = new Set(["name", "stil"]); z.forEach(k => ZWECKE[k].themen.forEach(t => set.add(t)));
+    if (z.some(k => k !== "lernen")) set.add("geraetescan");
     return Object.keys(EINR_THEMEN).filter(k => set.has(k));
   }
   let einr = Object.assign({ aktiv: false, erledigt: [] }, store.get("einrichtung", {}));
@@ -1847,7 +1860,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   function einrichtungInfo() {
     if (!einr.aktiv) return "";
     const offen = einrThemen().filter(k => !einr.erledigt.includes(k));
-    const fehlt = einrichtSchritte().filter(x => !x[0] && x[1] !== "Kennenlernen").map(x => x[1] + " (" + x[2] + ")");
+    const fehlt = einrichtSchritte().filter(x => !x[0] && x[1] !== "Kennenlernen" && x[1] !== "Mit dem WLAN verbinden").map(x => x[1] + " (" + x[2] + ")");
     return (fehlt.length ? `\nNOCH EINZURICHTEN (am Ende der Einrichtung kurz anbieten und erklären, eins nach dem anderen): ${fehlt.join("; ")}` : "") + `\nEINRICHTUNG LÄUFT – du lernst ${ich.name || "deinen Menschen"} gerade richtig kennen, damit du ein wirklich nützlicher Partner im Alltag und bei der Arbeit wirst.
 Stelle immer nur EINE Frage, kurz und herzlich. Reagiere kurz und persönlich auf jede Antwort (nicht nur „okay“), frag ruhig einmal nach, wenn etwas spannend oder unklar ist.
 Speichere ALLES Wichtige sofort mit den Werkzeugen (ich_kenne_dich, merke_dir, geburtstag_speichern, ort_setzen, gerichte_merken, ernaehrungsziel, nachtmodus_setzen). Ist ein Thema durch, melde es mit einrichtung (aktion thema_erledigt).
@@ -1901,7 +1914,7 @@ Sagt er „später“, „genug“ oder „stopp“, oder sind alle Themen durch
       if (!ph && (cfg.phase === "senior" || cfg.phase === "schueler" || cfg.phase === "kind")) cfg.phase = "erwachsen";
       saveCfg(); $("zweckPanel").hidden = true; $("firmaFeld").hidden = !cfg.zwecke.includes("firma");
       elog("Genutzt für: " + cfg.zwecke.join(", "));
-      if (neustart) begruessen(true, true); else note("Gespeichert – ich habe mich darauf eingestellt.", 3000);
+      if (neustart) wlanPruefen(() => begruessen(true, true)); else note("Gespeichert – ich habe mich darauf eingestellt.", 3000);
     };
     $("zweckPanel").hidden = false;
   }
@@ -1909,6 +1922,7 @@ Sagt er „später“, „genug“ oder „stopp“, oder sind alle Themen durch
   function einrichtSchritte() {
     const z = zwecke(), s = [];
     const add = (fertig, titel, wie) => s.push([fertig, titel, wie]);
+    add(imWlan(), "Mit dem WLAN verbinden", "Android-Einstellungen → WLAN → dein Heimnetz.");
     add(!!ich.name, "Kennenlernen", "Sag „Sentinel, starte die Einrichtung“.");
     if (z.some(k => ["zuhause", "assistent", "senior", "arbeit", "firma"].includes(k)))
       add(tgReady(), "Telegram (Nachrichten aufs Handy)", z.includes("senior") ? "Für die Familie: Bot bei @BotFather anlegen, Token und Chat-ID eines Angehörigen eintragen – dann kommen Lebenszeichen und Notfall-Nachrichten dort an." : "Bot bei @BotFather anlegen, Token in die Einstellungen, dem Bot „hallo“ schreiben, „Chat-ID automatisch finden“.");
@@ -1922,6 +1936,15 @@ Sagt er „später“, „genug“ oder „stopp“, oder sind alle Themen durch
     if (z.includes("lernen")) add(cfg.phase === "kind" || cfg.phase === "schueler" || cfg.phase === "teen", "Alter festlegen", "In den Einstellungen „Für wen ist Sentinel da?“: Kind, Schüler oder Teen.");
     if (z.includes("firma")) add(!!cfg.firma, "Firmenwissen", "In den Einstellungen Name, Öffnungszeiten, Angebot und häufige Fragen eintragen – oder sag es mir.");
     return s;
+  }
+
+  // ---- Ist das Gerät im WLAN? ----
+  const imWlan = () => { const c = navigator.connection; return navigator.onLine && (!c || !c.type || c.type === "wifi" || c.type === "ethernet"); };
+  function wlanPruefen(weiter) {
+    if (imWlan()) { weiter(); return; }
+    $("wlanPanel").hidden = false;
+    $("wlanOeffnen").onclick = () => { if (NATIVE && SV && SV.openSettingsPage) SV.openSettingsPage({ action: "android.settings.WIFI_SETTINGS" }).catch(() => {}); };
+    $("wlanWeiter").onclick = () => { $("wlanPanel").hidden = true; weiter(); };
   }
 
   // ================= LEBENSPHASEN =================
@@ -2275,7 +2298,7 @@ Kommentiere nie frühere Versuche, Fehler oder Versionen („vorhin hatte es nic
 Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
 Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Sag nie, dass du dir etwas gemerkt hast, ohne das Werkzeug wirklich benutzt zu haben.
-Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\nDein aktuelles Gesicht: ${GESICHT_NAMEN[cfg.gesicht || "roboter"]}.\n${dekoInfo()}\n${geburtstagInfo()}\nDeine API-Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.monat === monat() ? kosten.usd : 0)}.${wach.on ? "\nDer WACHHUND ist gerade an" + (wach.alerts ? ` (${wach.alerts} Bewegungsmeldungen)` : "") + ". Wenn " + wer + " sagt, dass er wieder da ist, schalte ihn aus." : ""}${nightActive ? "\nEs ist Nachtmodus: antworte besonders kurz und ruhig." : ""}${zweckeInfo()}${phaseInfo()}${lernInfo()}${kochInfo()}${einrichtungInfo()}${dokumente.length ? "\nErstellte Dokumente: " + dokumente.slice(-6).map(d => d.titel).join(", ") : ""}${essenInfo()}${akkuInfo()}${cfg.govee ? "\nDeine Lampen (Werkzeug licht): " + (store.get("goveeNamen", []).join(", ") || "werden noch geladen") : ""}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
+Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\nDein aktuelles Gesicht: ${GESICHT_NAMEN[cfg.gesicht || "roboter"]}.\n${dekoInfo()}\n${geburtstagInfo()}\nDeine API-Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.monat === monat() ? kosten.usd : 0)}.${wach.on ? "\nDer WACHHUND ist gerade an" + (wach.alerts ? ` (${wach.alerts} Bewegungsmeldungen)` : "") + ". Wenn " + wer + " sagt, dass er wieder da ist, schalte ihn aus." : ""}${nightActive ? "\nEs ist Nachtmodus: antworte besonders kurz und ruhig." : ""}${zweckeInfo()}${cfg.keineGeraeteVorschlaege ? "\nDer Nutzer möchte KEINE Vorschläge, neue Geräte zu kaufen – biete das nie an." : ""}${phaseInfo()}${lernInfo()}${kochInfo()}${einrichtungInfo()}${dokumente.length ? "\nErstellte Dokumente: " + dokumente.slice(-6).map(d => d.titel).join(", ") : ""}${essenInfo()}${akkuInfo()}${cfg.govee ? "\nDeine Lampen (Werkzeug licht): " + (store.get("goveeNamen", []).join(", ") || "werden noch geladen") : ""}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
 Offene Timer und Erinnerungen: ${termText}
 Listen: ${listenText}
 ${zeile("Was du über " + wer + " weißt", ich.fakten)}
@@ -2356,6 +2379,8 @@ ${zeile("Menschen", ich.menschen)}`;
         input_schema: obj({ an: { type: "boolean" }, rezept: { type: "string" }, schritte: { type: "array", items: { type: "string" } } }, ["an"]) },
       { name: "kochschritt", description: "Merkt sich, welchen Rezeptschritt (ab 1) du gerade vorgelesen hast.",
         input_schema: obj({ nummer: { type: "integer" } }, ["nummer"]) },
+      { name: "geraete_vorschlagen", description: "suchen = passende Smart-Home-Geräte (die du steuern kannst: Govee-Lampen, Alexa-kompatible WLAN-Steckdosen wie Tapo, Saugroboter …) im Shop öffnen; suche = wonach (z. B. 'Govee WLAN Glühbirne E27'). ablehnen = der Nutzer will keine Vorschläge – danach nie wieder anbieten.",
+        input_schema: obj({ aktion: { type: "string", enum: ["suchen", "ablehnen"] }, suche: { type: "string" } }, ["aktion"]) },
       { name: "firmenwissen_speichern", description: "Speichert Wissen über die Firma (Name, Angebot, Öffnungszeiten, Preise, häufige Fragen), das du am Empfang nutzen darfst. Wird an das vorhandene Wissen angehängt.",
         input_schema: obj({ text: { type: "string" } }, ["text"]) },
       { name: "nutzung_setzen", description: "Legt fest, wofür du genutzt wirst (mehrere möglich): zuhause, assistent, arbeit, lernen, senior, firma.",
@@ -2590,6 +2615,14 @@ ${zeile("Menschen", ich.menschen)}`;
           return ok(`Kochmodus an, ${st.length} Schritte. Lies jetzt Schritt 1 vor.`);
         }
         case "kochschritt": koch.schritt = Math.max(1, Math.min(koch.schritte.length, Math.round(Number(inp.nummer) || 1))); return ok("ok");
+        case "geraete_vorschlagen": {
+          if (inp.aktion === "ablehnen") { cfg.keineGeraeteVorschlaege = true; saveCfg(); return ok("Verstanden, keine Geräte-Vorschläge mehr."); }
+          const q = String(inp.suche || "Govee WLAN Glühbirne Alexa").trim();
+          const url = "https://www.amazon.de/s?k=" + encodeURIComponent(q);
+          if (NATIVE && SV) await SV.openUrl({ url }).catch(() => {});
+          if (tgReady()) tgText("🛒 Smart-Home-Vorschlag: " + q + "\n" + url).catch(() => {});
+          return ok("Shop-Suche geöffnet: " + q + (tgReady() ? " (Link auch aufs Handy)" : ""));
+        }
         case "firmenwissen_speichern": cfg.firma = ((cfg.firma ? cfg.firma + "\n" : "") + String(inp.text || "").trim()).slice(-6000); saveCfg(); return ok("Firmenwissen gespeichert.");
         case "nutzung_setzen": cfg.zwecke = (inp.zwecke || []).filter(z => ZWECKE[z]); saveCfg(); return ok("Genutzt für: " + cfg.zwecke.map(z => ZWECKE[z].name).join(", "));
         case "lebensphase_setzen": cfg.phase = inp.phase in PHASEN ? inp.phase : "erwachsen"; saveCfg(); return ok("Lebensphase: " + PHASEN[cfg.phase][0]);
@@ -2964,6 +2997,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     ["Nacht & Kosten", "Nachtmodus: dunkel, leise, hört nur nach Antippen. Automatik-Gehirn und Monatsbudget halten die Kosten klein.", ["Was hast du diesen Monat gekostet?"]],
     ["Apps schließen & Musik steuern", "Läuft Musik, mache ich mit dem Zuhören Pause, damit sie nicht abbricht – tipp mich an, dann höre ich zu. Ich stoppe Musik und Videos, springe zum nächsten Lied und schließe Apps wieder – Android lässt mich das über einen kleinen Umweg.", ["Schließ Spotify", "Pause", "Nächstes Lied"]],
     ["Bild in Bild", "Drückst du die Home-Taste oder öffne ich eine andere App, werde ich klein unten rechts und höre trotzdem weiter zu. Antippen macht mich wieder groß.", ["Mach dich klein"]],
+    ["Geräte finden", "Ich suche im WLAN nach Geräten und erkläre dir, welche ich steuern kann und wie man sie verbindet.", ["Welche Geräte sind in unserem WLAN?", "Such mir passende smarte Lampen"]],
     ["Auf andere Bildschirme", "Ich laufe auf jedem Android-Gerät (Handy, Tablet, Fire TV, Android TV). Mein Bild kann ich auf Fernseher mit Bildschirmübertragung (Smart View, Chromecast, Miracast) schicken.", ["Übertrag dich auf den Fernseher"]],
   ];
   function hilfeZeigen() {
