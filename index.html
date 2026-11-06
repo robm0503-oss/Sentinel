@@ -320,7 +320,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 59</div>
+    <div class="hint" id="verHint">Sentinel Version 60</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -2390,7 +2390,7 @@ Lies immer nur EINEN Schritt vor, kurz und klar, und melde ihn mit kochschritt. 
     let res;
     const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 90000);
     try {
-      res = await fetch(serverUrl() + "/v1/messages", { method: "POST", signal: ctl.signal, headers: { "content-type": "application/json", authorization: "Bearer " + uid }, body: JSON.stringify(body) });
+      res = await fetch(serverUrl() + "/v1/messages", { method: "POST", signal: ctl.signal, headers: { "content-type": "application/json", authorization: "Bearer " + uid }, body: JSON.stringify(einr.aktiv ? { ...body, sentinel_einrichtung: true } : body) });
     } catch (e) { clearTimeout(timer); throw new ApiError("Kein Internet", ctl.signal.aborted ? "timeout" : "net"); }
     clearTimeout(timer);
     const data = await res.json().catch(() => null);

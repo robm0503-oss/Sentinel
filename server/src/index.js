@@ -19,6 +19,7 @@ export const STUFEN = {
   pro:      { name: "Pro",      budgetEur: 9,  proTag: 150,  bilderTag: 60, modelle: [HAIKU, SONNET],               suche: true,  maxTokens: 4000, bremse: 0.9 },
   business: { name: "Business", budgetEur: 25, proTag: null, bilderTag: 150, modelle: [HAIKU, SONNET, OPUS],         suche: true,  maxTokens: 6000, bremse: 0.95 },
 };
+const EINRICHTUNG_GRATIS = 40;
 const RANG = ["probe", "basis", "plus", "pro", "business"];
 // Nachschub-Pakete (Einmalkauf) -> zusätzliches Budget in Euro
 export const NACHSCHUB = { nachschub_10: 10 };
@@ -97,18 +98,27 @@ export function modellWaehlen(u, gewuenscht) {
 async function chat(req, env, uid) {
   const u = await nutzerLaden(env, uid);
   const st = STUFEN[u.tier] || STUFEN.probe;
+  let body;
+  try { body = await req.json(); } catch (e) { return fehler(400, "invalid_request_error", "Ungültige Anfrage"); }
+  // Das Kennenlernen bei der Einrichtung zählt in der Probe nicht mit (höchstens EINRICHTUNG_GRATIS Anfragen)
+  const einrWunsch = !!body.sentinel_einrichtung; delete body.sentinel_einrichtung;
+  let gratisEinr = false;
+  if (u.tier === "probe" && einrWunsch) {
+    const e = await env.DB.prepare("SELECT n FROM einrichtung WHERE uid = ?").bind(u.uid).first();
+    gratisEinr = !e || e.n < EINRICHTUNG_GRATIS;
+  }
   // Limits prüfen
   if (u.tier === "probe") {
+    if (gratisEinr) { /* Kennenlernen – zählt nicht */ } else {
     const s = await env.DB.prepare("SELECT probe_req FROM stats WHERE day = ?").bind(heute()).first();
     if ((u.probe_used || 0) >= st.gesamt) { await speichern(env, u); return fehler(402, "abo_noetig", "Die kostenlosen Probe-Anfragen sind aufgebraucht. Wähle ein Abo, um weiterzumachen.", { stand: stand(u) }); }
     if (s && s.probe_req >= Number(env.PROBE_DAY_CAP || 3000)) return fehler(429, "probe_voll", "Die Probe ist heute ausgelastet. Versuch es morgen oder wähle ein Abo.");
+    }
   } else {
     if (st.proTag && u.req_day >= st.proTag) { await speichern(env, u); return fehler(429, "tageslimit", `Tageslimit von ${st.proTag} Anfragen erreicht. Morgen geht's weiter – oder nimm eine höhere Stufe.`, { stand: stand(u) }); }
     const budgetUsd = st.budgetEur * USD_PRO_EUR + (u.topup_usd || 0);
     if (u.used_usd >= budgetUsd) { await speichern(env, u); return fehler(402, u.tier === "business" ? "nachschub_noetig" : "budget_leer", u.tier === "business" ? "Das Monatsbudget ist aufgebraucht. Ein Nachschub-Paket macht sofort weiter." : "Das Monatsbudget deiner Stufe ist aufgebraucht. Ab nächstem Monat geht's weiter – oder nimm eine höhere Stufe.", { stand: stand(u) }); }
   }
-  let body;
-  try { body = await req.json(); } catch (e) { return fehler(400, "invalid_request_error", "Ungültige Anfrage"); }
   const model = modellWaehlen(u, body.model);
   const tools = (body.tools || []).filter(t => st.suche || !String(t.type || "").startsWith("web_search"));
   const anfrage = { ...body, model, max_tokens: Math.min(Number(body.max_tokens) || 1000, st.maxTokens), ...(tools.length ? { tools } : { tools: undefined }) };
@@ -122,7 +132,8 @@ async function chat(req, env, uid) {
   if (!r.ok || !data) return json(data || { type: "error", error: { type: "api_error", message: "Gehirn nicht erreichbar" } }, r.status || 502);
   const usd = kosten(data.usage, model);
   u.used_usd += usd; u.req_day += 1;
-  if (u.tier === "probe") u.probe_used = (u.probe_used || 0) + 1;
+  if (gratisEinr) await env.DB.prepare("INSERT INTO einrichtung (uid, n) VALUES (?, 1) ON CONFLICT(uid) DO UPDATE SET n = n + 1").bind(u.uid).run();
+  else if (u.tier === "probe") u.probe_used = (u.probe_used || 0) + 1;
   await speichern(env, u);
   await env.DB.prepare("INSERT INTO stats (day, probe_req, req, usd) VALUES (?, ?, 1, ?) ON CONFLICT(day) DO UPDATE SET probe_req = probe_req + excluded.probe_req, req = req + 1, usd = usd + excluded.usd")
     .bind(heute(), u.tier === "probe" ? 1 : 0, usd).run();

@@ -58,3 +58,15 @@ console.log("ALLE TESTS OK");
   r1 = await bildCall({ prompt: "x" }); assert.equal(r1.status, 429);
   console.log("Bilder ok:", runs.map(x => x.m));
 }
+
+// Einrichtung zählt in der Probe nicht mit
+{
+  const uid3 = "33333333-2222-4333-8444-555555555555";
+  const c3 = body => worker.fetch(new Request("https://x/v1/messages", { method: "POST", headers: { authorization: "Bearer " + uid3 }, body: JSON.stringify(body) }), env).then(async r => ({ status: r.status, j: await r.json() }));
+  rc = {};
+  let r3;
+  for (let i = 0; i < 5; i++) r3 = await c3({ ...msg, sentinel_einrichtung: true });
+  if (r3.status !== 200) console.log(r3.j); assert.equal(r3.status, 200); assert.equal(r3.j.sentinel.probe_rest, 30); assert.equal(gesendet.at(-1).sentinel_einrichtung, undefined);
+  r3 = await c3(msg); assert.equal(r3.j.sentinel.probe_rest, 29);
+  console.log("Einrichtung gratis ok");
+}
