@@ -171,7 +171,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     </div>
     <div class="err" id="startErr" hidden></div>
     <button class="btn" id="startBtn" type="button">Aufwecken</button>
-    <button class="ghost" id="startAbo" type="button" hidden style="margin-top:10px;width:100%">Ohne Key starten · 30 Fragen gratis, danach Abo</button>
+    <button class="ghost" id="startAbo" type="button" hidden style="margin-top:10px;width:100%">Ohne Key starten · 10 Fragen pro Tag gratis</button>
     <button class="ghost" id="startSicherung" type="button" style="margin-top:10px;width:100%">💾 Sicherung laden (Datei aus Telegram)</button>
   </div>
 </div>
@@ -320,7 +320,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 60</div>
+    <div class="hint" id="verHint">Sentinel Version 61</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -3134,7 +3134,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     $("aboStand").textContent = "Lade …";
     try { const r = await fetch(serverUrl() + "/v1/me", { headers: { authorization: "Bearer " + uid } }); aboStand = await r.json(); store.set("aboStand", aboStand); } catch (e) {}
     const a = aboStand || {};
-    $("aboStand").textContent = a.stufe ? (a.stufe === "probe" ? `Probe: noch ${a.probe_rest ?? "?"} kostenlose Fragen.` : `Stufe ${a.name}: diesen Monat ${String(a.verbraucht_eur).replace(".", ",")} € von ${String(a.budget_eur).replace(".", ",")} € verbraucht · heute ${a.anfragen_heute}${a.limit_heute ? " von " + a.limit_heute : ""} Anfragen.`) : "Server nicht erreichbar.";
+    $("aboStand").textContent = a.stufe ? (a.stufe === "probe" ? `Gratis: heute noch ${a.probe_rest ?? "?"} von 10 Fragen – mit einem Abo geht mehr.` : `Stufe ${a.name}: diesen Monat ${String(a.verbraucht_eur).replace(".", ",")} € von ${String(a.budget_eur).replace(".", ",")} € verbraucht · heute ${a.anfragen_heute}${a.limit_heute ? " von " + a.limit_heute : ""} Anfragen.`) : "Server nicht erreichbar.";
     $("aboNachschub").hidden = a.stufe !== "business";
     let pakete = {};
     if (await rcStart()) {
@@ -3162,7 +3162,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   }
   function aboHinweis(typ) {
     if (typ === "nachschub_noetig" && tgReady()) tgText("💶 Sentinel: Das Monatsbudget ist aufgebraucht. Tippe am Tablet auf „Abo“ → Nachschub, dann geht es sofort weiter.").catch(() => {});
-    if (typ === "abo_noetig" || typ === "budget_leer" || typ === "nachschub_noetig") { aboLaden(); $("aboPanel").hidden = false; }
+    if (typ === "abo_noetig" || typ === "budget_leer" || typ === "nachschub_noetig" || (typ === "tageslimit" && (!aboStand || aboStand.stufe === "probe"))) { aboLaden(); $("aboPanel").hidden = false; }
   }
   $("aboBtn").addEventListener("click", () => { aboLaden(); $("aboPanel").hidden = false; });
   $("aboClose").addEventListener("click", () => { $("aboPanel").hidden = true; });
@@ -3382,7 +3382,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     if (!cfg.key) {
       $("keyField").hidden = true; $("startAbo").hidden = false;
       $("startAbo").textContent = "Ich habe einen eigenen Anthropic-API-Key";
-      $("startBtn").textContent = "Los geht's · 30 Fragen gratis";
+      $("startBtn").textContent = "Los geht's · 10 Fragen am Tag gratis";
     }
   }
   $("startAbo").addEventListener("click", () => {
@@ -3391,7 +3391,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   });
   if (NATIVE) {
     // In der App braucht es kein "Aufwecken" mehr, wenn der Key schon da ist
-    $("startText").textContent = aboMoeglich() ? "Willkommen! Ich bin Sentinel, dein KI-Kumpel. Tipp auf „Los geht's“ – die ersten 30 Fragen sind gratis." : "Willkommen. Trag einmal deinen API-Key ein, danach startet Sentinel automatisch.";
+    $("startText").textContent = aboMoeglich() ? "Willkommen! Ich bin Sentinel, dein KI-Kumpel. Tipp auf „Los geht's“ – 10 Fragen am Tag sind gratis, für immer." : "Willkommen. Trag einmal deinen API-Key ein, danach startet Sentinel automatisch.";
     $("sEngine").closest(".field").hidden = true;
     $("sGroq").closest(".field").hidden = true;
     $("muteBeepRow").hidden = false;

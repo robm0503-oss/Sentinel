@@ -13,7 +13,7 @@ const HAIKU = "claude-haiku-5-5", SONNET = "claude-sonnet-5-5", OPUS = "claude-o
 
 // Abo-Stufen (Budget pro Monat in Euro, Anfragen pro Tag)
 export const STUFEN = {
-  probe:    { name: "Probe",    budgetEur: 0,  proTag: 0,    bilderTag: 3,   gesamt: 30, modelle: [HAIKU],               suche: false, maxTokens: 1000 },
+  probe:    { name: "Gratis",   budgetEur: 0,  proTag: 10,   bilderTag: 3,   modelle: [HAIKU],               suche: false, maxTokens: 1000 },
   basis:    { name: "Basis",    budgetEur: 1.5, proTag: 40,  bilderTag: 10,  modelle: [HAIKU],                       suche: false, maxTokens: 1500 },
   plus:     { name: "Plus",     budgetEur: 4,  proTag: 80,   bilderTag: 25, modelle: [HAIKU, SONNET],               suche: true,  maxTokens: 4000, bremse: 0.8 },
   pro:      { name: "Pro",      budgetEur: 9,  proTag: 150,  bilderTag: 60, modelle: [HAIKU, SONNET],               suche: true,  maxTokens: 4000, bremse: 0.9 },
@@ -82,7 +82,7 @@ export function stand(u) {
   return {
     stufe: u.tier, name: st.name,
     verbraucht_eur: +(u.used_usd / USD_PRO_EUR).toFixed(2), budget_eur: +(budgetUsd / USD_PRO_EUR).toFixed(2),
-    anfragen_heute: u.req_day, limit_heute: st.proTag, probe_rest: u.tier === "probe" ? Math.max(0, st.gesamt - (u.probe_used || 0)) : null,
+    anfragen_heute: u.req_day, limit_heute: st.proTag, probe_rest: u.tier === "probe" ? Math.max(0, st.proTag - (u.req_day || 0)) : null,
   };
 }
 
@@ -111,7 +111,7 @@ async function chat(req, env, uid) {
   if (u.tier === "probe") {
     if (gratisEinr) { /* Kennenlernen – zählt nicht */ } else {
     const s = await env.DB.prepare("SELECT probe_req FROM stats WHERE day = ?").bind(heute()).first();
-    if ((u.probe_used || 0) >= st.gesamt) { await speichern(env, u); return fehler(402, "abo_noetig", "Die kostenlosen Probe-Anfragen sind aufgebraucht. Wähle ein Abo, um weiterzumachen.", { stand: stand(u) }); }
+    if ((u.req_day || 0) >= st.proTag) { await speichern(env, u); return fehler(429, "tageslimit", `Die ${st.proTag} Gratisfragen für heute sind verbraucht – morgen geht's weiter. Mit einem Abo kannst du sofort weitermachen.`, { stand: stand(u) }); }
     if (s && s.probe_req >= Number(env.PROBE_DAY_CAP || 3000)) return fehler(429, "probe_voll", "Die Probe ist heute ausgelastet. Versuch es morgen oder wähle ein Abo.");
     }
   } else {
@@ -131,7 +131,7 @@ async function chat(req, env, uid) {
   const data = await r.json().catch(() => null);
   if (!r.ok || !data) return json(data || { type: "error", error: { type: "api_error", message: "Gehirn nicht erreichbar" } }, r.status || 502);
   const usd = kosten(data.usage, model);
-  u.used_usd += usd; u.req_day += 1;
+  u.used_usd += usd; if (!gratisEinr) u.req_day += 1;
   if (gratisEinr) await env.DB.prepare("INSERT INTO einrichtung (uid, n) VALUES (?, 1) ON CONFLICT(uid) DO UPDATE SET n = n + 1").bind(u.uid).run();
   else if (u.tier === "probe") u.probe_used = (u.probe_used || 0) + 1;
   await speichern(env, u);

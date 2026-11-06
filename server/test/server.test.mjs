@@ -19,7 +19,7 @@ const uid = "11111111-2222-4333-8444-555555555555";
 const call = (path, body) => worker.fetch(new Request("https://x" + path, { method: body ? "POST" : "GET", headers: { authorization: "Bearer " + uid }, body: body && JSON.stringify(body) }), env).then(async r => ({ status: r.status, j: await r.json() }));
 const msg = { model: "claude-sonnet-5-5", max_tokens: 9000, messages: [{ role: "user", content: "hi" }], tools: [{ type: "web_search_20250305", name: "web_search" }, { name: "x", input_schema: {} }] };
 
-// Probe: Haiku, keine Websuche, 30 Anfragen
+// Gratis: Haiku, keine Websuche, 10 Anfragen pro Tag
 let r = await call("/v1/messages", msg);
 assert.equal(r.status, 200); assert.equal(gesendet.at(-1).model, "claude-haiku-5-5"); assert.equal(gesendet.at(-1).tools.length, 1); assert.equal(gesendet.at(-1).max_tokens, 1000);
 console.log("Probe:", r.j.sentinel);
@@ -66,7 +66,10 @@ console.log("ALLE TESTS OK");
   rc = {};
   let r3;
   for (let i = 0; i < 5; i++) r3 = await c3({ ...msg, sentinel_einrichtung: true });
-  if (r3.status !== 200) console.log(r3.j); assert.equal(r3.status, 200); assert.equal(r3.j.sentinel.probe_rest, 30); assert.equal(gesendet.at(-1).sentinel_einrichtung, undefined);
-  r3 = await c3(msg); assert.equal(r3.j.sentinel.probe_rest, 29);
+  if (r3.status !== 200) console.log(r3.j); assert.equal(r3.status, 200); assert.equal(r3.j.sentinel.probe_rest, 10); assert.equal(gesendet.at(-1).sentinel_einrichtung, undefined);
+  r3 = await c3(msg); assert.equal(r3.j.sentinel.probe_rest, 9);
+  for (let i = 0; i < 9; i++) r3 = await c3(msg);
+  assert.equal(r3.j.sentinel.probe_rest, 0); r3 = await c3(msg); assert.equal(r3.status, 429); assert.equal(r3.j.error.type, "tageslimit");
+  r3 = await c3({ ...msg, sentinel_einrichtung: true }); assert.equal(r3.status, 200);
   console.log("Einrichtung gratis ok");
 }
