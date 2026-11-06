@@ -71,5 +71,8 @@ jobs:
           tag_name: app-latest
           name: Sentinel App (neueste Version)
           body: "Neueste Sentinel-App. Auf dem Tablet herunterladen und installieren."
-          files: Sentinel.apk
+          files: |
+            Sentinel.apk
+            Sentinel-Store.aab
+          fail_on_unmatched_files: false
           make_latest: true
