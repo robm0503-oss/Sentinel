@@ -35,7 +35,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--display); o
 }
 .stage { flex: 1; min-height: 0; min-width: 0; display: flex; align-items: center; justify-content: center; position: relative; container-type: size; }
 @media (max-width: 360px) and (max-height: 360px) {
-  .top, .bar, .say, #hint, .panel, #ytBox { display: none !important; }
+  .top, .bar, .say, #hint, .panel, #ytBox, #anhangChip, .bildKnoepfe { display: none !important; }
   body { padding: 0 !important; }
   canvas#face { width: 100vmin; height: 100vmin; }
 }
@@ -59,11 +59,21 @@ canvas#face { display: block; width: min(100cqw, 100cqh); height: min(100cqw, 10
 .bar input::placeholder { color: var(--muted); }
 .icon { width: 46px; height: 46px; flex: none; border-radius: 12px; border: 1px solid var(--line); background: #151a1f; color: var(--text); display: grid; place-items: center; cursor: pointer; padding: 0; }
 .icon svg { width: 22px; height: 22px; }
+@media (max-width: 420px) { .bar { gap: 6px; padding: 6px; } .bar .icon { width: 42px; height: 42px; } }
 .icon.primary { background: var(--eye); color: #1a1205; border-color: var(--eye); }
 .icon.on { border-color: var(--eye); color: var(--eye); box-shadow: inset 0 0 0 1px var(--eye); }
 .icon:disabled { opacity: .4; cursor: default; }
 .icon:focus-visible, .ghost:focus-visible, .btn:focus-visible { outline: 2px solid var(--eye); outline-offset: 2px; }
 .hint { font: .72rem var(--mono); color: var(--muted); text-align: center; }
+#anhangChip { display: flex; align-items: center; gap: 8px; background: var(--bar); border: 1px solid var(--line); border-radius: 12px; padding: 6px 8px; font: .85rem var(--mono); color: var(--muted); }
+#anhangChip[hidden] { display: none; }
+#anhangChip img { width: 40px; height: 40px; object-fit: cover; border-radius: 8px; }
+#anhangChip img:not([src]) { display: none; }
+#anhangChip span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#bildBox { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: var(--bg); z-index: 5; }
+#bildBox[hidden] { display: none; }
+#bildBox img { max-width: 100%; max-height: calc(100% - 56px); border-radius: 14px; object-fit: contain; }
+.bildKnoepfe { display: flex; gap: 8px; }
 video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
 /* Blätter (Einstellungen, Ich, Start) */
@@ -122,10 +132,15 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       </span>
     </div>
     <video id="cam" playsinline muted></video>
+    <div id="bildBox" hidden>
+      <img id="bildImg" alt="Erstelltes Bild">
+      <div class="bildKnoepfe"><button class="ghost" id="bildTg" type="button">Aufs Handy</button><button class="ghost" id="bildZu" type="button">Schließen</button></div>
+    </div>
   </div>
 
   <div class="say dim" id="say"></div>
 
+  <div id="anhangChip" hidden><img id="anhangThumb" alt=""><span id="anhangName"></span><button class="ghost" id="anhangWeg" type="button" aria-label="Anhang entfernen">✕</button></div>
   <form class="bar" id="bar">
     <button class="icon" id="earBtn" type="button" aria-label="Dauerhaft zuhören an oder aus" aria-pressed="false">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
@@ -133,6 +148,10 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <button class="icon" id="eyeBtn" type="button" aria-label="Kamera an oder aus" aria-pressed="false">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
     </button>
+    <button class="icon" id="anhangBtn" type="button" aria-label="Foto oder Datei anhängen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9"/></svg>
+    </button>
+    <input id="anhangDatei" type="file" accept="image/*,application/pdf,text/plain,.txt,.csv,.md" hidden>
     <input id="msg" type="text" autocomplete="off" placeholder="Oder hier schreiben" enterkeyhint="send">
     <button class="icon primary" id="sendBtn" type="submit" aria-label="Senden">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
@@ -240,6 +259,10 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       <input id="sGovee" type="password" autocomplete="off" placeholder="aus der Govee-App: Profil → Einstellungen → API-Schlüssel beantragen">
     </div>
     <div class="field">
+      <label for="sGemini">Google-Gemini-API-Key (Bilder erstellen und bearbeiten, ca. 6 Cent pro Bild)</label>
+      <input id="sGemini" type="password" autocomplete="off" placeholder="aistudio.google.com → Get API key (Abrechnung aktivieren)">
+    </div>
+    <div class="field">
       <label for="sTgToken">Telegram-Bot-Token (für Nachrichten aufs Handy und den Wachhund)</label>
       <input id="sTgToken" type="password" autocomplete="off" placeholder="123456:ABC… von @BotFather">
     </div>
@@ -297,7 +320,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 57</div>
+    <div class="hint" id="verHint">Sentinel Version 58</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -1734,9 +1757,13 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       for (const u of (j.result || [])) {
         tgOffset = u.update_id + 1; store.set("tgOffset", tgOffset);
         const m = u.message;
-        if (!m || !m.text) continue;
+        if (!m) continue;
+        const foto = m.photo && m.photo.length ? { id: m.photo[m.photo.length - 1].file_id, name: "Foto.jpg", mime: "image/jpeg" } : null;
+        const dok = m.document && /^(image\/|application\/pdf|text\/)/.test(m.document.mime_type || "") ? { id: m.document.file_id, name: m.document.file_name || "Datei", mime: m.document.mime_type } : null;
+        if (!m.text && !foto && !dok) continue;
         if (String(m.chat.id) !== String(cfg.tgChat)) { elog("Telegram: fremder Absender ignoriert"); continue; }
-        elog("Telegram: " + m.text.slice(0, 60)); tgSchlange.push(m.text);
+        if (foto || dok) { elog("Telegram: Datei " + (foto || dok).name); tgSchlange.push({ text: m.caption || "", datei: foto || dok }); }
+        else { elog("Telegram: " + m.text.slice(0, 60)); tgSchlange.push(m.text); }
       }
     } catch (e) { elog("Telegram-Abruf: " + e.message); await new Promise(r => setTimeout(r, 8000)); }
     tgLaeuft = false; setTimeout(tgPoll, 300);
@@ -1744,6 +1771,10 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   setTimeout(tgPoll, 6000);
   setInterval(() => { if (tgSchlange.length && !busy && !speaking) tgBefehl(tgSchlange.shift()); }, 700);
   async function tgBefehl(text) {
+    if (typeof text === "object") {
+      try { await tgDateiHolen(text.datei); } catch (e) { return tgText("❌ Die Datei konnte ich nicht laden: " + e.message).catch(() => {}); }
+      return send(text.text || "Schau dir das an.", "telegram");
+    }
     const t = text.trim(), k = t.toLowerCase().replace(/^\//, "").replace(/[!.?]+$/, "").trim();
     const antw = x => tgText(x).catch(e => elog("Telegram-Antwort: " + e.message));
     if (k === "start" || k === "hilfe" || k === "help") return antw("🤖 Sentinel hört dich.\nSchnellbefehle: wachhund an · wachhund aus · foto · status\nAlles andere schreibst du einfach wie mit mir zu Hause – z. B. „mach das große Licht aus“ oder „erinnere mich morgen um 8 an den Müll“.");
@@ -2014,6 +2045,130 @@ Sagt er „später“, „genug“ oder „stopp“, oder sind alle Themen durch
     }
     dokumente = [...dokumente, { titel, name, ort, am: new Date().toISOString() }].slice(-50); store.set("dokumente", dokumente);
     return `Dokument „${titel}“ erstellt (${name}).${ort ? " Gespeichert unter " + ort + "." : ""}${handy ? " Per Telegram aufs Handy geschickt – lässt sich in Word oder Google Docs öffnen und bearbeiten." : ""}`;
+  }
+
+  // ================= ANHANG (Foto/Datei) & BILDER ERSTELLEN =================
+  let anhang = null;      // { art: "bild"|"pdf"|"text", name, mime, data | text }
+  let tgGerade = false;   // läuft die aktuelle Anfrage über Telegram?
+  let letztesBild = null; // { mime, data } – zuletzt angehängt oder erstellt, damit man es weiter bearbeiten kann
+  const b64AusBlob = blob => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1]); r.onerror = no; r.readAsDataURL(blob); });
+  function bildVerkleinern(blob, max = 1568) {
+    return new Promise((ok, no) => {
+      const url = URL.createObjectURL(blob), im = new Image();
+      im.onload = () => {
+        const f = Math.min(1, max / Math.max(im.width, im.height)), c = document.createElement("canvas");
+        c.width = Math.round(im.width * f); c.height = Math.round(im.height * f);
+        c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+        ok(c.toDataURL("image/jpeg", 0.88).split(",")[1]);
+      };
+      im.onerror = () => { URL.revokeObjectURL(url); no(new Error("Bild ließ sich nicht öffnen")); };
+      im.src = url;
+    });
+  }
+  async function anhangSetzen(blob, name) {
+    const mime = blob.type || "", n = name || blob.name || "Datei";
+    if (mime.startsWith("image/") || /\.(jpe?g|png|webp|gif|heic)$/i.test(n)) anhang = { art: "bild", name: n, mime: "image/jpeg", data: await bildVerkleinern(blob) };
+    else if (mime === "application/pdf" || /\.pdf$/i.test(n)) {
+      if (blob.size > 20e6) throw new Error("Das PDF ist zu groß (über 20 MB).");
+      anhang = { art: "pdf", name: n, mime: "application/pdf", data: await b64AusBlob(blob) };
+    } else anhang = { art: "text", name: n, text: (await blob.text()).slice(0, 100000) };
+    if (anhang.art === "bild") letztesBild = { mime: anhang.mime, data: anhang.data };
+    anhangZeigen(); elog("Anhang: " + n);
+  }
+  function anhangZeigen() {
+    $("anhangChip").hidden = !anhang;
+    if (!anhang) return;
+    const t = $("anhangThumb");
+    if (anhang.art === "bild") t.src = "data:image/jpeg;base64," + anhang.data; else t.removeAttribute("src");
+    $("anhangName").textContent = (anhang.art === "bild" ? "📷 " : "📄 ") + anhang.name + " – sag oder schreib, was ich damit machen soll";
+  }
+  function anhangBloecke() { // für die Nachricht ans Gehirn – danach ist der Anhang verbraucht
+    const a = anhang; anhang = null; anhangZeigen();
+    if (!a) return [];
+    if (a.art === "bild") return [{ type: "image", source: { type: "base64", media_type: a.mime, data: a.data } }, { type: "text", text: "(Angehängtes Foto „" + a.name + "“. Mit bild_erstellen und bearbeiten=true kannst du es verändern.)" }];
+    if (a.art === "pdf") return [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: a.data }, title: a.name }];
+    return [{ type: "text", text: "Angehängte Datei „" + a.name + "“:\n" + a.text }];
+  }
+  $("anhangBtn").addEventListener("click", () => { wake(); $("anhangDatei").click(); });
+  $("anhangDatei").addEventListener("change", async e => {
+    const f = e.target.files && e.target.files[0]; e.target.value = "";
+    if (!f) return;
+    try { await anhangSetzen(f); if (!cfg.ear) msg.focus(); } catch (err) { note(err.message, 5000); }
+  });
+  $("anhangWeg").addEventListener("click", () => { anhang = null; anhangZeigen(); });
+
+  function bildZeigen(b64, mime) {
+    $("bildImg").src = "data:" + mime + ";base64," + b64; $("bildBox").hidden = false;
+  }
+  $("bildZu").addEventListener("click", () => { $("bildBox").hidden = true; });
+  $("bildTg").addEventListener("click", async () => {
+    if (!letztesBild) return;
+    if (!tgReady()) { note("Telegram ist noch nicht eingerichtet (Einstellungen).", 5000); return; }
+    await tgPhoto(letztesBild.data, "🎨 Von Sentinel"); note("Ist auf deinem Handy.", 3000);
+  });
+  const BILD_MODELLE = ["gemini-3.1-flash-image", "gemini-3.1-flash-lite-image"];
+  async function bildErstellen(inp) {
+    if (!cfg.gemini) throw new Error("Für Bilder brauche ich einen Google-Gemini-API-Key: auf aistudio.google.com „Get API key“, Abrechnung aktivieren, dann den Key in meine Einstellungen. Ein Bild kostet etwa 6 Cent.");
+    const bearbeiten = !!inp.bearbeiten && !!letztesBild;
+    if (inp.bearbeiten && !letztesBild) throw new Error("Ich habe gerade kein Bild zum Bearbeiten. Häng eins mit der Büroklammer an oder schick es mir per Telegram.");
+    const parts = [{ text: String(inp.beschreibung || "") }];
+    if (bearbeiten) parts.push({ inlineData: { mimeType: letztesBild.mime, data: letztesBild.data } });
+    const ratio = { hoch: "9:16", quer: "16:9", quadrat: "1:1" }[inp.format] || (bearbeiten ? undefined : "1:1");
+    const body = { contents: [{ role: "user", parts }], generationConfig: { responseModalities: ["TEXT", "IMAGE"], ...(ratio ? { imageConfig: { aspectRatio: ratio } } : {}) } };
+    let letzterFehler = "";
+    for (const m of BILD_MODELLE) {
+      let j;
+      try {
+        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": cfg.gemini }, body: JSON.stringify(body) });
+        j = await r.json();
+      } catch (e) { throw new Error("Google ist gerade nicht erreichbar."); }
+      if (j.error) {
+        letzterFehler = j.error.message || "Fehler";
+        if (j.error.code === 404) continue; // Modell gibt es (so) nicht – nächstes probieren
+        if (/billing|quota|exceeded|free tier/i.test(letzterFehler)) throw new Error("Für Bilder muss bei Google die Abrechnung aktiviert sein (aistudio.google.com → Billing). Googles Meldung: " + letzterFehler.slice(0, 120));
+        if (/API key/i.test(letzterFehler)) throw new Error("Der Gemini-Key wird nicht akzeptiert. Bitte in den Einstellungen prüfen.");
+        throw new Error(letzterFehler.slice(0, 200));
+      }
+      const teile = (((j.candidates || [])[0] || {}).content || {}).parts || [];
+      const bild = teile.map(t => t.inlineData || t.inline_data).find(Boolean);
+      if (!bild) { const txt = teile.map(t => t.text).filter(Boolean).join(" "); throw new Error("Google hat kein Bild geliefert" + (txt ? ": " + txt.slice(0, 160) : " (vielleicht wegen der Inhaltsregeln).")); }
+      const mime = bild.mimeType || bild.mime_type || "image/png", data = bild.data;
+      // Kosten mitzählen (grob)
+      if (kosten.monat !== monat()) kosten = { monat: monat(), usd: 0, tage: {} };
+      const usd = m.includes("lite") ? 0.035 : 0.07; kosten.usd += usd; kosten.tage[heute()] = (kosten.tage[heute()] || 0) + usd; store.set("kosten", kosten);
+      letztesBild = { mime, data }; bildZeigen(data, mime);
+      const name = "Sentinel-Bild-" + heute() + "-" + Date.now().toString().slice(-5) + (mime.includes("jpeg") ? ".jpg" : ".png");
+      let ort = "";
+      if (NATIVE && SV && SV.saveFile) { try { ort = (await SV.saveFile({ name, mime, base64: data })).path; } catch (e) { elog("Bild speichern: " + (e.message || e)); } }
+      let handy = false;
+      if (tgReady() && (inp.aufs_handy || tgGerade)) {
+        try {
+          const bin = atob(data), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+          const fd = new FormData(); fd.append("chat_id", cfg.tgChat); fd.append("caption", "🎨 " + String(inp.beschreibung || "").slice(0, 200));
+          fd.append("photo", new Blob([a], { type: mime }), name);
+          handy = !!(await (await fetch(`https://api.telegram.org/bot${cfg.tgToken}/sendPhoto`, { method: "POST", body: fd })).json()).ok;
+        } catch (e) { elog("Bild per Telegram: " + e.message); }
+      }
+      elog("Bild erstellt mit " + m);
+      return (bearbeiten ? "Bild bearbeitet" : "Bild erstellt") + " und auf dem Bildschirm angezeigt." + (ort ? " Gespeichert unter " + ort + "." : "") + (handy ? " Per Telegram aufs Handy geschickt." : " Mit „Aufs Handy“ kann es per Telegram verschickt werden.");
+    }
+    throw new Error("Kein Bildmodell verfügbar: " + letzterFehler.slice(0, 150));
+  }
+  // Telegram-Datei (Foto/PDF) herunterladen und als Anhang setzen
+  async function tgDateiHolen(d) {
+    const j = await getJSON(`https://api.telegram.org/bot${cfg.tgToken}/getFile?file_id=${encodeURIComponent(d.id)}`);
+    if (!j.ok) throw new Error(j.description || "getFile");
+    const url = `https://api.telegram.org/file/bot${cfg.tgToken}/${j.result.file_path}`;
+    let blob;
+    try { const r = await fetch(url); if (!r.ok) throw new Error(r.status); blob = await r.blob(); }
+    catch (e) {
+      const CH = CHttp(); if (!CH) throw e;
+      const r = await CH.get({ url, responseType: "blob" });
+      const bin = atob(r.data), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+      blob = new Blob([a], { type: d.mime });
+    }
+    if (!blob.type && d.mime) blob = new Blob([blob], { type: d.mime });
+    await anhangSetzen(blob, d.name);
   }
 
   // ================= REISEN =================
@@ -2401,6 +2556,8 @@ ${zeile("Menschen", ich.menschen)}`;
         input_schema: obj({ aktion: { type: "string", enum: ["start", "ergebnis", "ende"] }, fach: { type: "string" }, richtig: { type: "boolean" } }, ["aktion"]) },
       { name: "dokument_erstellen", description: "Erstellt ein fertiges Dokument (Lebenslauf, Bewerbung, Brief, Kündigung, Zusammenfassung, Plan, Liste …) als Word-Datei, speichert es auf dem Tablet und schickt es per Telegram aufs Handy. Vorher alle nötigen Angaben erfragen (eine Frage nach der anderen). inhalt als Markdown (# Titel, ## Abschnitte, - Listen, **fett**), vollständig und sauber formuliert.",
         input_schema: obj({ titel: { type: "string" }, dateiname: { type: "string" }, inhalt: { type: "string" } }, ["titel", "inhalt"]) },
+      { name: "bild_erstellen", description: "Erstellt ein Bild (Foto, Zeichnung, Logo, Einladung, Poster, Comic …) oder bearbeitet das zuletzt angehängte/erstellte Bild (bearbeiten=true, z. B. Hintergrund ändern, Person entfernen, Stil ändern, Text einfügen). beschreibung: genaue, bildhafte Beschreibung bzw. Änderungsanweisung (gern auf Englisch, Texte im Bild in Anführungszeichen). Das Bild erscheint auf dem Bildschirm und wird gespeichert.",
+        input_schema: obj({ beschreibung: { type: "string" }, bearbeiten: { type: "boolean" }, format: { type: "string", enum: ["quadrat", "hoch", "quer"] }, aufs_handy: { type: "boolean" } }, ["beschreibung"]) },
       { name: "navigation_starten", description: "Startet sofort die Navigation in Google Maps zum Ziel (Turn-by-Turn). modus: auto, zu_fuss, fahrrad, oepnv. Nutzen bei „Route starten“, „navigier mich zu …“, „fahr los“.",
         input_schema: obj({ ziel: { type: "string" }, modus: { type: "string", enum: ["auto", "zu_fuss", "fahrrad", "oepnv"] } }, ["ziel"]) },
       { name: "reise_suchen", description: "Öffnet die passende Suche für Zug (Deutsche Bahn), Flug (Google Flüge), Hotel oder Autoroute und schickt den Link aufs Handy. von leer = Wohnort. datum JJJJ-MM-TT, zeit HH:MM.",
@@ -2648,6 +2805,7 @@ ${zeile("Menschen", ich.menschen)}`;
           }
           lern.aktiv = false; saveLern(); return ok(`Lernspiel beendet. Sterne gesamt: ${lern.sterne}, Serie ${lern.serie} Tage.`);
         }
+        case "bild_erstellen": status("malt ein Bild"); return ok(await bildErstellen(inp));
         case "dokument_erstellen": status("schreibt ein Dokument"); return ok(await dokumentErstellen(String(inp.titel || "Dokument"), inp.dateiname, String(inp.inhalt || "")));
         case "navigation_starten": {
           if (!(NATIVE && SV)) return fail("Geht nur in der App.");
@@ -2752,11 +2910,12 @@ ${zeile("Menschen", ich.menschen)}`;
   async function think(userText) {
     letzteWerkzeuge = [];
     // Nur hinschauen, wenn es ums Sehen geht – sonst ganz normales Gespräch
-    const img = SEE_RE.test(userText) ? snapshot() : null;
-    const content = img
-      ? [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: img } }, { type: "text", text: userText }]
+    const anh = anhangBloecke();
+    const img = !anh.length && SEE_RE.test(userText) ? snapshot() : null;
+    const content = anh.length ? [...anh, { type: "text", text: userText }]
+      : img ? [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: img } }, { type: "text", text: userText }]
       : userText;
-    let model = gehirnFuer(userText, img);
+    let model = gehirnFuer(userText, img || anh.length);
     elog("Gehirn: " + (model === SONNET ? "Sonnet" : model === HAIKU ? "Haiku" : "Opus"));
     // Nur die letzten Sätze mitschicken – das Langzeitgedächtnis steckt sowieso im System-Text
     const work = [...history.slice(model === HAIKU ? -12 : -20), { role: "user", content }];
@@ -2828,14 +2987,17 @@ ${zeile("Menschen", ich.menschen)}`;
   const NUR_LESEN = new Set(["wetter", "termine_anzeigen", "kochschritt", "kamera_bild", "ha_geraete", "wlan_scannen", "web_search",
     // die melden sich selbst oder sind nur Gesprächsbegleitung
     "lernen", "einrichtung", "anleitung_zeigen", "gerichte_merken", "merke_dir", "ich_kenne_dich", "vergiss", "lebensphase_setzen", "stimme_anpassen",
-    "dokument_erstellen", "reise_suchen", "nachricht_ans_handy", "geburtstag_speichern", "ort_setzen", "ernaehrungsziel", "kochmodus"]);
+    "dokument_erstellen", "bild_erstellen", "reise_suchen", "nachricht_ans_handy", "geburtstag_speichern", "ort_setzen", "ernaehrungsziel", "kochmodus"]);
   async function send(text, via = "sprache") {
     text = String(text || "").trim();
+    if (!text && anhang) text = "Schau dir das an.";
     if (busy || !text) return;
+    const mitAnhang = anhang ? ` [mit Anhang: ${anhang.name}]` : "";
     const tg = via === "telegram";
+    if (!busy) tgGerade = tg;
     const sag = (x, m) => tg ? tgText("🤖 " + x).catch(e => elog("Telegram-Antwort: " + e.message)) : speak(x, m);
     const roh = text.toLowerCase().replace(WAKE, " ").replace(/\b(bitte|mal|jetzt)\b/g, " ").replace(/[^\wäöüß ]/g, " ").replace(/\s+/g, " ").trim();
-    const direkt = smartCommands().find(c => c.name.toLowerCase() === roh);
+    const direkt = !mitAnhang && smartCommands().find(c => c.name.toLowerCase() === roh);
     if (direkt) {
       wake(); logTurn("user", text); elog("Direktbefehl: " + direkt.name);
       try { await triggerUrl(direkt.url); setMood("freude"); sag(tg ? "✅ " + direkt.name : "Erledigt.", "neutral"); if (!tg) bestaetigen("✅ " + direkt.name); }
@@ -2855,7 +3017,7 @@ ${zeile("Menschen", ich.menschen)}`;
       const answer = await think(tg ? "(per Telegram von unterwegs) " + text : text);
       const { tag, clean, sah } = parse(answer || "");
       const said = clean || "Erledigt.";
-      history.push({ role: "user", content: (tg ? "(per Telegram) " : "") + text }, { role: "assistant", content: said + (sah ? ` [sah: ${sah}]` : "") });
+      history.push({ role: "user", content: (tg ? "(per Telegram) " : "") + text + mitAnhang }, { role: "assistant", content: said + (sah ? ` [sah: ${sah}]` : "") });
       while (history.length > 40) history.splice(0, 2);
       logTurn("assistant", said + (sah ? ` (gesehen: ${sah})` : ""));
       busy = false; sendBtn.disabled = false;
@@ -2991,6 +3153,8 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     ["Timer & Erinnerungen", "Mit Gong und Ansage. Erinnerungen landen auch im Google-Kalender und melden sich aufs Handy – selbst wenn ich aus bin.", ["Timer 10 Minuten Nudeln", "Erinnere mich morgen um 8 an den Müll", "Welche Erinnerungen habe ich?"]],
     ["Listen", "Einkauf, Aufgaben, alles was du willst – auf Wunsch per Telegram aufs Handy.", ["Setz Milch auf die Einkaufsliste", "Schick mir die Einkaufsliste"]],
     ["Wetter", "Direkt und kostenlos, bis 7 Tage, mit Wind und Regen.", ["Wird's morgen windig?", "Wetter am Wochenende"]],
+    ["Fotos & Dateien zeigen", "Büroklammer unten antippen (Foto, Kamera, PDF, Text) oder per Telegram ein Foto/PDF an deinen Bot schicken – dann sagen, was ich damit machen soll.", ["Was steht in diesem Brief?", "Fass mir das PDF zusammen", "Was ist das für eine Pflanze?"]],
+    ["Bilder malen & bearbeiten", "Braucht einen Google-Gemini-Key in den Einstellungen (ca. 6 Cent pro Bild). Bearbeiten klappt mit dem zuletzt angehängten oder gemalten Bild.", ["Mal mir ein Bild von einem Paddleboard im Sonnenuntergang", "Mach den Himmel auf dem Foto blauer", "Mach daraus ein Comic"]],
     ["Licht (Govee)", "Einrichtung: Govee-App → Profil → Einstellungen → API-Schlüssel beantragen, Key in meine Einstellungen.", ["Großes Licht an", "Mach es gemütlich", "Kleines Licht blau auf 30 Prozent"]],
     ["Smart Home (Alexa)", "Alles, was Alexa kann: Voice-Monkey-Trigger + Alexa-Routine anlegen, Link in „Smart-Home-Befehle“ eintragen (Name = Link). Den Namen sagen reicht dann.", ["Ladestecker an"]],
     ["Akku", "Ich schalte meine Ladesteckdose selbst – Einstellung „Akku selbst laden“.", ["Wie voll ist dein Akku?"]],
@@ -3070,7 +3234,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
     $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || ""; $("sGroq").value = cfg.groqKey || ""; $("sMuteBeep").checked = cfg.muteBeep !== false;
     $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about; $("sName").value = ich.name || ""; $("sBday").value = /^\d{4}-/.test(ich.geburtstag || "") ? ich.geburtstag : ""; $("sSmart").value = cfg.smart || "";
-    $("sTgToken").value = cfg.tgToken || ""; $("sGovee").value = cfg.govee || ""; $("sTgChat").value = cfg.tgChat || ""; $("sNight").checked = !!cfg.night; $("sPip").checked = cfg.pip !== false; $("sAkku").checked = !!cfg.akku; $("sTgRemind").checked = cfg.tgRemind !== false; $("sTgConfirm").checked = cfg.tgConfirm !== false; $("sAkkuMin").value = cfg.akkuMin; $("sAkkuMax").value = cfg.akkuMax; $("sAkkuOn").value = cfg.akkuOn || ""; $("sAkkuOff").value = cfg.akkuOff || ""; $("sNightFrom").value = cfg.nightFrom || "22:30"; $("sNightTo").value = cfg.nightTo || "06:30";
+    $("sTgToken").value = cfg.tgToken || ""; $("sGovee").value = cfg.govee || ""; $("sGemini").value = cfg.gemini || ""; $("sTgChat").value = cfg.tgChat || ""; $("sNight").checked = !!cfg.night; $("sPip").checked = cfg.pip !== false; $("sAkku").checked = !!cfg.akku; $("sTgRemind").checked = cfg.tgRemind !== false; $("sTgConfirm").checked = cfg.tgConfirm !== false; $("sAkkuMin").value = cfg.akkuMin; $("sAkkuMax").value = cfg.akkuMax; $("sAkkuOn").value = cfg.akkuOn || ""; $("sAkkuOff").value = cfg.akkuOff || ""; $("sNightFrom").value = cfg.nightFrom || "22:30"; $("sNightTo").value = cfg.nightTo || "06:30";
     const u = usage.tag === heute() ? usage : { n: 0, inTok: 0, outTok: 0 };
     $("sUsage").textContent = `Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.usd)} · Heute: ${u.n} Anfragen · ${u.inTok.toLocaleString("de-DE")} Tokens rein · ${(u.cacheTok || 0).toLocaleString("de-DE")} günstig aus dem Zwischenspeicher · ${u.outTok.toLocaleString("de-DE")} Tokens raus`;
     $("setPanel").hidden = false;
@@ -3155,6 +3319,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     }
     cfg.haUrl = $("sHaUrl").value.trim(); cfg.haToken = $("sHaToken").value.trim(); cfg.about = $("sAbout").value.trim().slice(0, 4000); cfg.smart = $("sSmart").value.trim().slice(0, 8000);
     const nm = $("sName").value.trim().slice(0, 40); if (nm !== ich.name) { ich.name = nm; saveIch(); }
+    cfg.gemini = $("sGemini").value.trim();
     if ($("sGovee").value.trim() !== (cfg.govee || "")) { cfg.govee = $("sGovee").value.trim(); goveeGeraete = null; goveeLaden(); }
     cfg.tgToken = $("sTgToken").value.trim(); cfg.tgChat = $("sTgChat").value.trim();
     cfg.tgRemind = $("sTgRemind").checked; cfg.tgConfirm = $("sTgConfirm").checked; cfg.akku = $("sAkku").checked; cfg.akkuOn = $("sAkkuOn").value.trim(); cfg.akkuOff = $("sAkkuOff").value.trim();
