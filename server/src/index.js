@@ -13,11 +13,11 @@ const HAIKU = "claude-haiku-5-5", SONNET = "claude-sonnet-5-5", OPUS = "claude-o
 
 // Abo-Stufen (Budget pro Monat in Euro, Anfragen pro Tag)
 export const STUFEN = {
-  probe:    { name: "Probe",    budgetEur: 0,  proTag: 0,    gesamt: 30, modelle: [HAIKU],               suche: false, maxTokens: 1000 },
-  basis:    { name: "Basis",    budgetEur: 1.5, proTag: 40,  modelle: [HAIKU],                       suche: false, maxTokens: 1500 },
-  plus:     { name: "Plus",     budgetEur: 4,  proTag: 80,   modelle: [HAIKU, SONNET],               suche: true,  maxTokens: 4000, bremse: 0.8 },
-  pro:      { name: "Pro",      budgetEur: 9,  proTag: 150,  modelle: [HAIKU, SONNET],               suche: true,  maxTokens: 4000, bremse: 0.9 },
-  business: { name: "Business", budgetEur: 25, proTag: null, modelle: [HAIKU, SONNET, OPUS],         suche: true,  maxTokens: 6000, bremse: 0.95 },
+  probe:    { name: "Probe",    budgetEur: 0,  proTag: 0,    bilderTag: 3,   gesamt: 30, modelle: [HAIKU],               suche: false, maxTokens: 1000 },
+  basis:    { name: "Basis",    budgetEur: 1.5, proTag: 40,  bilderTag: 10,  modelle: [HAIKU],                       suche: false, maxTokens: 1500 },
+  plus:     { name: "Plus",     budgetEur: 4,  proTag: 80,   bilderTag: 25, modelle: [HAIKU, SONNET],               suche: true,  maxTokens: 4000, bremse: 0.8 },
+  pro:      { name: "Pro",      budgetEur: 9,  proTag: 150,  bilderTag: 60, modelle: [HAIKU, SONNET],               suche: true,  maxTokens: 4000, bremse: 0.9 },
+  business: { name: "Business", budgetEur: 25, proTag: null, bilderTag: 150, modelle: [HAIKU, SONNET, OPUS],         suche: true,  maxTokens: 6000, bremse: 0.95 },
 };
 const RANG = ["probe", "basis", "plus", "pro", "business"];
 // Nachschub-Pakete (Einmalkauf) -> zusätzliches Budget in Euro
@@ -130,6 +130,41 @@ async function chat(req, env, uid) {
   return json(data);
 }
 
+// Bilder malen/bearbeiten mit Cloudflare Workers AI (FLUX.2) – im Gratis-Kontingent von Cloudflare
+const BILD_MODELL = "@cf/black-forest-labs/flux-2-klein-4b";
+const GRAU = { quadrat: [1024, 1024], hoch: [768, 1344], quer: [1344, 768] };
+const b64ZuBytes = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+async function zuB64(x) {
+  if (typeof x === "string") return x;
+  if (x && typeof x.image === "string") return x.image;
+  if (x && x.result && typeof x.result.image === "string") return x.result.image;
+  const buf = x instanceof ReadableStream ? await new Response(x).arrayBuffer() : x instanceof ArrayBuffer ? x : x && x.buffer ? x.buffer : null;
+  if (!buf) throw new Error("Unbekannte Bild-Antwort");
+  let bin = ""; const a = new Uint8Array(buf); for (let i = 0; i < a.length; i += 0x8000) bin += String.fromCharCode(...a.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+async function bild(req, env, uid) {
+  if (!env.AI) return fehler(503, "api_error", "Bilder sind auf dem Server nicht eingerichtet.");
+  const u = await nutzerLaden(env, uid); await speichern(env, u);
+  const st = STUFEN[u.tier] || STUFEN.probe;
+  const z = await env.DB.prepare("SELECT n FROM bilder WHERE uid = ? AND day = ?").bind(uid, heute()).first();
+  if (z && z.n >= st.bilderTag) return fehler(429, "bilder_limit", `Heute sind ${st.bilderTag} Bilder drin – morgen geht's weiter${u.tier === "business" ? "" : " oder mit einer höheren Stufe"}.`);
+  let b; try { b = await req.json(); } catch (e) { return fehler(400, "invalid_request_error", "Ungültige Anfrage"); }
+  const prompt = String(b.prompt || "").slice(0, 2000);
+  if (!prompt) return fehler(400, "invalid_request_error", "Beschreibung fehlt");
+  const [w, h] = GRAU[b.format] || GRAU.quadrat;
+  const form = new FormData();
+  form.append("prompt", prompt); form.append("width", String(w)); form.append("height", String(h));
+  if (b.bild) form.append("input_image_0", new Blob([b64ZuBytes(b.bild)], { type: b.mime || "image/jpeg" }), "eingabe.jpg");
+  const fr = new Response(form);
+  let out;
+  try { out = await env.AI.run(BILD_MODELL, { multipart: { body: fr.body, contentType: fr.headers.get("content-type") } }); }
+  catch (e) { return fehler(502, "api_error", "Die Bild-KI hat abgelehnt: " + String(e.message || e).slice(0, 200)); }
+  const data = await zuB64(out);
+  await env.DB.prepare("INSERT INTO bilder (uid, day, n) VALUES (?, ?, 1) ON CONFLICT(uid, day) DO UPDATE SET n = n + 1").bind(uid, heute()).run();
+  return json({ mime: "image/jpeg", data, rest: st.bilderTag - ((z && z.n) || 0) - 1 });
+}
+
 export default {
   async fetch(req, env) {
     if (req.method === "OPTIONS") return json({});
@@ -140,6 +175,7 @@ export default {
     try {
       if (url.pathname === "/v1/me" && req.method === "GET") { const u = await nutzerLaden(env, uid); await speichern(env, u); return json(stand(u)); }
       if (url.pathname === "/v1/messages" && req.method === "POST") return await chat(req, env, uid);
+      if (url.pathname === "/v1/bild" && req.method === "POST") return await bild(req, env, uid);
       return fehler(404, "not_found", "Gibt es nicht");
     } catch (e) { return fehler(500, "api_error", "Serverfehler: " + e.message); }
   },

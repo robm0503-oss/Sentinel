@@ -1,0 +1,55 @@
+name: Server deployen (Cloudflare)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["server/**", ".github/workflows/server.yml"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_KEY }}
+      RC_SECRET: ${{ secrets.RC_SECRET }}
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prüfen, ob die Cloudflare-Secrets da sind
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN oder CLOUDFLARE_ACCOUNT_ID fehlt noch – Server wird übersprungen."
+            echo "SKIP=1" >> $GITHUB_ENV
+          fi
+      - name: Server-Tests
+        if: env.SKIP != '1'
+        run: node test/server.test.mjs
+      - name: Datenbank anlegen (falls noch nicht da)
+        if: env.SKIP != '1'
+        run: |
+          npm i -g wrangler@4 >/dev/null 2>&1
+          ID=$(wrangler d1 list --json | node -e 'const l=JSON.parse(require("fs").readFileSync(0,"utf8"));const d=l.find(x=>x.name==="sentinel");process.stdout.write(d?d.uuid:"")')
+          if [ -z "$ID" ]; then
+            wrangler d1 create sentinel
+            ID=$(wrangler d1 list --json | node -e 'const l=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(l.find(x=>x.name==="sentinel").uuid)')
+          fi
+          sed -i "s/HIER_DIE_DATABASE_ID_EINTRAGEN/$ID/" wrangler.toml
+          wrangler d1 execute sentinel --remote --file=schema.sql --yes
+      - name: Server hochladen
+        if: env.SKIP != '1'
+        run: |
+          wrangler deploy | tee deploy.log
+          URL=$(grep -o 'https://[a-z0-9.-]*workers\.dev' deploy.log | head -1)
+          echo "### Sentinel-Server läuft: $URL" >> $GITHUB_STEP_SUMMARY
+      - name: Geheimnisse setzen
+        if: env.SKIP != '1'
+        run: |
+          [ -n "$ANTHROPIC_KEY" ] && echo "$ANTHROPIC_KEY" | wrangler secret put ANTHROPIC_KEY || echo "::warning::ANTHROPIC_KEY fehlt noch"
+          [ -n "$RC_SECRET" ] && echo "$RC_SECRET" | wrangler secret put RC_SECRET || echo "RC_SECRET (RevenueCat) kommt später"

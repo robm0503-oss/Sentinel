@@ -43,3 +43,18 @@ sql.exec("UPDATE users SET tier_checked = 0");
 r = await call("/v1/me"); console.log("Gleicher Nachschub nicht doppelt:", r.j.budget_eur);
 r = await worker.fetch(new Request("https://x/v1/me", { headers: { authorization: "Bearer quatsch" } }), env); assert.equal(r.status, 401);
 console.log("ALLE TESTS OK");
+
+// Bilder: Workers AI nachgebaut, Tageslimit Probe = 3
+{
+  const runs = [];
+  const env2 = { ...env, AI: { run: async (m, o) => { runs.push({ m, ct: o.multipart.contentType, len: (await new Response(o.multipart.body).arrayBuffer()).byteLength }); return { image: "QUJD" }; } } };
+  const uid2 = "22222222-2222-4333-8444-555555555555";
+  const bildCall = body => worker.fetch(new Request("https://x/v1/bild", { method: "POST", headers: { authorization: "Bearer " + uid2 }, body: JSON.stringify(body) }), env2).then(async r => ({ status: r.status, j: await r.json() }));
+  rc = {};
+  let r1 = await bildCall({ prompt: "ein Hund", format: "quer" });
+  assert.equal(r1.status, 200); assert.equal(r1.j.data, "QUJD"); assert.ok(runs[0].ct.startsWith("multipart/form-data"));
+  r1 = await bildCall({ prompt: "blauer Himmel", bild: "QUJD" }); assert.equal(r1.status, 200); assert.ok(runs[1].len > runs[0].len - 40);
+  r1 = await bildCall({ prompt: "x" }); assert.equal(r1.status, 200); assert.equal(r1.j.rest, 0);
+  r1 = await bildCall({ prompt: "x" }); assert.equal(r1.status, 429);
+  console.log("Bilder ok:", runs.map(x => x.m));
+}
