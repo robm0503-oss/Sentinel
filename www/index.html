@@ -153,6 +153,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <div class="err" id="startErr" hidden></div>
     <button class="btn" id="startBtn" type="button">Aufwecken</button>
     <button class="ghost" id="startAbo" type="button" hidden style="margin-top:10px;width:100%">Ohne Key starten · 30 Fragen gratis, danach Abo</button>
+    <button class="ghost" id="startSicherung" type="button" style="margin-top:10px;width:100%">💾 Sicherung laden (Datei aus Telegram)</button>
   </div>
 </div>
 
@@ -296,7 +297,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 56</div>
+    <div class="hint" id="verHint">Sentinel Version 57</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -3102,6 +3103,8 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     try { await navigator.clipboard.writeText(json); } catch (e) {}
     note(ok1 ? "Sicherung ist per Telegram auf deinem Handy (und unter Downloads/Sentinel)." : "Sicherung liegt unter Downloads/Sentinel und in der Zwischenablage.", 6000);
   });
+  $("startSicherung").addEventListener("click", () => $("sicherungDatei").click());
+  $("keyInput").addEventListener("input", e => { const v = e.target.value.trim(); if (v.startsWith("{") && v.endsWith("}")) sicherungEinspielen(v); });
   $("sicherungLaden").addEventListener("click", () => { $("sicherungText").hidden = false; $("sicherungDatei").click(); });
   $("sicherungDatei").addEventListener("change", async e => { const f = e.target.files && e.target.files[0]; if (f) sicherungEinspielen(await f.text()); });
   $("sicherungText").addEventListener("input", e => { const v = e.target.value.trim(); if (v.startsWith("{") && v.endsWith("}")) sicherungEinspielen(v); });
