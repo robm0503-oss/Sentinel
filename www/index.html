@@ -296,7 +296,16 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 55</div>
+    <div class="hint" id="verHint">Sentinel Version 56</div>
+    <div class="field">
+      <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
+      <div style="display:flex;gap:8px">
+        <button class="ghost" id="sicherungSenden" type="button" style="flex:1">Sicherung erstellen</button>
+        <button class="ghost" id="sicherungLaden" type="button" style="flex:1">Sicherung laden</button>
+      </div>
+      <input id="sicherungDatei" type="file" accept=".json,application/json,text/plain" hidden>
+      <textarea id="sicherungText" rows="3" hidden placeholder="Sicherungstext hier einfügen"></textarea>
+    </div>
     <button class="btn" id="setSave" type="button">Speichern</button>
   </div>
 </div>
@@ -3066,6 +3075,36 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     $("setPanel").hidden = false;
   }
   $("setBtn").addEventListener("click", openSettings);
+  // ---- Sicherung: alles in eine Datei, per Telegram aufs Handy, auf jedem Gerät wieder laden ----
+  const NICHT_SICHERN = new Set(["sentinel.uid", "sentinel.aboStand", "sentinel.tgOffset", "sentinel.wach"]);
+  function sicherungErstellen() {
+    const d = { sentinelSicherung: 1, am: new Date().toISOString(), daten: {} };
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith("sentinel.") && !NICHT_SICHERN.has(k)) d.daten[k] = localStorage.getItem(k); }
+    return JSON.stringify(d);
+  }
+  function sicherungEinspielen(text) {
+    let d; try { d = JSON.parse(String(text).trim()); } catch (e) { note("Das ist keine gültige Sicherung.", 5000); return; }
+    if (!d || !d.sentinelSicherung || !d.daten) { note("Das ist keine Sentinel-Sicherung.", 5000); return; }
+    for (const [k, v] of Object.entries(d.daten)) if (k.startsWith("sentinel.") && !NICHT_SICHERN.has(k)) localStorage.setItem(k, v);
+    note("Sicherung geladen – ich starte neu.", 2500); setTimeout(() => location.reload(), 1500);
+  }
+  $("sicherungSenden").addEventListener("click", async () => {
+    const json = sicherungErstellen(), name = "sentinel-sicherung-" + heute() + ".json";
+    let ok1 = false;
+    if (tgReady()) {
+      try {
+        const fd = new FormData(); fd.append("chat_id", cfg.tgChat); fd.append("caption", "💾 Sentinel-Sicherung vom " + new Date().toLocaleDateString("de-DE") + " – auf dem neuen Gerät unter Einstellungen → Sicherung laden einspielen. Enthält deine Keys: nicht weitergeben!");
+        fd.append("document", new Blob([json], { type: "application/json" }), name);
+        const r = await fetch(`https://api.telegram.org/bot${cfg.tgToken}/sendDocument`, { method: "POST", body: fd }); ok1 = !!(await r.json()).ok;
+      } catch (e) {}
+    }
+    if (NATIVE && SV && SV.saveFile) { try { await SV.saveFile({ name, mime: "application/json", base64: btoa(unescape(encodeURIComponent(json))) }); } catch (e) {} }
+    try { await navigator.clipboard.writeText(json); } catch (e) {}
+    note(ok1 ? "Sicherung ist per Telegram auf deinem Handy (und unter Downloads/Sentinel)." : "Sicherung liegt unter Downloads/Sentinel und in der Zwischenablage.", 6000);
+  });
+  $("sicherungLaden").addEventListener("click", () => { $("sicherungText").hidden = false; $("sicherungDatei").click(); });
+  $("sicherungDatei").addEventListener("change", async e => { const f = e.target.files && e.target.files[0]; if (f) sicherungEinspielen(await f.text()); });
+  $("sicherungText").addEventListener("input", e => { const v = e.target.value.trim(); if (v.startsWith("{") && v.endsWith("}")) sicherungEinspielen(v); });
   $("sZwecke").addEventListener("click", () => { $("setPanel").hidden = true; zweckeZeigen(false); });
   let stimmFuerGesicht = "roboter";
   function stimmFelder() {
