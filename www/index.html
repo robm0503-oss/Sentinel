@@ -321,7 +321,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 62</div>
+    <div class="hint" id="verHint">Sentinel Version 63</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -2431,7 +2431,7 @@ Lies immer nur EINEN Schritt vor, kurz und klar, und melde ihn mit kochschritt. 
   class ApiError extends Error { constructor(msg, kind) { super(msg); this.kind = kind; } }
   // ---- Sentinel-Abo: Server statt eigenem Key ----
   const SENTINEL_SERVER = "https://sentinel-server.robsen-sentinel.workers.dev";
-  const RC_KEY = "goog_HIER_REVENUECAT_PUBLIC_KEY";                              // RevenueCat → Projekt → API Keys (öffentlich)
+  const RC_KEY = "goog_FTFXQPkrPXoMQTXHshQGObGAVoi";                              // RevenueCat → Projekt → API Keys (öffentlich)
   const serverUrl = () => (cfg.server || SENTINEL_SERVER).replace(/\/+$/, "");
   const aboModus = () => !cfg.key && !/HIER-DEIN-NAME/.test(serverUrl());
   let uid = store.get("uid", ""); if (!uid) { uid = (crypto.randomUUID ? crypto.randomUUID() : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16))); store.set("uid", uid); }
