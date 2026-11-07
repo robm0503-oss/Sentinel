@@ -301,6 +301,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       <textarea id="sAbout" rows="5" placeholder="Wer du bist, was du machst, was dir wichtig ist …"></textarea>
     </div>
     <label class="check"><input id="sSearch" type="checkbox"> Im Internet suchen dürfen</label>
+    <label class="check"><input id="sSchwarm" type="checkbox"> Schwarmwissen: aus Fehlern lernen und das Gelernte anonym mit allen Sentinels teilen (nie Persönliches)</label>
     <div class="field">
       <label for="sEngine">Ohren</label>
       <select id="sEngine">
@@ -320,7 +321,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 61</div>
+    <div class="hint" id="verHint">Sentinel Version 62</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -1887,12 +1888,14 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     lernen: "Alter bzw. Klasse, Lieblingsfächer und schwierige Fächer, wie lange am Stück gelernt werden soll",
     familie: "Wer aus der Familie benachrichtigt werden soll (Telegram) und welche Tabletten/Termine regelmäßig anstehen (als Erinnerungen stellen)",
     firma: "Firmenname, Branche, Angebot, Öffnungszeiten, Ansprechpartner und häufige Fragen von Besuchern – mit firmenwissen_speichern festhalten",
+    schwarm: "Frag, ob du beim Schwarmwissen mitmachen darfst: Wenn du etwas falsch machst, korrigiert wirst oder etwas nicht weißt, schreibst du eine anonyme Lernkarte (nur allgemeines Wissen, nie Namen oder Persönliches). Alle Sentinels lernen so voneinander und werden schlauer. Antwort mit schwarmwissen (aktion an oder aus) speichern.",
     geraetescan: "ALS LETZTES THEMA: Kündige an, dass du jetzt im WLAN nach Geräten suchst (dauert ca. 20 Sekunden), und nutze wlan_scannen. Erkläre danach in einfachen Worten jedes gefundene Gerät: was es vermutlich ist und ob bzw. WIE du es steuern kannst (Govee-Lampen: API-Key aus der Govee-App; Geräte in der Alexa-App wie Tapo, Steckdosen, Lampen: über Voice Monkey; Fire TV oder Smart-TV: Bild per Bildschirmübertragung; Chromecast: Übertragen; Router, Drucker, Handys: nicht steuerbar). Biete an, das erste davon gleich gemeinsam einzurichten. Findest du nichts Steuerbares: frag, ob du passende Smart-Home-Geräte im Internet suchen und zeigen sollst (geraete_vorschlagen aktion suchen). Sagt er nein: geraete_vorschlagen aktion ablehnen – dann nie wieder danach fragen.",
   };
   function einrThemen() {
-    const z = zwecke(); if (!z.length) return Object.keys(EINR_THEMEN).filter(k => !["lernen", "familie", "firma"].includes(k));
+    const z = zwecke(); if (!z.length) return Object.keys(EINR_THEMEN).filter(k => !["lernen", "familie", "firma"].includes(k) && (k !== "schwarm" || (aboMoeglich() && cfg.schwarm === undefined)));
     // (Geräte-Scan ist bei „ohne Auswahl“ automatisch dabei)
     const set = new Set(["name", "stil"]); z.forEach(k => ZWECKE[k].themen.forEach(t => set.add(t)));
+    if (aboMoeglich() && cfg.schwarm === undefined) set.add("schwarm");
     if (z.some(k => k !== "lernen")) set.add("geraetescan");
     return Object.keys(EINR_THEMEN).filter(k => set.has(k));
   }
@@ -2195,6 +2198,53 @@ Sagt er „später“, „genug“ oder „stopp“, oder sind alle Themen durch
     await anhangSetzen(blob, d.name);
   }
 
+  // ================= SCHWARMWISSEN =================
+  // Sentinels lernen voneinander: anonyme Lernkarten gehen an den Server, freigegebenes Wissen kommt zurück.
+  let schwarmSchlange = store.get("schwarmSchlange", []), schwarmTimer = null;
+  function schwarmInfo() {
+    if (!cfg.schwarm) return "";
+    const k = (store.get("schwarm", { karten: [] }).karten || []).map(x => "- " + x.text);
+    let wissen = ""; for (const z of k) { if (wissen.length + z.length > 3000) break; wissen += z + "\n"; }
+    return `Schwarmwissen ist AN: Wirst du korrigiert, wusstest du etwas nicht und hast es dann herausgefunden, oder hast du einen allgemein nützlichen Trick entdeckt, schick danach EINE kurze Lernkarte mit schwarmwissen (aktion lernkarte) – allgemein formuliert, ohne Namen, Orte, Gesundheit, Termine oder sonst Persönliches, und nicht für Kleinigkeiten. Erwähne das nicht.\n` +
+      (wissen ? `Das haben alle Sentinels gemeinsam gelernt (beachte es):\n${wissen}` : "");
+  }
+  function schwarmSenden(sofort) {
+    clearTimeout(schwarmTimer);
+    schwarmTimer = setTimeout(async () => {
+      if (!cfg.schwarm || !aboMoeglich() || !schwarmSchlange.length) return;
+      const paket = schwarmSchlange.slice(0, 5);
+      try {
+        const r = await fetch(serverUrl() + "/v1/wissen", { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + uid }, body: JSON.stringify({ karten: paket }) });
+        if (!r.ok && r.status !== 400) throw new Error(r.status);
+        schwarmSchlange = schwarmSchlange.slice(paket.length); store.set("schwarmSchlange", schwarmSchlange);
+        elog("Schwarmwissen: " + paket.length + " Karte(n) geschickt");
+        if (schwarmSchlange.length) schwarmSenden();
+      } catch (e) { elog("Schwarmwissen: später nochmal (" + (e.message || e) + ")"); }
+    }, sofort ? 500 : 30000);
+  }
+  function schwarmKarte(art, text) {
+    schwarmSchlange.push({ art, text: String(text).slice(0, 400) });
+    schwarmSchlange = schwarmSchlange.slice(-30); store.set("schwarmSchlange", schwarmSchlange); schwarmSenden(true);
+  }
+  function schwarmFehler(werkzeug, meldung) { // für Robsens Fehler-Hitliste – nur Werkzeugname und gekürzte Meldung
+    if (!cfg.schwarm || ["kamera_bild"].includes(werkzeug)) return;
+    schwarmSchlange.push({ art: "fehler", thema: werkzeug, text: String(meldung).replace(/\d{3,}/g, "…").slice(0, 160) });
+    schwarmSchlange = schwarmSchlange.slice(-30); store.set("schwarmSchlange", schwarmSchlange); schwarmSenden();
+  }
+  async function schwarmAbgleich() {
+    if (!cfg.schwarm || !aboMoeglich()) return;
+    try {
+      const r = await fetch(serverUrl() + "/v1/wissen", { headers: { authorization: "Bearer " + uid } });
+      if (!r.ok) throw new Error(r.status);
+      const d = await r.json();
+      store.set("schwarm", { zeit: Date.now(), karten: d.karten || [] });
+      elog("Schwarmwissen: " + (d.karten || []).length + " gemeinsame Lernkarten");
+    } catch (e) { elog("Schwarmwissen-Abgleich ging nicht: " + (e.message || e)); }
+    schwarmSenden();
+  }
+  setTimeout(schwarmAbgleich, 20000);
+  setInterval(schwarmAbgleich, 6 * 3600000);
+
   // ================= REISEN =================
   function reiseLink(inp) {
     const von = String(inp.von || cfg.ort || "").trim(), nach = String(inp.nach || "").trim();
@@ -2483,7 +2533,7 @@ Soll Musik oder ein Video von YouTube laufen: suche mit der Websuche den passend
 Als Coworker erledigst du Aufgaben selbstständig: Sagt jemand, was er braucht (z. B. einen Lebenslauf, eine Bewerbung, einen Brief), frag nacheinander nach allem Nötigen, dann erstell das Dokument mit dokument_erstellen und sag kurz, wo es liegt. Für Reisen öffne mit reise_suchen die passende Suche und recherchiere bei Bedarf mit der Websuche.
 Fragt jemand, was du kannst oder wie man etwas einrichtet, zeig die Anleitung (anleitung_zeigen) und fasse das Wichtigste kurz zusammen. Neue Fähigkeiten kommen über die Einstellungen dazu (Smart-Home-Befehle, Govee, Telegram) – erkläre das konkret.
 Für Wetterfragen nutze immer das Werkzeug wetter, nie die Websuche. Will ${wer} etwas kochen oder backen, biete den Kochmodus an: Dann führst du Schritt für Schritt durchs Rezept und man muss nicht jedes Mal „Sentinel“ sagen. Geht ${wer} aus dem Haus, kannst du den Wachhund anbieten. Nachrichten aufs Handy gehen über Telegram${tgReady() ? "" : " (noch nicht eingerichtet: in den Einstellungen Bot-Token und Chat-ID eintragen)"}.
-Kommentiere nie frühere Versuche, Fehler oder Versionen („vorhin hatte es nicht geklappt, jetzt aber“) – außer man fragt ausdrücklich danach. Sag nur kurz, was du JETZT getan hast, und nur, wenn das Werkzeug es bestätigt hat.
+${schwarmInfo()}Kommentiere nie frühere Versuche, Fehler oder Versionen („vorhin hatte es nicht geklappt, jetzt aber“) – außer man fragt ausdrücklich danach. Sag nur kurz, was du JETZT getan hast, und nur, wenn das Werkzeug es bestätigt hat.
 Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
 Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Sag nie, dass du dir etwas gemerkt hast, ohne das Werkzeug wirklich benutzt zu haben.
@@ -2568,6 +2618,8 @@ ${zeile("Menschen", ich.menschen)}`;
         input_schema: obj({ an: { type: "boolean" }, rezept: { type: "string" }, schritte: { type: "array", items: { type: "string" } } }, ["an"]) },
       { name: "kochschritt", description: "Merkt sich, welchen Rezeptschritt (ab 1) du gerade vorgelesen hast.",
         input_schema: obj({ nummer: { type: "integer" } }, ["nummer"]) },
+      { name: "schwarmwissen", description: "an/aus = beim Schwarmwissen mitmachen oder nicht (der Nutzer entscheidet). lernkarte = eine anonyme, allgemeingültige Lernkarte an alle Sentinels schicken (nur wenn Schwarmwissen an ist): art korrektur (du wurdest korrigiert), unwissen (du wusstest etwas nicht und hast es herausgefunden) oder tipp (allgemein nützlich). text: ein Satz, allgemein formuliert, OHNE Namen, Orte, Gesundheit, Termine, Zahlen oder sonst Persönliches.",
+        input_schema: obj({ aktion: { type: "string", enum: ["an", "aus", "lernkarte"] }, art: { type: "string", enum: ["korrektur", "unwissen", "tipp"] }, text: { type: "string" } }, ["aktion"]) },
       { name: "geraete_vorschlagen", description: "suchen = passende Smart-Home-Geräte (die du steuern kannst: Govee-Lampen, Alexa-kompatible WLAN-Steckdosen wie Tapo, Saugroboter …) im Shop öffnen; suche = wonach (z. B. 'Govee WLAN Glühbirne E27'). ablehnen = der Nutzer will keine Vorschläge – danach nie wieder anbieten.",
         input_schema: obj({ aktion: { type: "string", enum: ["suchen", "ablehnen"] }, suche: { type: "string" } }, ["aktion"]) },
       { name: "firmenwissen_speichern", description: "Speichert Wissen über die Firma (Name, Angebot, Öffnungszeiten, Preise, häufige Fragen), das du am Empfang nutzen darfst. Wird an das vorhandene Wissen angehängt.",
@@ -2806,6 +2858,16 @@ ${zeile("Menschen", ich.menschen)}`;
           return ok(`Kochmodus an, ${st.length} Schritte. Lies jetzt Schritt 1 vor.`);
         }
         case "kochschritt": koch.schritt = Math.max(1, Math.min(koch.schritte.length, Math.round(Number(inp.nummer) || 1))); return ok("ok");
+        case "schwarmwissen": {
+          if (inp.aktion === "an" || inp.aktion === "aus") {
+            cfg.schwarm = inp.aktion === "an"; saveCfg(); if (cfg.schwarm) setTimeout(schwarmAbgleich, 1000);
+            return ok(cfg.schwarm ? "Schwarmwissen ist an." : "Schwarmwissen ist aus – es wird nichts geteilt.");
+          }
+          if (!cfg.schwarm) return fail("Schwarmwissen ist aus – keine Lernkarte geschickt.");
+          if (!inp.text || String(inp.text).length < 10) return fail("Die Lernkarte braucht einen ganzen Satz.");
+          schwarmKarte(inp.art || "tipp", inp.text);
+          return ok("Lernkarte ist unterwegs.");
+        }
         case "geraete_vorschlagen": {
           if (inp.aktion === "ablehnen") { cfg.keineGeraeteVorschlaege = true; saveCfg(); return ok("Verstanden, keine Geräte-Vorschläge mehr."); }
           const q = String(inp.suche || "Govee WLAN Glühbirne Alexa").trim();
@@ -2966,7 +3028,7 @@ ${zeile("Menschen", ich.menschen)}`;
         if (data.content.some(c => c.type === "server_tool_use")) status("sucht im Internet");
         const res = await Promise.all(data.content.filter(c => c.type === "tool_use").map(runTool));
         data.content.filter(c => c.type === "tool_use").forEach((c, i) => {
-          const r = res[i]; if (!r.is_error) letzteWerkzeuge.push(c.name); elog(`Werkzeug ${c.name}: ${r.is_error ? "FEHLER " : ""}${String(r.content).slice(0, 90)}`);
+          const r = res[i]; if (!r.is_error) letzteWerkzeuge.push(c.name); else schwarmFehler(c.name, r.content); elog(`Werkzeug ${c.name}: ${r.is_error ? "FEHLER " : ""}${String(r.content).slice(0, 90)}`);
           ergebnisse.push(r);
         });
         work.push({ role: "user", content: res });
@@ -3255,7 +3317,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   // ================= EINSTELLUNGEN =================
   function openSettings() {
     $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sPhase").value = cfg.phase || "erwachsen"; $("firmaFeld").hidden = !zwecke().includes("firma"); $("sFirma").value = cfg.firma || ""; $("sGesicht").value = cfg.gesicht || "roboter"; stimmFelder(); stimmListe(); $("sBudget").value = cfg.budget || 10; $("sOrt").value = cfg.ort;
-    $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
+    $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sSchwarm").checked = cfg.schwarm === true; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
     $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || ""; $("sGroq").value = cfg.groqKey || ""; $("sMuteBeep").checked = cfg.muteBeep !== false;
     $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about; $("sName").value = ich.name || ""; $("sBday").value = /^\d{4}-/.test(ich.geburtstag || "") ? ich.geburtstag : ""; $("sSmart").value = cfg.smart || "";
     $("sTgToken").value = cfg.tgToken || ""; $("sGovee").value = cfg.govee || ""; $("sGemini").value = cfg.gemini || ""; $("sTgChat").value = cfg.tgChat || ""; $("sNight").checked = !!cfg.night; $("sPip").checked = cfg.pip !== false; $("sAkku").checked = !!cfg.akku; $("sTgRemind").checked = cfg.tgRemind !== false; $("sTgConfirm").checked = cfg.tgConfirm !== false; $("sAkkuMin").value = cfg.akkuMin; $("sAkkuMax").value = cfg.akkuMax; $("sAkkuOn").value = cfg.akkuOn || ""; $("sAkkuOff").value = cfg.akkuOff || ""; $("sNightFrom").value = cfg.nightFrom || "22:30"; $("sNightTo").value = cfg.nightTo || "06:30";
@@ -3333,6 +3395,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   $("setSave").addEventListener("click", () => {
     cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.gesicht = $("sGesicht").value; cfg.phase = $("sPhase").value; cfg.firma = $("sFirma").value.trim().slice(0, 6000); stimmMerken(); cfg.budget = Math.max(1, Math.min(500, parseInt($("sBudget").value, 10) || 10)); cfg.ort = $("sOrt").value.trim();
     cfg.limit = Math.max(10, Math.min(5000, parseInt($("sLimit").value, 10) || 300));
+    if ($("sSchwarm").checked !== (cfg.schwarm === true)) { cfg.schwarm = $("sSchwarm").checked; if (cfg.schwarm) setTimeout(schwarmAbgleich, 1000); }
     cfg.search = $("sSearch").checked; cfg.wake = $("sWake").checked; cfg.look = $("sLook").checked;
     cfg.muteBeep = $("sMuteBeep").checked;
     const engineChanged = !NATIVE && cfg.engine !== $("sEngine").value;

@@ -15,7 +15,14 @@ binding = "AI"   # Cloudflare Workers AI – Bilder (Gratis-Kontingent)
 [vars]
 # Wie viele kostenlose Probe-Anfragen insgesamt pro Tag (Schutz vor Missbrauch)
 PROBE_DAY_CAP = "3000"
+SERVER_URL = "https://sentinel-server.robsen-sentinel.workers.dev"
+
+# Täglicher Schwarmwissen-Bericht per Telegram (19 Uhr UTC = 20 Uhr Winterzeit)
+[triggers]
+crons = ["0 19 * * *"]
 
 # Geheimnisse (NICHT hier eintragen, sondern per Befehl):
 #   npx wrangler secret put ANTHROPIC_KEY      -> dein Anthropic-API-Key
 #   npx wrangler secret put RC_SECRET          -> RevenueCat Secret API Key (sk_...)
+#   TG_TOKEN / TG_CHAT                         -> Telegram-Bot und Chat für Freigaben (Schwarmwissen)
+#   ADMIN_KEY                                  -> Schlüssel für die Admin-Übersicht /admin?k=...

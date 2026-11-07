@@ -14,6 +14,9 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_KEY }}
       RC_SECRET: ${{ secrets.RC_SECRET }}
+      TG_TOKEN: ${{ secrets.TG_TOKEN }}
+      TG_CHAT: ${{ secrets.TG_CHAT }}
+      ADMIN_KEY: ${{ secrets.ADMIN_KEY }}
     defaults:
       run:
         working-directory: server
@@ -53,3 +56,4 @@ jobs:
         run: |
           [ -n "$ANTHROPIC_KEY" ] && echo "$ANTHROPIC_KEY" | wrangler secret put ANTHROPIC_KEY || echo "::warning::ANTHROPIC_KEY fehlt noch"
           [ -n "$RC_SECRET" ] && echo "$RC_SECRET" | wrangler secret put RC_SECRET || echo "RC_SECRET (RevenueCat) kommt später"
+          for s in TG_TOKEN TG_CHAT ADMIN_KEY; do v="${!s}"; [ -n "$v" ] && echo "$v" | wrangler secret put $s || echo "$s fehlt noch"; done

@@ -8,13 +8,20 @@ const sql = new DatabaseSync(":memory:");
 sql.exec(fs.readFileSync(new URL("../schema.sql", import.meta.url), "utf8"));
 const DB = { prepare: q => { const st = sql.prepare(q); let args = []; const o = { bind: (...a) => { args = a; return o; }, first: async () => st.get(...args) ?? null, run: async () => { const r = st.run(...args); return { meta: { changes: r.changes } }; }, all: async () => ({ results: st.all(...args) }) }; return o; } };
 
-let rc = {}; const gesendet = [];
+let rc = {}; const gesendet = [], tgNachrichten = [];
 globalThis.fetch = async (url, opt) => {
   if (String(url).includes("revenuecat")) return new Response(JSON.stringify({ subscriber: rc }), { status: 200 });
-  const b = JSON.parse(opt.body); gesendet.push(b);
+  if (String(url).includes("api.telegram.org")) { tgNachrichten.push(JSON.parse(opt.body)); return new Response(JSON.stringify({ ok: true }), { status: 200 }); }
+  const b = JSON.parse(opt.body);
+  if (typeof b.system === "string" && b.system.includes("Lernkarten")) {
+    const k = b.messages[0].content, persoenlich = /Lisa|Mama/.test(k);
+    const antw = persoenlich ? { ok: false } : { ok: true, text: "Bei Govee heißt der Farbbefehl colorRgb.", schluessel: "govee-farbe-befehl", thema: "licht" };
+    return new Response(JSON.stringify({ content: [{ type: "text", text: JSON.stringify(antw) }], usage: { input_tokens: 10, output_tokens: 10 } }), { status: 200 });
+  }
+  gesendet.push(b);
   return new Response(JSON.stringify({ content: [{ type: "text", text: "ok" }], stop_reason: "end_turn", usage: { input_tokens: 200000, output_tokens: 20000 } }), { status: 200 });
 };
-const env = { DB, ANTHROPIC_KEY: "k", RC_SECRET: "rc", PROBE_DAY_CAP: "3000" };
+const env = { DB, ANTHROPIC_KEY: "k", RC_SECRET: "rc", PROBE_DAY_CAP: "3000", TG_TOKEN: "t", TG_CHAT: "1", ADMIN_KEY: "geheim", SERVER_URL: "https://x" };
 const uid = "11111111-2222-4333-8444-555555555555";
 const call = (path, body) => worker.fetch(new Request("https://x" + path, { method: body ? "POST" : "GET", headers: { authorization: "Bearer " + uid }, body: body && JSON.stringify(body) }), env).then(async r => ({ status: r.status, j: await r.json() }));
 const msg = { model: "claude-sonnet-5-5", max_tokens: 9000, messages: [{ role: "user", content: "hi" }], tools: [{ type: "web_search_20250305", name: "web_search" }, { name: "x", input_schema: {} }] };
@@ -72,4 +79,37 @@ console.log("ALLE TESTS OK");
   assert.equal(r3.j.sentinel.probe_rest, 0); r3 = await c3(msg); assert.equal(r3.status, 429); assert.equal(r3.j.error.type, "tageslimit");
   r3 = await c3({ ...msg, sentinel_einrichtung: true }); assert.equal(r3.status, 200);
   console.log("Einrichtung gratis ok");
+}
+
+// Schwarmwissen
+{
+  const u = i => `${i}${i}${i}${i}${i}${i}${i}${i}-2222-4333-8444-555555555555`;
+  const melde = (i, karten) => worker.fetch(new Request("https://x/v1/wissen", { method: "POST", headers: { authorization: "Bearer " + u(i) }, body: JSON.stringify({ karten }) }), env).then(r => r.json());
+  const hole = () => worker.fetch(new Request("https://x/v1/wissen", { headers: { authorization: "Bearer " + u(1) } }), env).then(r => r.json());
+  let r = await melde(4, [{ art: "korrektur", text: "Govee Farbe geht mit colorRgb, nicht color" }, { art: "tipp", text: "Lisa mag keine Pilze, das merke ich mir" }, { art: "tipp", text: "Ruf mich an unter 0170 1234567 bitte" }, { art: "fehler", thema: "licht", text: "Govee Fehler 429 zu viele Anfragen" }]);
+  assert.deepEqual(r, { angenommen: 2, abgelehnt: 2 });
+  assert.equal(tgNachrichten.length, 1); assert.ok(tgNachrichten[0].reply_markup.inline_keyboard[0][0].url.includes("/admin/wissen?id=1&a=frei&k="));
+  assert.equal((await hole()).karten.length, 0);              // noch nicht frei
+  await melde(5, [{ art: "korrektur", text: "colorRgb für Govee Farben" }]);
+  await melde(5, [{ art: "korrektur", text: "colorRgb für Govee Farben nochmal" }]); // gleiches Gerät zählt nicht doppelt
+  assert.equal((await hole()).karten.length, 0);
+  await melde(6, [{ art: "korrektur", text: "Govee: colorRgb verwenden" }]);
+  const h = await hole(); assert.equal(h.karten.length, 1); assert.equal(h.karten[0].text, "Bei Govee heißt der Farbbefehl colorRgb.");
+  assert.ok(tgNachrichten.at(-1).text.includes("automatisch freigegeben"));
+  // Admin: Link mit falscher Signatur, dann zurückziehen per Telegram-Link
+  let a = await worker.fetch(new Request("https://x/admin/wissen?id=1&a=abgelehnt&k=falsch"), env); assert.equal(a.status, 403);
+  const link = tgNachrichten[0].reply_markup.inline_keyboard[0][1].url.replace("https://x", "https://x");
+  a = await worker.fetch(new Request(link), env); assert.equal(a.status, 200);
+  assert.equal((await hole()).karten.length, 0);
+  a = await worker.fetch(new Request("https://x/admin?k=geheim"), env); const seite = await a.text();
+  assert.ok(seite.includes("Fehler-Hitliste") && seite.includes("licht"));
+  assert.equal((await worker.fetch(new Request("https://x/admin?k=nein"), env)).status, 403);
+  // Tagesbericht
+  const vorher = tgNachrichten.length; await worker.scheduled({}, env, { waitUntil: p => p }); await new Promise(r => setTimeout(r, 10));
+  assert.ok(tgNachrichten.length === vorher + 1 && tgNachrichten.at(-1).text.includes("Tagesbericht"));
+  // Tageslimit 20
+  const viele = Array.from({ length: 5 }, (_, i) => ({ art: "fehler", thema: "x", text: "Fehler Nummer " + i }));
+  for (let i = 0; i < 4; i++) await melde(7, viele);
+  r = await melde(7, viele); assert.equal(r.abgelehnt, 5);
+  console.log("Schwarmwissen ok");
 }

@@ -1,6 +1,8 @@
 // Sentinel-Server: verwaltet Abo-Stufen, Limits und Budget und spricht mit Claude.
 // Die App schickt ihre Anfrage hierher statt direkt zu Anthropic; der API-Key bleibt auf dem Server.
 
+import { wissenMelden, wissenHolen, admin, tagesbericht } from "./schwarm.js";
+
 const USD_PRO_EUR = 1.08;
 
 // Preise in US-Dollar je 1 Mio. Tokens
@@ -181,13 +183,17 @@ export default {
     if (req.method === "OPTIONS") return json({});
     const url = new URL(req.url);
     if (url.pathname === "/" || url.pathname === "/v1/health") return json({ ok: true, name: "Sentinel-Server" });
+    if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) return await admin(req, env, url);
     const uid = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uid)) return fehler(401, "authentication_error", "Unbekanntes Gerät");
     try {
       if (url.pathname === "/v1/me" && req.method === "GET") { const u = await nutzerLaden(env, uid); await speichern(env, u); return json(stand(u)); }
       if (url.pathname === "/v1/messages" && req.method === "POST") return await chat(req, env, uid);
       if (url.pathname === "/v1/bild" && req.method === "POST") return await bild(req, env, uid);
+      if (url.pathname === "/v1/wissen" && req.method === "POST") return await wissenMelden(req, env, uid, url.origin);
+      if (url.pathname === "/v1/wissen" && req.method === "GET") return await wissenHolen(env);
       return fehler(404, "not_found", "Gibt es nicht");
     } catch (e) { return fehler(500, "api_error", "Serverfehler: " + e.message); }
   },
+  async scheduled(event, env, ctx) { ctx.waitUntil(tagesbericht(env)); },
 };
