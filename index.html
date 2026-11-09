@@ -81,11 +81,12 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   position: fixed; inset: 0; z-index: 20; background: #000d; display: flex; align-items: center; justify-content: center;
   padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
 }
-#gesichtPanel { align-items: flex-end; background: transparent; pointer-events: none; }
-#gesichtPanel .sheet { pointer-events: auto; max-height: 40%; gap: 10px; padding: 14px; }
-#gesichtListe { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
-#gesichtListe button { flex: 0 0 auto; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line); background: transparent; color: inherit; font: inherit; white-space: nowrap; }
-#gesichtListe button.on { border-color: var(--accent, #ffb040); background: #ffb04022; }
+#gesichtPanel, #stimmPanel { align-items: flex-end; background: transparent; pointer-events: none; }
+#gesichtPanel .sheet, #stimmPanel .sheet { pointer-events: auto; max-height: 46%; gap: 10px; padding: 14px; }
+#gesichtListe, .chipreihe { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+#gesichtListe button, .chipreihe button { flex: 0 0 auto; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line); background: transparent; color: inherit; font: inherit; white-space: nowrap; }
+.chipreihe .lbl { flex: 0 0 auto; align-self: center; color: var(--muted); font-size: .8rem; }
+#gesichtListe button.on, .chipreihe button.on { border-color: var(--accent, #ffb040); background: #ffb04022; }
 .sheet { width: 100%; max-width: 560px; max-height: 100%; overflow-y: auto; background: var(--bar); border: 1px solid var(--line); border-radius: 18px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
 .phead { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .sheet h2 { margin: 0; font-size: 1rem; letter-spacing: .16em; text-transform: uppercase; }
@@ -326,7 +327,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 65</div>
+    <div class="hint" id="verHint">Sentinel Version 66</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -364,6 +365,17 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <h2 style="font-size:1rem">Dein Sentinel: Gesicht &amp; Stimme</h2>
     <div id="gesichtListe"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="ghost" id="gesichtAlle" type="button">▶ Alle vorstellen</button><button class="btn" id="gesichtFertig" type="button" style="flex:1">Den nehme ich</button></div>
+  </div>
+</div>
+
+<!-- Stimme -->
+<div class="panel" id="stimmPanel" hidden>
+  <div class="sheet">
+    <h2 style="font-size:1rem" id="stimmTitel">Welche Stimme passt?</h2>
+    <div id="stimmListe" class="chipreihe"></div>
+    <div class="chipreihe" id="stimmHoehe"></div>
+    <div class="chipreihe" id="stimmTempo"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="ghost" id="stimmAlle" type="button">▶ Alle anhören</button><button class="btn" id="stimmFertig" type="button" style="flex:1">Die nehme ich</button></div>
   </div>
 </div>
 
@@ -823,7 +835,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
           if (i >= parts.length) return done();
           const part = parts[i++];
           const u = new SpeechSynthesisUtterance(part); if (nightActive) u.volume = .35;
-          u.lang = "de-DE"; if (voice) u.voice = voice; { const st = stimmeFuer(); u.rate = st.rate; u.pitch = st.pitch; }
+          u.lang = "de-DE"; { const sv = stimmeFuer().voice, wv = sv && synth.getVoices().find(v => v.name === sv); if (wv || voice) u.voice = wv || voice; } { const st = stimmeFuer(); u.rate = st.rate; u.pitch = st.pitch; }
           let moved = false;
           const go = () => { if (moved) return; moved = true; clearTimeout(guard); next(); };
           u.onend = go; u.onerror = go;
@@ -2020,10 +2032,62 @@ Offene Punkte: ${fehlt.join("; ")}.`;
     };
     $("gesichtFertig").onclick = () => {
       laeuftAlle = false; cfg.gesicht = wahl; saveCfg(); $("gesichtPanel").hidden = true;
-      elog("Gesicht gewählt: " + GESICHT_NAMEN[wahl]); weiter();
+      elog("Gesicht gewählt: " + GESICHT_NAMEN[wahl]); stimmeWaehlen(wahl, weiter);
     };
     $("gesichtPanel").hidden = false;
     setTimeout(() => $("gesichtAlle").click(), 600); // gleich einmal alle vorstellen
+  }
+
+  // Danach: passende Stimme zum Gesicht – Gerätestimmen probehören, Tonhöhe und Tempo feinjustieren
+  async function geraeteStimmen() {
+    let namen = [];
+    if (NATIVE && SV && SV.voices) {
+      try { const r = await SV.voices(); namen = ((r && r.voices) || []).sort((a, b) => (a.network - b.network) || a.name.localeCompare(b.name)).map(v => v.name); } catch (e) {}
+    } else if (synth) namen = synth.getVoices().filter(v => /^de/i.test(v.lang)).map(v => v.name);
+    return [...new Set(namen)].slice(0, 10);
+  }
+  async function stimmeWaehlen(g, weiter) {
+    const vor = STIMM_VORGABE[g] || STIMM_VORGABE.roboter;
+    cfg.stimmen = cfg.stimmen || {};
+    const st = Object.assign({ voice: "", pitch: vor.pitch, rate: vor.rate }, cfg.stimmen[g] || {});
+    const merken = () => { cfg.stimmen[g] = { ...st }; };
+    const satz = () => `So klinge ich als ${GESICHT_NAMEN[g]}. Gefällt dir das?`;
+    const probe = () => { merken(); try { if (synth && !NATIVE) synth.cancel(); } catch (e) {} return speak(satz(), "freude").catch(() => {}); };
+    $("stimmTitel").textContent = `Welche Stimme passt zu deinem ${GESICHT_NAMEN[g]}?`;
+    const namen = await geraeteStimmen();
+    const liste = $("stimmListe"); liste.replaceChildren();
+    const optionen = [["", "Passend zum Gesicht"], ...namen.map((n, i) => [n, "Stimme " + (i + 1) + (/network/i.test(n) ? " ✨" : "")])];
+    const knoepfe = [];
+    const markiere = () => knoepfe.forEach(([v, b]) => b.classList.toggle("on", v === st.voice));
+    for (const [v, txt] of optionen) {
+      const b = el("button", "", "▶ " + txt); b.type = "button";
+      b.onclick = () => { alleLaeuft = false; st.voice = v; markiere(); probe(); };
+      knoepfe.push([v, b]); liste.append(b);
+    }
+    markiere();
+    const reihe = (id, label, werte, feld) => {
+      const r = $(id); r.replaceChildren(el("span", "lbl", label));
+      const bs = werte.map(([txt, faktor]) => {
+        const b = el("button", "", txt); b.type = "button";
+        b.onclick = () => { st[feld] = +(vor[feld] * faktor).toFixed(2); bs.forEach(x => x.classList.toggle("on", x === b)); probe(); };
+        if (Math.abs(st[feld] - vor[feld] * faktor) < .02) b.classList.add("on");
+        r.append(b); return b;
+      });
+    };
+    reihe("stimmHoehe", "Tonhöhe", [["tiefer", .85], ["normal", 1], ["höher", 1.15]], "pitch");
+    reihe("stimmTempo", "Tempo", [["ruhig", .88], ["normal", 1], ["flott", 1.12]], "rate");
+    let alleLaeuft = false;
+    $("stimmAlle").onclick = async () => {
+      alleLaeuft = true;
+      for (const [v] of optionen) { if (!alleLaeuft) break; st.voice = v; markiere(); await probe(); await new Promise(r => setTimeout(r, 400)); }
+      alleLaeuft = false;
+    };
+    $("stimmFertig").onclick = () => {
+      alleLaeuft = false; merken(); saveCfg(); $("stimmPanel").hidden = true;
+      elog("Stimme gewählt: " + (st.voice ? stimmName(st.voice) : "passend zum Gesicht") + ", Höhe " + st.pitch + ", Tempo " + st.rate); weiter();
+    };
+    $("stimmPanel").hidden = false;
+    if (namen.length) setTimeout(() => $("stimmAlle").click(), 500); else probe();
   }
 
   // Was für die gewählten Zwecke noch eingerichtet werden sollte
