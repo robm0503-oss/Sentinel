@@ -329,7 +329,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 67</div>
+    <div class="hint" id="verHint">Sentinel Version 68</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -2100,7 +2100,7 @@ Offene Punkte: ${fehlt.join("; ")}.`;
     add(imWlan(), "Mit dem WLAN verbinden", "Android-Einstellungen → WLAN → dein Heimnetz.");
     add(!!ich.name, "Kennenlernen", "Sag „Sentinel, starte die Einrichtung“.");
     if (z.some(k => ["zuhause", "assistent", "senior", "arbeit", "firma"].includes(k)))
-      add(tgReady(), "Telegram (Nachrichten aufs Handy)", z.includes("senior") ? "Für die Familie: Bot bei @BotFather anlegen, Token und Chat-ID eines Angehörigen eintragen – dann kommen Lebenszeichen und Notfall-Nachrichten dort an." : "Bot bei @BotFather anlegen, Token in die Einstellungen, dem Bot „hallo“ schreiben, „Chat-ID automatisch finden“.");
+      add(tgReady(), "Telegram (Nachrichten aufs Handy)", "Wichtig für fast alles – erst kurz den Nutzen nennen: Einkaufsliste und Listen unterwegs aufs Handy, Erinnerungen auch wenn man nicht zu Hause ist, Bilder, Dokumente und Prompts aufs Handy, Fotos und Dateien zu mir schicken, von überall mit mir schreiben, Sicherung aller Einstellungen, Wachhund-Alarm mit Foto" + (z.includes("senior") ? ", Lebenszeichen und Notfall-Nachrichten an die Familie (dann Chat-ID eines Angehörigen eintragen)" : "") + ". Einrichten: Telegram-App installieren, bei @BotFather mit /newbot einen Bot anlegen, Token in die Einstellungen, dem Bot „hallo“ schreiben, „Chat-ID automatisch finden“.");
     if (z.some(k => ["zuhause", "assistent"].includes(k))) add(!!cfg.ort, "Wohnort (Wetter)", "Sag „Ich wohne in …“ oder trag ihn in den Einstellungen ein.");
     if (z.includes("zuhause")) {
       add(!!cfg.govee, "Licht (Govee)", "Govee-App → Profil → Einstellungen → API-Schlüssel beantragen → in die Einstellungen.");
@@ -3433,7 +3433,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     ["Licht (Govee)", "Einrichtung: Govee-App → Profil → Einstellungen → API-Schlüssel beantragen, Key in meine Einstellungen.", ["Großes Licht an", "Mach es gemütlich", "Kleines Licht blau auf 30 Prozent"]],
     ["Smart Home (Alexa)", "Alles, was Alexa kann: Voice-Monkey-Trigger + Alexa-Routine anlegen, Link in „Smart-Home-Befehle“ eintragen (Name = Link). Den Namen sagen reicht dann.", ["Ladestecker an"]],
     ["Akku", "Ich schalte meine Ladesteckdose selbst – Einstellung „Akku selbst laden“.", ["Wie voll ist dein Akku?"]],
-    ["Telegram", "Bot bei @BotFather anlegen, Token + Chat-ID eintragen. Dann kannst du mir von überall schreiben, ich bestätige Aktionen und schicke Erinnerungen. Schnellbefehle: wachhund an/aus, foto, status, hilfe.", ["Schick mir eine Nachricht: Test"]],
+    ["Telegram", "Dein Draht zu mir unterwegs – die wichtigste Einrichtung: Einkaufsliste und Listen im Laden aufs Handy, Erinnerungen auch unterwegs, Bilder, Dokumente und Prompts aufs Handy, Fotos und Dateien zu mir schicken, von überall mit mir schreiben, Sicherung deiner Einstellungen, Wachhund-Alarm mit Foto. Einrichten: Bot bei @BotFather anlegen, Token in die Einstellungen, dem Bot „hallo“ schreiben, „Chat-ID automatisch finden“. Schnellbefehle: wachhund an/aus, foto, status, hilfe.", ["Schick mir die Einkaufsliste aufs Handy", "Schick mir das Bild aufs Handy"]],
     ["Wachhund", "Ich passe auf, wenn du weg bist: Foto + Video mit Ton bei Bewegung, ganz still. Aus nur auf deinen Befehl.", ["Wachhund an", "Ich bin wieder da, Wachhund aus"]],
     ["Sehen", "Mit Kamera an schaue ich, wenn du mich darum bittest, und folge dir mit den Augen.", ["Was siehst du?", "Was halte ich in der Hand?"]],
     ["Kochen & Essen", "Kochmodus Schritt für Schritt ohne „Sentinel“-Sagen. Ich kenne eure Gerichte, plane Wochen und passe sie an dein Ziel an.", ["Lass uns Pfannkuchen machen", "Was essen wir nächste Woche?", "Ich will bis Ostern 5 Kilo abnehmen"]],
