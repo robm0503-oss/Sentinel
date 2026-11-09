@@ -81,6 +81,11 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   position: fixed; inset: 0; z-index: 20; background: #000d; display: flex; align-items: center; justify-content: center;
   padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
 }
+#gesichtPanel { align-items: flex-end; background: transparent; pointer-events: none; }
+#gesichtPanel .sheet { pointer-events: auto; max-height: 40%; gap: 10px; padding: 14px; }
+#gesichtListe { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+#gesichtListe button { flex: 0 0 auto; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line); background: transparent; color: inherit; font: inherit; white-space: nowrap; }
+#gesichtListe button.on { border-color: var(--accent, #ffb040); background: #ffb04022; }
 .sheet { width: 100%; max-width: 560px; max-height: 100%; overflow-y: auto; background: var(--bar); border: 1px solid var(--line); border-radius: 18px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
 .phead { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .sheet h2 { margin: 0; font-size: 1rem; letter-spacing: .16em; text-transform: uppercase; }
@@ -321,7 +326,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 64</div>
+    <div class="hint" id="verHint">Sentinel Version 65</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -350,6 +355,15 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <p class="hint" style="text-align:left">Tippe alles an, was passt – ich stelle mich darauf ein. Ändern geht jederzeit in den Einstellungen.</p>
     <div id="zweckListe" style="display:grid;gap:10px;margin:12px 0"></div>
     <button class="btn" id="zweckWeiter" type="button" disabled>Weiter</button>
+  </div>
+</div>
+
+<!-- Gesicht & Stimme -->
+<div class="panel" id="gesichtPanel" hidden>
+  <div class="sheet">
+    <h2 style="font-size:1rem">Dein Sentinel: Gesicht &amp; Stimme</h2>
+    <div id="gesichtListe"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="ghost" id="gesichtAlle" type="button">▶ Alle vorstellen</button><button class="btn" id="gesichtFertig" type="button" style="flex:1">Den nehme ich</button></div>
   </div>
 </div>
 
@@ -1908,21 +1922,24 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   const saveEinr = () => store.set("einrichtung", einr);
   function einrichtungInfo() {
     if (!einr.aktiv) return "";
-    const offen = einrThemen().filter(k => !einr.erledigt.includes(k));
-    const fehlt = einrichtSchritte().filter(x => !x[0] && x[1] !== "Kennenlernen" && x[1] !== "Mit dem WLAN verbinden").map(x => x[1] + " (" + x[2] + ")");
-    const antworten = einr.antworten || 0;
-    const minuten = (Date.now() - (einr.seit || Date.now())) / 60000;
-    const schluss = antworten >= EINR_MAX_ANTWORTEN || minuten >= EINR_MAX_MIN || !offen.length;
-    const kann = zwecke().map(k => ZWECKE[k].text).join("; ") || "Fragen beantworten, Timer und Erinnerungen, Listen, Wetter, Musik, Licht steuern, Nachrichten aufs Handy";
-    if (schluss) return `\nEINRICHTUNG JETZT BEENDEN: Stell KEINE weitere Frage. Nutze einrichtung (aktion beenden) und sag in höchstens 2 kurzen Sätzen, dass ihr startklar seid und du den Rest im Alltag nebenbei lernst – „Was kannst du?“ zeigt alles.${fehlt.length ? " Erwähne höchstens EINE noch fehlende Einrichtung als Tipp: " + fehlt[0] + "." : ""}`;
-    return `\nEINRICHTUNG LÄUFT (kurz halten: höchstens ${EINR_MAX_ANTWORTEN} Fragen, ca. ${EINR_MAX_MIN} Minuten; bisher ${antworten} Antworten).
-${antworten === 0 && !einr.vorgestellt ? `Fang mit einer kurzen Vorstellung an (höchstens 3 Sätze): wer du bist und was du kannst – passend dazu: ${kann}. Sag, dass du jetzt ein paar kurze Fragen stellst (ca. 2 Minuten) und man jederzeit „überspringen“ oder „fertig“ sagen kann. Dann die erste Frage.\n` : ""}Regeln: Immer nur EINE kurze Frage. Auf jede Antwort höchstens EINEN kurzen Satz reagieren, dann direkt die nächste Frage. KEINE Nachfragen, keine Abschweifungen, keine Erklärungen, die keiner verlangt hat. Unklares oder Ausführliches lernst du später im Alltag.
-Speichere Wichtiges sofort mit den Werkzeugen (ich_kenne_dich, merke_dir, geburtstag_speichern, ort_setzen, gerichte_merken, ernaehrungsziel, nachtmodus_setzen, lebensphase_setzen) und melde jedes erledigte Thema mit einrichtung (aktion thema_erledigt) – auch wenn er es überspringt.
-Offene Themen in dieser Reihenfolge: ${offen.map(k => k + " (" + EINR_THEMEN[k] + ")").join("; ")}.
-Sagt er „überspringen“: Thema als erledigt melden, nächste Frage. Sagt er „später“, „genug“, „fertig“, „stopp“ oder dass es zu lange dauert: SOFORT einrichtung (aktion beenden) und in einem Satz bestätigen.`;
+    const z = zwecke(), wer = ich.name || "dein Gegenüber";
+    const kann = (z.length ? z.map(k => ZWECKE[k].text) : ["Timer und Erinnerungen", "Wetter", "Musik und Videos", "Licht und Smart Home"]).join("; ");
+    const zusatz1 = (z.includes("lernen") ? " Frag außerdem kurz nach Alter bzw. Klasse (lebensphase_setzen)." : "") + (z.includes("firma") ? " Frag außerdem nach dem Firmennamen (firmenwissen_speichern)." : "");
+    const vorstellen = `Erkläre dann EINMAL kompakt, was du alles kannst – höchstens 6 kurze Sätze, lebendig und konkret, passend zu: ${kann}; dazu: alles fragen, Fotos und Briefe erklären, Bilder malen, Dokumente erstellen, Nachrichten aufs Handy (Telegram). Frag am Ende: „Soll ich gleich einrichten, was jetzt schon geht?“ Sagt ${wer} ja: einrichtung (aktion einrichten_starten). Sagt er nein oder später: einrichtung (aktion beenden) und in einem Satz sagen, dass „Was kannst du?“ alles zeigt.`;
+    if (!ich.name) return `\nEINRICHTUNG – Schritt 1 (Kennenlernen, kurz und knackig): Finde nur heraus, wer dein Gegenüber ist – Name und wie du ihn/sie ansprechen sollst (ich_kenne_dich).${zusatz1} Höchstens 2 kurze Fragen, keine Nachfragen, nichts anderes fragen.
+Sobald der Name gespeichert ist, mach in DERSELBEN Antwort mit Schritt 2 weiter: ${vorstellen}`;
+    if (einr.stufe !== "einrichten") return `\nEINRICHTUNG – Schritt 2 (Vorstellen): ${vorstellen}`;
+    const norm = t => String(t).toLowerCase().replace(/[^a-zäöüß]/g, "").slice(0, 8);
+    const abgehakt = t => einr.erledigt.some(e => norm(e) && norm(e) === norm(t));
+    const fehlt = einrichtSchritte().filter(x => !x[0] && x[1] !== "Kennenlernen" && x[1] !== "Mit dem WLAN verbinden" && !abgehakt(x[1])).map(x => `„${x[1]}“ (${x[2]})`);
+    if (aboMoeglich() && cfg.schwarm === undefined) fehlt.push("„Schwarmwissen“ (" + EINR_THEMEN.schwarm + ")");
+    if ((z.includes("zuhause") || z.includes("firma")) && !abgehakt("Geräte-Suche")) fehlt.push("„Geräte-Suche“ (" + EINR_THEMEN.geraetescan + ")");
+    if (!fehlt.length) return `\nEINRICHTUNG – alles erledigt: einrichtung (aktion beenden) und in einem Satz sagen, dass ihr startklar seid.`;
+    return `\nEINRICHTUNG – Schritt 3 (Einrichten): Geh die offenen Punkte NACHEINANDER durch. Pro Punkt: in höchstens 2 kurzen Sätzen sagen, was es bringt und was ${wer} jetzt tun muss, dann warten. Ist ein Punkt erledigt oder sagt ${wer} „weiter“/„überspringen“: einrichtung (aktion thema_erledigt, thema = genau der Name in „…“) und zum nächsten. Sagt ${wer} „später“, „fertig“ oder „stopp“: SOFORT einrichtung (aktion beenden).
+Offene Punkte: ${fehlt.join("; ")}.`;
   }
   function einrichtungStarten(neu) {
-    einr = { aktiv: true, erledigt: neu ? [] : einr.erledigt, seit: Date.now(), antworten: 0 }; saveEinr();
+    einr = { aktiv: true, erledigt: neu ? [] : einr.erledigt, seit: Date.now(), antworten: 0, stufe: ich.name ? "vorstellen" : "name" }; saveEinr();
     followUntil = Date.now() + followMs(); elog("Einrichtung gestartet");
   }
 
@@ -1968,10 +1985,47 @@ Sagt er „überspringen“: Thema als erledigt melden, nächste Frage. Sagt er 
       if (!ph && (cfg.phase === "senior" || cfg.phase === "schueler" || cfg.phase === "kind")) cfg.phase = "erwachsen";
       saveCfg(); $("zweckPanel").hidden = true; $("firmaFeld").hidden = !cfg.zwecke.includes("firma");
       elog("Genutzt für: " + cfg.zwecke.join(", "));
-      if (neustart) wlanPruefen(() => begruessen(true, true)); else note("Gespeichert – ich habe mich darauf eingestellt.", 3000);
+      if (neustart) wlanPruefen(() => gesichtWaehlen(() => begruessen(true, true))); else note("Gespeichert – ich habe mich darauf eingestellt.", 3000);
     };
     $("zweckPanel").hidden = false;
   }
+  // ================= GESICHT & STIMME WÄHLEN (vor dem Kennenlernen) =================
+  const GESICHT_VORSTELLUNG = {
+    roboter: "Ich bin der Roboter – freundlich, klar und immer für dich da.",
+    holo: "Ich bin der Hologramm-Kern. Ruhig, gelassen und stets zu Diensten.",
+    welle: "Stimmwelle hier. Schnell, präzise und direkt auf den Punkt.",
+    partikel: "Ich bin die Partikel-Kugel – leicht wie Sternenstaub und immer neugierig.",
+    pixel: "Hey! Retro-Pixel hier – bereit für Spaß, Spiele und gute Laune!",
+  };
+  function gesichtWaehlen(weiter) {
+    const l = $("gesichtListe"); l.replaceChildren();
+    let wahl = cfg.gesicht || "roboter", laeuftAlle = false;
+    const knoepfe = {};
+    const zeige = async k => {
+      wahl = k; cfg.gesicht = k;
+      for (const [g, b] of Object.entries(knoepfe)) b.classList.toggle("on", g === k);
+      knoepfe[k].scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+      try { if (typeof speechSynthesis !== "undefined" && !NATIVE) speechSynthesis.cancel(); } catch (e) {}
+      await speak(GESICHT_VORSTELLUNG[k], "freude").catch(() => {});
+    };
+    for (const k of Object.keys(GESICHT_NAMEN)) {
+      const b = el("button", k === wahl ? "on" : "", "▶ " + GESICHT_NAMEN[k]); b.type = "button";
+      b.onclick = () => { laeuftAlle = false; zeige(k); };
+      knoepfe[k] = b; l.append(b);
+    }
+    $("gesichtAlle").onclick = async () => {
+      laeuftAlle = true;
+      for (const k of Object.keys(GESICHT_NAMEN)) { if (!laeuftAlle) break; await zeige(k); await new Promise(r => setTimeout(r, 500)); }
+      laeuftAlle = false;
+    };
+    $("gesichtFertig").onclick = () => {
+      laeuftAlle = false; cfg.gesicht = wahl; saveCfg(); $("gesichtPanel").hidden = true;
+      elog("Gesicht gewählt: " + GESICHT_NAMEN[wahl]); weiter();
+    };
+    $("gesichtPanel").hidden = false;
+    setTimeout(() => $("gesichtAlle").click(), 600); // gleich einmal alle vorstellen
+  }
+
   // Was für die gewählten Zwecke noch eingerichtet werden sollte
   function einrichtSchritte() {
     const z = zwecke(), s = [];
@@ -2649,7 +2703,7 @@ ${zeile("Menschen", ich.menschen)}`;
       { name: "reise_suchen", description: "Öffnet die passende Suche für Zug (Deutsche Bahn), Flug (Google Flüge), Hotel oder Autoroute und schickt den Link aufs Handy. von leer = Wohnort. datum JJJJ-MM-TT, zeit HH:MM.",
         input_schema: obj({ art: { type: "string", enum: ["zug", "flug", "hotel", "auto"] }, von: { type: "string" }, nach: { type: "string" }, datum: { type: "string" }, zeit: { type: "string" }, rueck: { type: "string" } }, ["art", "nach"]) },
       { name: "einrichtung", description: "Einrichtungsgespräch zum Kennenlernen. start = beginnen (oder neu beginnen), thema_erledigt = ein Thema abhaken (thema angeben), beenden = fertig.",
-        input_schema: obj({ aktion: { type: "string", enum: ["start", "thema_erledigt", "beenden"] }, thema: { type: "string", enum: Object.keys(EINR_THEMEN) } }, ["aktion"]) },
+        input_schema: obj({ aktion: { type: "string", enum: ["start", "einrichten_starten", "thema_erledigt", "beenden"] }, thema: { type: "string" } }, ["aktion"]) },
       { name: "ort_setzen", description: "Speichert den Wohnort (für Wetter und Suchen in der Nähe).", input_schema: obj({ ort: { type: "string" } }, ["ort"]) },
       { name: "nachtmodus_setzen", description: "Schaltet den Nachtmodus (dunkel, leise, hört nur nach Antippen) und stellt die Uhrzeiten ein (HH:MM).",
         input_schema: obj({ an: { type: "boolean" }, von: { type: "string" }, bis: { type: "string" } }, ["an"]) },
@@ -2919,6 +2973,7 @@ ${zeile("Menschen", ich.menschen)}`;
         }
         case "einrichtung": {
           if (inp.aktion === "start") { einrichtungStarten(true); return ok("Einrichtung läuft. Stell jetzt die erste Frage."); }
+          if (inp.aktion === "einrichten_starten") { einr.stufe = "einrichten"; saveEinr(); return ok("Einrichten läuft – erster offener Punkt."); }
           if (inp.aktion === "thema_erledigt") { if (inp.thema && !einr.erledigt.includes(inp.thema)) einr.erledigt.push(inp.thema); saveEinr(); return ok("abgehakt"); }
           einr.aktiv = false; einr.fertig = new Date().toISOString(); saveEinr(); elog("Einrichtung beendet"); return ok("Einrichtung beendet.");
         }
@@ -3435,8 +3490,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     const neu = !ich.name && !ich.fakten.length && !einr.fertig;
     if (neu && !einr.aktiv) einrichtungStarten(true);
     const t = ich.name ? (einr.aktiv ? `${gruss}, ${ich.name}. Wollen wir mit dem Kennenlernen weitermachen?` : `${gruss}, ${ich.name}. Alle Systeme sind bereit.`)
-      : `${gruss}! Ich bin Sentinel, dein KI-Kumpel. ${willkommenText()} ${kannText()} Und fragen kannst du mich sowieso alles. Ich stell dir jetzt ein paar kurze Fragen, höchstens zwei, drei Minuten – „überspringen“ oder „fertig“ geht jederzeit. Wie soll ich dich nennen?`;
-    if (neu) { einr.vorgestellt = true; saveEinr(); }
+      : `${gruss}! Ich bin Sentinel – ab jetzt dein persönlicher KI-Kumpel. Erst mal kurz: Wer bist du? Wie soll ich dich nennen?`;
     lastGreet = Date.now();
     show(""); setMood(ich.name ? "freude" : "ueberrascht");
     if (spoken) speak(t, "neutral").then(() => { if (einr.aktiv) followUntil = Date.now() + followMs(); }); else setTimeout(() => { if (!busy && !speaking) setMood("neutral"); }, 2000);
