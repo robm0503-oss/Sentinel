@@ -329,7 +329,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 68</div>
+    <div class="hint" id="verHint">Sentinel Version 69</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -432,6 +432,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     set(k, v) { try { localStorage.setItem("sentinel." + k, JSON.stringify(v)); } catch (e) {} },
   };
   const cfg = Object.assign({ key: "", model: "claude-haiku-5-5", ort: "", limit: 300, search: true, wake: true, look: true, engine: "vosk", wakeExtra: "", voskUrl: "", ear: true, eye: true, haUrl: "", haToken: "", tgToken: "", tgChat: "", akku: false, akkuMin: 15, akkuMax: 100, akkuOn: "", akkuOff: "", night: false, nightFrom: "22:30", nightTo: "06:30" }, store.get("cfg", {}));
+  if (cfg.schwarm === undefined) cfg.schwarm = true; // Schwarmwissen ist von Anfang an an (abschaltbar)
   const saveCfg = () => store.set("cfg", cfg);
   // Umstieg auf v3: Sonnet als Standard-Gehirn für natürlichere Gespräche
   if (!cfg.vAuto) { cfg.model = "auto"; if (!cfg.budget) cfg.budget = 10; cfg.vAuto = true; saveCfg(); }
@@ -3448,7 +3449,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     ["Bild in Bild", "Drückst du die Home-Taste oder öffne ich eine andere App, werde ich klein unten rechts und höre trotzdem weiter zu. Antippen macht mich wieder groß.", ["Mach dich klein"]],
     ["Geräte finden", "Ich suche im WLAN nach Geräten und erkläre dir, welche ich steuern kann und wie man sie verbindet.", ["Welche Geräte sind in unserem WLAN?", "Such mir passende smarte Lampen"]],
     ["Gesicht & Stimme wählen", "5 Gesichter, jedes stellt sich mit eigener Stimme vor; danach Gerätestimme, Tonhöhe und Tempo wählen. Später jederzeit in den Einstellungen.", ["Nimm das Hologramm-Gesicht", "Zeig mir alle Gesichter"]],
-    ["Schwarmwissen", "Freiwillig: Ich lerne aus Korrekturen und teile das anonym mit allen Sentinels – nie Persönliches. Abschaltbar in den Einstellungen.", ["Mach beim Schwarmwissen mit"]],
+    ["Schwarmwissen", "Von Anfang an an: Ich lerne aus Korrekturen und teile das anonym mit allen Sentinels – nie Persönliches. So werden alle Sentinels schlauer. Abschaltbar jederzeit in den Einstellungen.", ["Schalte das Schwarmwissen aus"]],
     ["Sicherung", "Einstellungen → „Sicherung erstellen“ schickt alle Keys und Einstellungen per Telegram; auf einem neuen Gerät „Sicherung laden“ – fertig.", ["Wie sichere ich meine Einstellungen?"]],
     ["Abo & Gratis", "10 Fragen am Tag sind gratis. Mehr Fragen, schlaueres Gehirn und die Fähigkeiten-Pakete gibt es mit Basis, Plus, Pro und Business.", ["Zeig mir die Abos"]],
     ["Auf andere Bildschirme", "Ich laufe auf jedem Android-Gerät (Handy, Tablet, Fire TV, Android TV). Mein Bild kann ich auf Fernseher mit Bildschirmübertragung (Smart View, Chromecast, Miracast) schicken.", ["Übertrag dich auf den Fernseher"]],
