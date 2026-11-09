@@ -329,7 +329,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 69</div>
+    <div class="hint" id="verHint">Sentinel Version 70</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -2162,8 +2162,60 @@ Offene Punkte: ${fehlt.join("; ")}.`;
     if (liste) h += "</ul>";
     return h;
   }
+  // ---- PDF (lässt sich auf jedem Handy direkt öffnen) ----
+  let jspdfLaden = null;
+  function jspdfHolen() {
+    if (window.jspdf) return Promise.resolve(window.jspdf.jsPDF);
+    return jspdfLaden = jspdfLaden || new Promise((ok, no) => { const sc = document.createElement("script"); sc.src = "jspdf.umd.min.js"; sc.onload = () => window.jspdf ? ok(window.jspdf.jsPDF) : no(new Error("PDF-Modul fehlt")); sc.onerror = () => { jspdfLaden = null; no(new Error("PDF-Modul nicht ladbar")); }; document.head.append(sc); });
+  }
+  async function pdfAusMarkdown(titel, md) {
+    const JsPDF = await jspdfHolen();
+    const doc = new JsPDF({ unit: "mm", format: "a4" }); doc.setProperties({ title: titel, creator: "Sentinel" });
+    const L = 20, B = 170, U = 280; let y = 22;
+    const sauber = t => String(t).replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1").replace(/[–—]/g, "-").replace(/[„“”]/g, '"').replace(/[‚‘’]/g, "'");
+    const platz = h => { if (y + h > U) { doc.addPage(); y = 20; } };
+    const absatz = (t, gr, stil, farbe, einr = 0, vorab = 0) => {
+      doc.setFont("helvetica", stil); doc.setFontSize(gr); doc.setTextColor(...farbe);
+      const zeilen = doc.splitTextToSize(t, B - einr), zh = gr * 0.42;
+      y += vorab;
+      for (const z of zeilen) { platz(zh); doc.text(z, L + einr, y); y += zh; }
+    };
+    for (const roh of String(md).split(/\r?\n/)) {
+      const l = roh.trim();
+      if (!l) { y += 2; continue; }
+      const m = l.match(/^(#{1,3}) (.*)/);
+      if (m) {
+        const n = m[1].length, t = sauber(m[2]);
+        if (n === 1) absatz(t, 18, "bold", [31, 58, 95], 0, 2);
+        else if (n === 2) { absatz(t, 13, "bold", [31, 58, 95], 0, 4); doc.setDrawColor(150, 180, 190); doc.line(L, y - 3, L + B, y - 3); y += 1; }
+        else absatz(t, 11, "bold", [34, 34, 34], 0, 2);
+      } else if (/^---+$/.test(l)) { platz(4); doc.setDrawColor(200); doc.line(L, y, L + B, y); y += 4; }
+      else if (/^[-*•] /.test(l)) { const t = sauber(l.slice(2)); doc.setFont("helvetica", "normal"); doc.setFontSize(11); doc.setTextColor(34, 34, 34); platz(5); doc.text("•", L + 2, y); absatz(t, 11, /^\*\*.+\*\*$/.test(l.slice(2)) ? "bold" : "normal", [34, 34, 34], 7); }
+      else absatz(sauber(l), 11, /^\*\*.+\*\*:?$/.test(l) ? "bold" : "normal", [34, 34, 34], 0, 0.5);
+    }
+    return doc.output("blob");
+  }
   async function dokumentErstellen(titel, datei, inhalt) {
-    const name = (String(datei || titel || "Dokument").replace(/[^\wäöüÄÖÜß .-]/g, "").trim().slice(0, 60) || "Dokument").replace(/\.(docx?|html?)$/i, "") + ".doc";
+    const basis = (String(datei || titel || "Dokument").replace(/[^\wäöüÄÖÜß .-]/g, "").trim().slice(0, 60) || "Dokument").replace(/\.(docx?|html?|pdf)$/i, "");
+    let pdf = null;
+    try { pdf = await pdfAusMarkdown(titel, inhalt); } catch (e) { elog("PDF: " + (e.message || e)); }
+    if (pdf) {
+      const name = basis + ".pdf";
+      let ort = "";
+      if (NATIVE && SV && SV.saveFile) { try { ort = (await SV.saveFile({ name, mime: "application/pdf", base64: await b64AusBlob(pdf) })).path; } catch (e) { elog("Speichern: " + (e.message || e)); } }
+      let handy = false;
+      if (tgReady()) {
+        try {
+          const fd = new FormData(); fd.append("chat_id", cfg.tgChat); fd.append("caption", "📄 " + titel); fd.append("document", pdf, name);
+          const r = await fetch(`https://api.telegram.org/bot${cfg.tgToken}/sendDocument`, { method: "POST", body: fd });
+          handy = !!(await r.json()).ok;
+        } catch (e) { elog("Dokument per Telegram: " + e.message); }
+      }
+      dokumente = [...dokumente, { titel, name, ort, am: new Date().toISOString() }].slice(-50); store.set("dokumente", dokumente);
+      return `PDF „${titel}“ erstellt (${name}).${ort ? " Gespeichert unter " + ort + "." : ""}${handy ? " Per Telegram aufs Handy geschickt – einfach antippen zum Öffnen, Speichern oder Drucken." : ""}`;
+    }
+    // Fallback: Word-Datei
+    const name = basis + ".doc";
     const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><title>${titel}</title>
 <style>body{font-family:Calibri,Arial,sans-serif;font-size:11pt;line-height:1.4;color:#222;max-width:17cm;margin:1.5cm auto}h1{font-size:20pt;margin:0 0 4pt;color:#1f3a5f}h2{font-size:13pt;color:#1f3a5f;border-bottom:1px solid #9bb;padding-bottom:2pt;margin:14pt 0 6pt}h3{font-size:11pt;margin:10pt 0 2pt}p{margin:0 0 6pt}ul{margin:0 0 6pt 16pt;padding:0}li{margin:0 0 2pt}hr{border:0;border-top:1px solid #ccc}</style></head><body>${mdZuHtml(inhalt)}</body></html>`;
     const b64 = btoa(unescape(encodeURIComponent(html)));
@@ -2810,7 +2862,7 @@ ${zeile("Menschen", ich.menschen)}`;
         input_schema: obj({ phase: { type: "string", enum: Object.keys(PHASEN) } }, ["phase"]) },
       { name: "lernen", description: "Lernspiel/Abfrage. start = mit Fach beginnen (z. B. Mathe 3. Klasse, Englisch-Vokabeln, Hauptstädte), ergebnis = eine beantwortete Aufgabe werten (richtig true/false), ende = aufhören.",
         input_schema: obj({ aktion: { type: "string", enum: ["start", "ergebnis", "ende"] }, fach: { type: "string" }, richtig: { type: "boolean" } }, ["aktion"]) },
-      { name: "dokument_erstellen", description: "Erstellt ein fertiges Dokument (Lebenslauf, Bewerbung, Brief, Kündigung, Zusammenfassung, Plan, Liste …) als Word-Datei, speichert es auf dem Tablet und schickt es per Telegram aufs Handy. Vorher alle nötigen Angaben erfragen (eine Frage nach der anderen). inhalt als Markdown (# Titel, ## Abschnitte, - Listen, **fett**), vollständig und sauber formuliert.",
+      { name: "dokument_erstellen", description: "Erstellt ein fertiges Dokument (Lebenslauf, Bewerbung, Brief, Kündigung, Zusammenfassung, Plan, Liste …) als PDF (auf jedem Handy direkt zu öffnen), speichert es auf dem Tablet und schickt es per Telegram aufs Handy. Vorher alle nötigen Angaben erfragen (eine Frage nach der anderen). inhalt als Markdown (# Titel, ## Abschnitte, - Listen, **fett**), vollständig und sauber formuliert.",
         input_schema: obj({ titel: { type: "string" }, dateiname: { type: "string" }, inhalt: { type: "string" } }, ["titel", "inhalt"]) },
       { name: "bild_erstellen", description: "Erstellt ein Bild (Foto, Zeichnung, Logo, Einladung, Poster, Comic …) oder bearbeitet das zuletzt angehängte/erstellte Bild (bearbeiten=true, z. B. Hintergrund ändern, Person entfernen, Stil ändern, Text einfügen). beschreibung: genaue, bildhafte Beschreibung bzw. Änderungsanweisung (gern auf Englisch, Texte im Bild in Anführungszeichen). Das Bild erscheint auf dem Bildschirm und wird gespeichert.",
         input_schema: obj({ beschreibung: { type: "string" }, bearbeiten: { type: "boolean" }, format: { type: "string", enum: ["quadrat", "hoch", "quer"] }, qualitaet: { type: "string", enum: ["normal", "hoch"], description: "hoch nur wenn ausdrücklich beste Qualität gewünscht oder viel Text im Bild (kostet Geld)" }, aufs_handy: { type: "boolean" } }, ["beschreibung"]) },
@@ -3440,7 +3492,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     ["Kochen & Essen", "Kochmodus Schritt für Schritt ohne „Sentinel“-Sagen. Ich kenne eure Gerichte, plane Wochen und passe sie an dein Ziel an.", ["Lass uns Pfannkuchen machen", "Was essen wir nächste Woche?", "Ich will bis Ostern 5 Kilo abnehmen"]],
     ["Tablet & Apps", "Apps öffnen, YouTube direkt in meinem Gesicht, Lautstärke, Helligkeit, Wecker. Bei Spotify & Co. komme ich danach selbst wieder nach vorne.", ["Spiel Thunderstruck auf YouTube", "Öffne Spotify", "Lautstärke 40 Prozent"]],
     ["Lernen", "Quiz und Abfragen für jedes Alter mit Sternen und Lernserie – vom Zählen bis zur Prüfungsvorbereitung. Unter „Für wen ist Sentinel da?“ stellst du Kind, Schüler, Teen, Erwachsener oder Senior ein.", ["Lass uns Mathe üben", "Frag mich Englisch-Vokabeln ab", "Erklär mir Brüche"]],
-    ["Dokumente (Coworker)", "Ich frage alles Nötige ab, erstelle das Dokument als Word-Datei, speichere es unter Downloads/Sentinel und schicke es per Telegram.", ["Erstell mir einen Lebenslauf", "Schreib eine Kündigung für mein Fitnessstudio"]],
+    ["Dokumente (Coworker)", "Ich frage alles Nötige ab, erstelle das Dokument als PDF (lässt sich auf jedem Handy öffnen), speichere es unter Downloads/Sentinel und schicke es per Telegram.", ["Erstell mir einen Lebenslauf", "Schreib eine Kündigung für mein Fitnessstudio"]],
     ["Reisen", "Zug, Flug, Hotel oder Route – ich öffne die Suche und schicke den Link aufs Handy.", ["Nächster Zug nach Berlin", "Flüge nach Dubai am 27. Dezember"]],
     ["Senioren-Begleiter", "Ruhiger, langsamer, erinnert an Tabletten und meldet sich per Telegram bei der Familie, wenn er lange nichts gehört hat.", ["Erinnere mich jeden Morgen um 8 an meine Tabletten"]],
     ["Aussehen & Stimme", "5 Gesichter mit eigener Stimme, Outfits zu Feiertagen und Geburtstag.", ["Nimm das Hologramm-Gesicht", "Sprich etwas tiefer", "Outfits aus"]],
