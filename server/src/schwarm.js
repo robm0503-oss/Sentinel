@@ -122,6 +122,15 @@ export async function admin(req, env, url) {
   }
   if (url.searchParams.get("k") !== env.ADMIN_KEY) return html("Kein Zugriff", "<p>Falscher Schlüssel.</p>", 403);
   const basis = url.origin;
+  const k = encodeURIComponent(env.ADMIN_KEY);
+  if (url.pathname === "/admin/vip") { // eigenes Gerät freischalten bzw. entfernen
+    const uidV = String(url.searchParams.get("uid") || "").trim().toLowerCase();
+    if (!/^[0-9a-f-]{36}$/.test(uidV)) return html("Ungültige Geräte-ID", `<p>Die Geräte-ID stimmt nicht. <a href="${basis}/admin?k=${k}">Zurück</a></p>`, 400);
+    if (url.searchParams.get("weg")) await env.DB.prepare("DELETE FROM vip WHERE uid = ?").bind(uidV).run();
+    else await env.DB.prepare("INSERT OR IGNORE INTO vip (uid, seit) VALUES (?, ?)").bind(uidV, heute()).run();
+    return html(url.searchParams.get("weg") ? "VIP entfernt" : "✅ Gerät freigeschaltet", `<p>${esc(uidV)}</p><p><a href="${basis}/admin?k=${k}">Zurück zur Übersicht</a></p>`);
+  }
+  const vips = (await env.DB.prepare("SELECT uid, seit FROM vip ORDER BY seit").all()).results || [];
   const neu = (await env.DB.prepare("SELECT id, text, thema, meldungen FROM wissen WHERE status = 'neu' ORDER BY meldungen DESC, id DESC LIMIT 100").all()).results || [];
   const frei = (await env.DB.prepare("SELECT id, text, meldungen FROM wissen WHERE status = 'frei' ORDER BY id DESC LIMIT 100").all()).results || [];
   const hit = await hitliste(env, 30);
@@ -131,6 +140,9 @@ export async function admin(req, env, url) {
   return html("Sentinel – Schwarmwissen",
     `<h3>Wartet auf Freigabe (${neu.length})</h3><ul>${(await Promise.all(neu.map(w => zeile(w, true)))).join("") || "<li>nichts</li>"}</ul>
      <h3>Fehler-Hitliste (30 Tage)</h3><ol>${hit.map(f => `<li><b>${esc(f.tag)}</b>: ${f.n}× <small>z. B. ${esc(f.beispiel)}</small></li>`).join("") || "<li>keine Fehler gemeldet</li>"}</ol>
+     <h3>Meine Geräte (VIP – alles frei)</h3>
+     <ul>${vips.map(v => `<li class="k">${esc(v.uid)} <small>seit ${esc(v.seit)}</small> &nbsp; <a href="${basis}/admin/vip?k=${k}&uid=${v.uid}&weg=1">entfernen</a></li>`).join("") || "<li>noch keins</li>"}</ul>
+     <form action="${basis}/admin/vip" method="get"><input type="hidden" name="k" value="${esc(env.ADMIN_KEY)}"><input name="uid" placeholder="Geräte-ID aus Sentinel → Einstellungen" style="width:100%;padding:10px;border-radius:8px;border:1px solid #444;background:#111;color:#eee"><button style="margin-top:8px;padding:10px 16px">Gerät freischalten</button></form>
      <h3>Freigegeben (${frei.length})</h3><ul>${(await Promise.all(frei.map(w => zeile(w, false)))).join("")}</ul>`);
 }
 

@@ -113,3 +113,15 @@ console.log("ALLE TESTS OK");
   r = await melde(7, viele); assert.equal(r.abgelehnt, 5);
   console.log("Schwarmwissen ok");
 }
+
+// VIP: eigenes Gerät über die Admin-Seite freischalten
+{
+  const uidV = "99999999-2222-4333-8444-555555555555";
+  let a = await worker.fetch(new Request("https://x/admin/vip?k=geheim&uid=" + uidV), env); assert.equal(a.status, 200);
+  const me = await worker.fetch(new Request("https://x/v1/me", { headers: { authorization: "Bearer " + uidV } }), env).then(r => r.json());
+  assert.equal(me.stufe, "business"); assert.equal(me.vip, true);
+  assert.ok((await (await worker.fetch(new Request("https://x/admin?k=geheim"), env)).text()).includes(uidV));
+  a = await worker.fetch(new Request("https://x/admin/vip?k=geheim&weg=1&uid=" + uidV), env); assert.equal(a.status, 200);
+  assert.equal((await worker.fetch(new Request("https://x/admin/vip?k=falsch&uid=" + uidV), env)).status, 403);
+  console.log("VIP ok");
+}

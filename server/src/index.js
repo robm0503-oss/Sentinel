@@ -67,6 +67,8 @@ async function nutzerLaden(env, uid) {
   }
   if (u.month !== monat()) { u.month = monat(); u.used_usd = 0; u.topup_usd = 0; }
   if (u.day !== heute()) { u.day = heute(); u.req_day = 0; }
+  const vip = await env.DB.prepare("SELECT uid FROM vip WHERE uid = ?").bind(uid).first();
+  if (vip) { u.vip = true; u.tier = "business"; return u; } // Robsens eigene Geräte: alles frei
   const { stufe, topups } = await stufeHolen(env, u);
   if (stufe !== u.tier || topups) { u.tier = stufe; u.tier_checked = Date.now(); }
   if (topups) for (const t of topups) {
@@ -82,7 +84,7 @@ export function stand(u) {
   const st = STUFEN[u.tier] || STUFEN.probe;
   const budgetUsd = st.budgetEur * USD_PRO_EUR + (u.topup_usd || 0);
   return {
-    stufe: u.tier, name: st.name,
+    stufe: u.tier, name: u.vip ? "VIP" : st.name, vip: !!u.vip,
     verbraucht_eur: +(u.used_usd / USD_PRO_EUR).toFixed(2), budget_eur: +(budgetUsd / USD_PRO_EUR).toFixed(2),
     anfragen_heute: u.req_day, limit_heute: st.proTag, probe_rest: u.tier === "probe" ? Math.max(0, st.proTag - (u.req_day || 0)) : null,
   };
@@ -161,7 +163,8 @@ async function bild(req, env, uid) {
   const u = await nutzerLaden(env, uid); await speichern(env, u);
   const st = STUFEN[u.tier] || STUFEN.probe;
   const z = await env.DB.prepare("SELECT n FROM bilder WHERE uid = ? AND day = ?").bind(uid, heute()).first();
-  if (z && z.n >= st.bilderTag) return fehler(429, "bilder_limit", `Heute sind ${st.bilderTag} Bilder drin – morgen geht's weiter${u.tier === "business" ? "" : " oder mit einer höheren Stufe"}.`);
+  const bilderMax = u.vip ? 1000 : st.bilderTag;
+  if (z && z.n >= bilderMax) return fehler(429, "bilder_limit", `Heute sind ${st.bilderTag} Bilder drin – morgen geht's weiter${u.tier === "business" ? "" : " oder mit einer höheren Stufe"}.`);
   let b; try { b = await req.json(); } catch (e) { return fehler(400, "invalid_request_error", "Ungültige Anfrage"); }
   const prompt = String(b.prompt || "").slice(0, 2000);
   if (!prompt) return fehler(400, "invalid_request_error", "Beschreibung fehlt");
@@ -175,7 +178,7 @@ async function bild(req, env, uid) {
   catch (e) { return fehler(502, "api_error", "Die Bild-KI hat abgelehnt: " + String(e.message || e).slice(0, 200)); }
   const data = await zuB64(out);
   await env.DB.prepare("INSERT INTO bilder (uid, day, n) VALUES (?, ?, 1) ON CONFLICT(uid, day) DO UPDATE SET n = n + 1").bind(uid, heute()).run();
-  return json({ mime: "image/jpeg", data, rest: st.bilderTag - ((z && z.n) || 0) - 1 });
+  return json({ mime: "image/jpeg", data, rest: bilderMax - ((z && z.n) || 0) - 1 });
 }
 
 export default {

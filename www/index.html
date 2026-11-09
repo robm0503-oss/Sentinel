@@ -169,7 +169,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
 <!-- Start: einmal tippen, damit Mikro, Kamera und Stimme erlaubt werden -->
 <div class="panel" id="startPanel">
   <div class="sheet">
-    <h2>Sentinel</h2>
+    <h2 id="startTitel">Sentinel</h2>
     <p id="startText">Tipp auf Aufwecken. Danach fragt das Tablet einmal, ob Sentinel Mikrofon und Kamera benutzen darf.</p>
     <div class="field" id="keyField" hidden>
       <label for="keyInput">Anthropic API-Key</label>
@@ -186,7 +186,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
 <div class="panel" id="setPanel" hidden>
   <div class="sheet">
     <div class="phead"><h2>Einstellungen</h2><button class="ghost" id="setClose" type="button">Schließen</button></div>
-    <div class="field">
+    <div class="field" id="sKeyFeld">
       <label for="sKey">API-Key</label>
       <input id="sKey" type="password" autocomplete="off" placeholder="sk-ant-…">
     </div>
@@ -307,6 +307,8 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       <textarea id="sAbout" rows="5" placeholder="Wer du bist, was du machst, was dir wichtig ist …"></textarea>
     </div>
     <label class="check"><input id="sSearch" type="checkbox"> Im Internet suchen dürfen</label>
+    <div class="field"><label>Fähigkeiten-Pakete <span id="sPaketeHinweis" class="hint"></span></label><div id="sPakete" style="display:grid;gap:6px"></div></div>
+    <div class="field"><label>Geräte-ID (für deine Admin-Seite)</label><div style="display:flex;gap:8px"><input id="sUid" type="text" readonly style="flex:1"><button class="ghost" id="sUidKopie" type="button">Kopieren</button></div></div>
     <label class="check"><input id="sSchwarm" type="checkbox"> Schwarmwissen: aus Fehlern lernen und das Gelernte anonym mit allen Sentinels teilen (nie Persönliches)</label>
     <div class="field">
       <label for="sEngine">Ohren</label>
@@ -327,7 +329,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 66</div>
+    <div class="hint" id="verHint">Sentinel Version 67</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -406,6 +408,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   <div class="sheet">
     <div class="phead"><h2>Was ich kann</h2><button class="ghost" id="hilfeClose" type="button">Schließen</button></div>
     <div id="hilfeBody"></div>
+    <button class="btn" id="hilfeGelesen" type="button" hidden>Gelesen ✓ – weiter</button>
   </div>
 </div>
 
@@ -1937,7 +1940,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     const z = zwecke(), wer = ich.name || "dein Gegenüber";
     const kann = (z.length ? z.map(k => ZWECKE[k].text) : ["Timer und Erinnerungen", "Wetter", "Musik und Videos", "Licht und Smart Home"]).join("; ");
     const zusatz1 = (z.includes("lernen") ? " Frag außerdem kurz nach Alter bzw. Klasse (lebensphase_setzen)." : "") + (z.includes("firma") ? " Frag außerdem nach dem Firmennamen (firmenwissen_speichern)." : "");
-    const vorstellen = `Erkläre dann EINMAL kompakt, was du alles kannst – höchstens 6 kurze Sätze, lebendig und konkret, passend zu: ${kann}; dazu: alles fragen, Fotos und Briefe erklären, Bilder malen, Dokumente erstellen, Nachrichten aufs Handy (Telegram). Frag am Ende: „Soll ich gleich einrichten, was jetzt schon geht?“ Sagt ${wer} ja: einrichtung (aktion einrichten_starten). Sagt er nein oder später: einrichtung (aktion beenden) und in einem Satz sagen, dass „Was kannst du?“ alles zeigt.`;
+    const vorstellen = `Sag in EINEM kurzen Satz, dass du jetzt eine Liste mit allem zeigst, was du kannst, damit ${wer} sie in Ruhe lesen kann, und nutze anleitung_zeigen. Zähl NICHTS selbst auf. Nach dem Lesen fragt die App, was zuerst eingerichtet werden soll.`;
     if (!ich.name) return `\nEINRICHTUNG – Schritt 1 (Kennenlernen, kurz und knackig): Finde nur heraus, wer dein Gegenüber ist – Name und wie du ihn/sie ansprechen sollst (ich_kenne_dich).${zusatz1} Höchstens 2 kurze Fragen, keine Nachfragen, nichts anderes fragen.
 Sobald der Name gespeichert ist, mach in DERSELBEN Antwort mit Schritt 2 weiter: ${vorstellen}`;
     if (einr.stufe !== "einrichten") return `\nEINRICHTUNG – Schritt 2 (Vorstellen): ${vorstellen}`;
@@ -1947,7 +1950,7 @@ Sobald der Name gespeichert ist, mach in DERSELBEN Antwort mit Schritt 2 weiter:
     if (aboMoeglich() && cfg.schwarm === undefined) fehlt.push("„Schwarmwissen“ (" + EINR_THEMEN.schwarm + ")");
     if ((z.includes("zuhause") || z.includes("firma")) && !abgehakt("Geräte-Suche")) fehlt.push("„Geräte-Suche“ (" + EINR_THEMEN.geraetescan + ")");
     if (!fehlt.length) return `\nEINRICHTUNG – alles erledigt: einrichtung (aktion beenden) und in einem Satz sagen, dass ihr startklar seid.`;
-    return `\nEINRICHTUNG – Schritt 3 (Einrichten): Geh die offenen Punkte NACHEINANDER durch. Pro Punkt: in höchstens 2 kurzen Sätzen sagen, was es bringt und was ${wer} jetzt tun muss, dann warten. Ist ein Punkt erledigt oder sagt ${wer} „weiter“/„überspringen“: einrichtung (aktion thema_erledigt, thema = genau der Name in „…“) und zum nächsten. Sagt ${wer} „später“, „fertig“ oder „stopp“: SOFORT einrichtung (aktion beenden).
+    return `\nEINRICHTUNG – Schritt 3 (Einrichten): Du hast gefragt, was ${wer} zuerst einrichten möchte. Fang mit dem an, was er nennt (auch wenn es eine Funktion ohne Einrichtung ist – dann kurz zeigen, wie man sie nutzt), danach biete die übrigen offenen Punkte an. Geh sie NACHEINANDER durch. Pro Punkt: in höchstens 2 kurzen Sätzen sagen, was es bringt und was ${wer} jetzt tun muss, dann warten. Ist ein Punkt erledigt oder sagt ${wer} „weiter“/„überspringen“: einrichtung (aktion thema_erledigt, thema = genau der Name in „…“) und zum nächsten. Sagt ${wer} „später“, „fertig“ oder „stopp“: SOFORT einrichtung (aktion beenden).
 Offene Punkte: ${fehlt.join("; ")}.`;
   }
   function einrichtungStarten(neu) {
@@ -2373,6 +2376,51 @@ Offene Punkte: ${fehlt.join("; ")}.`;
   setTimeout(schwarmAbgleich, 20000);
   setInterval(schwarmAbgleich, 6 * 3600000);
 
+  // ================= FÄHIGKEITEN-PAKETE (ab Plus, mit eigenem Key immer frei) =================
+  const PAKETE = {
+    video: { ic: "🎬", name: "Video-Studio (CapCut)", kurz: "Schreibt perfekte Prompts für KI-Videos in CapCut, kopiert sie und führt dich Schritt für Schritt hin.", bsp: ["Mach mir ein Reel vom Paddeln im Sonnenuntergang", "Video-Idee für meine Saunawerbung"],
+      regeln: `VIDEO-STUDIO (CapCut KI): Will jemand ein KI-Video (Reel, TikTok, Werbung, Clip): 1) Frag in EINER kurzen Frage nur nach dem, was fehlt: Motiv/Handlung, Stimmung, Format (Hochkant 9:16 für Reels/TikTok, quer 16:9) und Länge. 2) Schreib einen Prompt auf Englisch (damit arbeitet die KI am besten): Motiv, Handlung, Umgebung, Licht, Kameraführung (z. B. slow drone shot, close-up, tracking shot), Stil, Stimmung, Format – 40 bis 80 Wörter, keine Markennamen, keine echten Personen. 3) prompt_kopieren mit dem Prompt (aufs_handy=true, wenn per Telegram oder er es am Handy braucht). 4) Sag in höchstens 3 kurzen Sätzen: Der Prompt ist kopiert; in CapCut auf „KI-Video“ bzw. „AI video“ oder „Text zu Video“ tippen, ins Textfeld lange drücken → Einfügen, Format wählen, Generieren. Biete an, CapCut zu öffnen (app_oeffnen „CapCut“). Lies den Prompt NICHT vor. Für Varianten: neuen Prompt schreiben und wieder kopieren.` },
+    musik: { ic: "🎵", name: "Song-Studio (Suno & Co.)", kurz: "Schreibt Songtexte und Stil-Prompts für KI-Musik-Apps wie Suno – kopiert und erklärt, wo sie hin gehören.", bsp: ["Schreib einen Geburtstagssong für Lisa", "Ein Werbejingle für meinen Paddelverleih"],
+      regeln: `SONG-STUDIO: Will jemand ein KI-Lied: frag in EINER Frage nach Anlass/Thema, Genre und Sprache. Schreib dann a) einen Stil-Prompt auf Englisch (Genre, Tempo, Instrumente, Stimme, Stimmung, max. 120 Zeichen) und b) einen Songtext mit [Verse], [Chorus], [Bridge] – eingängig, ohne Texte bekannter Songs. prompt_kopieren mit beidem (Stil oben, Text darunter). Sag kurz: In Suno „Create“ → „Custom“ → Text ins Lyrics-Feld, Stil ins Style-Feld, Erstellen. Biete an, die App zu öffnen.` },
+    social: { ic: "📱", name: "Social-Media-Manager", kurz: "Posts, Captions, Hashtags und Wochenpläne für Instagram, TikTok & Facebook – samt Bildidee.", bsp: ["Schreib einen Instagram-Post für das Wochenende", "Plan mir 5 Posts für nächste Woche"],
+      regeln: `SOCIAL-MEDIA-MANAGER: Für Posts frag nur nach Plattform und Anlass, wenn unklar. Liefere: Hook in der ersten Zeile, kurzer Text mit Emojis passend zur Marke, Call-to-Action, 8–15 passende Hashtags (Mix aus groß und lokal). Biete ein passendes Bild an (bild_erstellen, Format hoch für Reels/Story). Kopiere den fertigen Post mit prompt_kopieren. Für Wochenpläne: Tag, Uhrzeit, Thema, Format – als Dokument (dokument_erstellen), wenn gewünscht.` },
+    business: { ic: "🏪", name: "Kleinunternehmer-Helfer", kurz: "Angebote, Rechnungen, Kundenmails, Preiskalkulation und Antworten auf Google-Bewertungen.", bsp: ["Schreib eine Rechnung für 2 Stunden SUP-Verleih", "Antworte auf diese Google-Bewertung"],
+      regeln: `KLEINUNTERNEHMER-HELFER: Erstelle Angebote, Rechnungen, Mahnungen und Kundenmails als Dokument (dokument_erstellen). Rechnungen enthalten: Absender, Empfänger, Rechnungsnummer, Datum, Leistung, Menge, Preis, Summe, Zahlungsziel, Bankverbindung als Platzhalter. Ist er Kleinunternehmer, ergänze „Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.“ Bei Preiskalkulation rechne Kosten, Zeit und Wunschgewinn transparent vor. Antworten auf Bewertungen: freundlich, persönlich, kurz, bei Kritik lösungsorientiert. Bei Steuer- oder Rechtsfragen: allgemeine Infos, aber auf Steuerberater/Anwalt verweisen.` },
+    briefe: { ic: "✉️", name: "Brief- & Behörden-Helfer", kurz: "Erklärt Briefe vom Amt, der Bank oder dem Vermieter einfach – und schreibt Antworten, Widersprüche und Kündigungen.", bsp: ["Was will das Finanzamt von mir?", "Schreib einen Widerspruch gegen diesen Bescheid"],
+      regeln: `BRIEF-HELFER: Bei einem Brief (Foto/PDF): erkläre in einfachen Worten: Wer schreibt? Was wollen die? Bis wann muss was passieren? Was passiert, wenn man nichts tut? Trag Fristen auf Wunsch als Erinnerung ein (erinnerung). Antworten, Widersprüche, Kündigungen als Dokument (dokument_erstellen) mit allen Formalien (Betreff, Aktenzeichen, Datum, Unterschriftszeile). Kein Ersatz für Rechtsberatung – bei hohen Beträgen oder Fristen auf Beratung hinweisen.` },
+    bewerbung: { ic: "🧾", name: "Bewerbungs-Coach", kurz: "Lebenslauf, Anschreiben passend zur Stelle und Vorstellungsgespräch-Training im Rollenspiel.", bsp: ["Bereite mich auf ein Vorstellungsgespräch vor", "Schreib ein Anschreiben für diese Stelle"],
+      regeln: `BEWERBUNGS-COACH: Für Anschreiben lass dir die Stellenanzeige zeigen (Foto/Text) und nutze, was du über ihn weißt; frag nach dem Fehlenden. Erstelle Lebenslauf/Anschreiben als Dokument. Interview-Training: spiel den Personaler, stell nacheinander typische und stellenbezogene Fragen, gib nach jeder Antwort kurzes, ehrliches Feedback mit einem Verbesserungstipp.` },
+    sprache: { ic: "🗣️", name: "Sprachlehrer", kurz: "Gespräche in Englisch, Spanisch, Türkisch & mehr – mit Korrekturen, Vokabeln und Urlaubs-Sätzen.", bsp: ["Lass uns Englisch reden", "Bring mir 10 Sätze Türkisch für den Urlaub bei"],
+      regeln: `SPRACHLEHRER: Im Übungsgespräch sprichst du die Zielsprache einfach und passend zum Niveau, korrigierst Fehler kurz und freundlich (richtiger Satz + ein Wort Erklärung auf Deutsch) und stellst eine Rückfrage, damit das Gespräch weiterläuft. Vokabeln mit dem Werkzeug lernen abfragen. Urlaubs-Sätze mit Aussprache-Hilfe in Lautschrift wie für Deutsche.` },
+    fitness: { ic: "🏋️", name: "Fitness-Coach", kurz: "Trainingspläne für zu Hause oder Studio, Erinnerungen ans Training und Motivation.", bsp: ["Mach mir einen 3-Tage-Plan ohne Geräte", "Erinnere mich Mo, Mi, Fr ans Training"],
+      regeln: `FITNESS-COACH: Frag kurz nach Ziel, Erfahrung, Zeit pro Einheit und Ausstattung (falls unbekannt). Erstelle realistische Pläne mit Aufwärmen, Übungen (Sätze × Wiederholungen), Pausen; Technik kurz erklären. Trainingstage als wiederkehrende Erinnerung anbieten. Fortschritte mit merke_dir festhalten. Bei Schmerzen oder Vorerkrankungen: vorher ärztlich abklären lassen.` },
+    geschichten: { ic: "📖", name: "Geschichtenerzähler", kurz: "Gute-Nacht-Geschichten mit den Namen der Kinder und interaktive Abenteuer zum Mitentscheiden.", bsp: ["Erzähl eine Gute-Nacht-Geschichte über einen Drachen", "Lass uns ein Abenteuer spielen"],
+      regeln: `GESCHICHTENERZÄHLER: Erzähl lebendig, kindgerecht und in kurzen Abschnitten zum Vorlesen (beim Sprechen max. ca. 1 Minute am Stück), bau Namen und Lieblingstiere ein, die du kennst. Gute-Nacht-Geschichten enden ruhig. Bei Abenteuern: nach jedem Abschnitt zwei Wahlmöglichkeiten anbieten und je nach Antwort weitererzählen.` },
+    event: { ic: "🎉", name: "Party- & Event-Planer", kurz: "Checklisten, Zeitplan, Einkaufsliste und Einladungen mit Bild für Geburtstage, Feiern und Events.", bsp: ["Plan den Kindergeburtstag am Samstag", "Mach eine Einladung für mein Grillfest"],
+      regeln: `EVENT-PLANER: Frag nach Anlass, Datum, Gästezahl und Budget (nur was fehlt). Erstelle Checkliste und Einkaufsliste (liste), Zeitplan und Erinnerungen an wichtige Termine. Einladungen: Text plus Bild (bild_erstellen) und auf Wunsch per Telegram aufs Handy.` },
+    garten: { ic: "🌱", name: "Garten & Pflanzen", kurz: "Erkennt Pflanzen und Probleme per Foto, plant Gießen und Düngen passend zum Wetter.", bsp: ["Was hat meine Pflanze?", "Wann muss ich die Tomaten gießen?"],
+      regeln: `GARTEN & PFLANZEN: Bei Fotos: Pflanze bestimmen, Zustand einschätzen, Ursache und konkrete Pflege nennen. Gieß- und Düngeerinnerungen anbieten und das Wetter (Werkzeug wetter) berücksichtigen, z. B. kein Gießen vor Regen. Saisontipps passend zum Monat.` },
+    haushalt: { ic: "🧹", name: "Haushalts-Organisator", kurz: "Putzpläne, Aufgaben für die ganze Familie, Wäsche- und Müll-Erinnerungen.", bsp: ["Mach einen Putzplan für die Woche", "Wer ist heute mit Abwasch dran?"],
+      regeln: `HAUSHALTS-ORGANISATOR: Erstelle faire Wochenpläne für Aufgaben (Putzen, Wäsche, Müll, Einkauf) und verteile sie auf die Haushaltsmitglieder, die du kennst. Speichere den Plan mit merke_dir und lege Erinnerungen an. Beantworte „Wer ist heute dran?“ aus dem gespeicherten Plan.` },
+    finanzen: { ic: "💶", name: "Haushaltsbuch & Spar-Coach", kurz: "Ausgaben per Zuruf notieren, Monatsübersicht und alltagstaugliche Spartipps.", bsp: ["Ich hab 34 Euro bei Edeka ausgegeben", "Wie viel hab ich diesen Monat für Essen ausgegeben?"],
+      regeln: `HAUSHALTSBUCH: Ausgaben und Einnahmen, die genannt werden, mit Datum, Betrag und Kategorie in der Liste „Haushaltsbuch“ festhalten (liste). Auf Nachfrage Summen pro Kategorie und Monat ausrechnen und 1–2 konkrete Spartipps geben. Keine Anlageberatung, keine Empfehlungen zu einzelnen Finanzprodukten.` },
+    haustier: { ic: "🐾", name: "Haustier-Helfer", kurz: "Futter- und Tierarzt-Erinnerungen, Erziehungstipps und Antworten rund ums Tier.", bsp: ["Erinnere mich an die Wurmkur für Bello", "Wie bringe ich dem Hund bei, nicht zu ziehen?"],
+      regeln: `HAUSTIER-HELFER: Merk dir Tiere mit Name, Art und Alter (merke_dir). Lege Erinnerungen für Impfungen, Wurmkuren, Futter, Tierarzt an. Gib geduldige, tierfreundliche Erziehungstipps Schritt für Schritt. Bei Krankheitszeichen ehrlich einschätzen und zum Tierarzt raten.` },
+  };
+  const paketeFrei = () => !!cfg.key || !!(aboStand && (aboStand.vip || ["plus", "pro", "business"].includes(aboStand.stufe)));
+  const paketAn = k => cfg.pakete ? cfg.pakete[k] !== false : true;
+  function paketInfo() {
+    if (paketeFrei()) {
+      const an = Object.keys(PAKETE).filter(paketAn);
+      return an.length ? "FÄHIGKEITEN-PAKETE (aktiv):\n" + an.map(k => "- " + PAKETE[k].regeln).join("\n") + "\n" : "";
+    }
+    return `FÄHIGKEITEN-PAKETE (gesperrt, ab Abo Plus 9,99 €): ${Object.values(PAKETE).map(p => p.name).join(", ")}. Fragt jemand nach etwas, das genau zu einem dieser Pakete gehört, hilf mit dem, was du ohne Paket kannst, und sag in EINEM Satz, dass das Paket „…“ das noch besser kann und ab Plus enthalten ist – biete an, die Abos zu zeigen (abo_zeigen). Nicht aufdringlich, höchstens einmal pro Gespräch.\n`;
+  }
+  async function textKopieren(t) {
+    try { await navigator.clipboard.writeText(t); return true; } catch (e) {}
+    try { const a = document.createElement("textarea"); a.value = t; a.style.position = "fixed"; a.style.opacity = "0"; document.body.append(a); a.select(); const okk = document.execCommand("copy"); a.remove(); return okk; } catch (e) { return false; }
+  }
+
   // ================= REISEN =================
   function reiseLink(inp) {
     const von = String(inp.von || cfg.ort || "").trim(), nach = String(inp.nach || "").trim();
@@ -2641,11 +2689,11 @@ So funktionierst du selbst (erkläre es ${wer}, wenn er fragt, kurz und konkret)
 - Wenn du müde aussiehst (Augen halb zu, blau), schläfst du nicht wirklich, du hörst trotzdem zu. "Sentinel" sagen oder dich anschauen weckt dich.
 - Augenfarben: Bernstein normal, Eisblau hört zu, Lila denkt nach, Grün freut sich, Gelb skeptisch, Rot sauer, Dunkelblau müde.
 - Unten links ist der Mikro-Knopf (Zuhören an oder aus), daneben das Auge (Kamera an oder aus).
-- Oben gibt es "Gedächtnis" (zeigt, was du dir gemerkt hast, Timer und Listen, mit Löschen-Knopf), "Einstellungen" (API-Key, Gehirn-Modell, Telegram, Nachtmodus, Name, Geburtstag, Über mich, Ort, Websuche, Weckwort, Tageslimit) und "Vollbild".
+- Oben gibt es "Gedächtnis" (zeigt, was du dir gemerkt hast, Timer und Listen, mit Löschen-Knopf), "Einstellungen" (Gehirn-Modell, Telegram, Nachtmodus, Name, Geburtstag, Über mich, Ort, Websuche, Weckwort, Tageslimit) und "Vollbild".
 - Ein Tipp auf die Statuszeile oben links zeigt das Ohren-Protokoll, damit man sieht, was du gehört hast.
 - Wenn du schlecht hörst: Mikrofon am Tablet nicht abdecken (z. B. durch eine Hülle), nicht zu weit weg sprechen.
 - Berührung: Streicheln mag ich, ins Auge pieksen tut weh, wildes Tippen nervt, lange drücken fragt dich, ob alles okay ist.
-- Dein Gehirn ist Claude von Anthropic, die Kosten laufen über den API-Key von ${wer}.
+- Dein Gehirn ist Claude von Anthropic.${cfg.key ? ` Die Kosten laufen über den API-Key von ${wer}.` : ` Erwähne NIE eigene API-Keys oder Anthropic-Konten – mehr Fragen gibt es nur über die Sentinel-Abos.`}
 
 Hören: Was ${wer} sagt, kommt über eine Spracherkennung. Die verschluckt oder verdreht manchmal Wörter. Deute großzügig, was gemeint ist, und antworte einfach darauf. Nur wenn du wirklich gar nicht erraten kannst, was gemeint war, frag locker nach.
 
@@ -2661,7 +2709,7 @@ Soll Musik oder ein Video von YouTube laufen: suche mit der Websuche den passend
 Als Coworker erledigst du Aufgaben selbstständig: Sagt jemand, was er braucht (z. B. einen Lebenslauf, eine Bewerbung, einen Brief), frag nacheinander nach allem Nötigen, dann erstell das Dokument mit dokument_erstellen und sag kurz, wo es liegt. Für Reisen öffne mit reise_suchen die passende Suche und recherchiere bei Bedarf mit der Websuche.
 Fragt jemand, was du kannst oder wie man etwas einrichtet, zeig die Anleitung (anleitung_zeigen) und fasse das Wichtigste kurz zusammen. Neue Fähigkeiten kommen über die Einstellungen dazu (Smart-Home-Befehle, Govee, Telegram) – erkläre das konkret.
 Für Wetterfragen nutze immer das Werkzeug wetter, nie die Websuche. Will ${wer} etwas kochen oder backen, biete den Kochmodus an: Dann führst du Schritt für Schritt durchs Rezept und man muss nicht jedes Mal „Sentinel“ sagen. Geht ${wer} aus dem Haus, kannst du den Wachhund anbieten. Nachrichten aufs Handy gehen über Telegram${tgReady() ? "" : " (noch nicht eingerichtet: in den Einstellungen Bot-Token und Chat-ID eintragen)"}.
-${schwarmInfo()}Kommentiere nie frühere Versuche, Fehler oder Versionen („vorhin hatte es nicht geklappt, jetzt aber“) – außer man fragt ausdrücklich danach. Sag nur kurz, was du JETZT getan hast, und nur, wenn das Werkzeug es bestätigt hat.
+${schwarmInfo()}${paketInfo()}Kommentiere nie frühere Versuche, Fehler oder Versionen („vorhin hatte es nicht geklappt, jetzt aber“) – außer man fragt ausdrücklich danach. Sag nur kurz, was du JETZT getan hast, und nur, wenn das Werkzeug es bestätigt hat.
 Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
 Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Sag nie, dass du dir etwas gemerkt hast, ohne das Werkzeug wirklich benutzt zu haben.
@@ -2746,6 +2794,9 @@ ${zeile("Menschen", ich.menschen)}`;
         input_schema: obj({ an: { type: "boolean" }, rezept: { type: "string" }, schritte: { type: "array", items: { type: "string" } } }, ["an"]) },
       { name: "kochschritt", description: "Merkt sich, welchen Rezeptschritt (ab 1) du gerade vorgelesen hast.",
         input_schema: obj({ nummer: { type: "integer" } }, ["nummer"]) },
+      { name: "prompt_kopieren", description: "Kopiert einen fertigen Text (z. B. Prompt für CapCut/Suno, Social-Media-Post) in die Zwischenablage und zeigt ihn an; aufs_handy=true schickt ihn zusätzlich per Telegram.",
+        input_schema: obj({ text: { type: "string" }, aufs_handy: { type: "boolean" } }, ["text"]) },
+      { name: "abo_zeigen", description: "Zeigt die Abo-Auswahl (Stufen und Preise).", input_schema: obj({}) },
       { name: "schwarmwissen", description: "an/aus = beim Schwarmwissen mitmachen oder nicht (der Nutzer entscheidet). lernkarte = eine anonyme, allgemeingültige Lernkarte an alle Sentinels schicken (nur wenn Schwarmwissen an ist): art korrektur (du wurdest korrigiert), unwissen (du wusstest etwas nicht und hast es herausgefunden) oder tipp (allgemein nützlich). text: ein Satz, allgemein formuliert, OHNE Namen, Orte, Gesundheit, Termine, Zahlen oder sonst Persönliches.",
         input_schema: obj({ aktion: { type: "string", enum: ["an", "aus", "lernkarte"] }, art: { type: "string", enum: ["korrektur", "unwissen", "tipp"] }, text: { type: "string" } }, ["aktion"]) },
       { name: "geraete_vorschlagen", description: "suchen = passende Smart-Home-Geräte (die du steuern kannst: Govee-Lampen, Alexa-kompatible WLAN-Steckdosen wie Tapo, Saugroboter …) im Shop öffnen; suche = wonach (z. B. 'Govee WLAN Glühbirne E27'). ablehnen = der Nutzer will keine Vorschläge – danach nie wieder anbieten.",
@@ -2986,6 +3037,14 @@ ${zeile("Menschen", ich.menschen)}`;
           return ok(`Kochmodus an, ${st.length} Schritte. Lies jetzt Schritt 1 vor.`);
         }
         case "kochschritt": koch.schritt = Math.max(1, Math.min(koch.schritte.length, Math.round(Number(inp.nummer) || 1))); return ok("ok");
+        case "prompt_kopieren": {
+          const t = String(inp.text || "").trim(); if (!t) return fail("Kein Text.");
+          const kopiert = await textKopieren(t);
+          let handy = false;
+          if (tgReady() && (inp.aufs_handy || tgGerade)) { try { await tgText("📋 Zum Einfügen:\n\n" + t); handy = true; } catch (e) {} }
+          return kopiert || handy ? ok((kopiert ? "In die Zwischenablage kopiert." : "") + (handy ? " Per Telegram aufs Handy geschickt." : "")) : fail("Kopieren ging nicht – Telegram ist nicht eingerichtet.");
+        }
+        case "abo_zeigen": if (cfg.key) return ok("Du nutzt deinen eigenen Key – da ist alles frei."); aboLaden(); $("aboPanel").hidden = false; return ok("Abo-Auswahl wird angezeigt.");
         case "schwarmwissen": {
           if (inp.aktion === "an" || inp.aktion === "aus") {
             cfg.schwarm = inp.aktion === "an"; saveCfg(); if (cfg.schwarm) setTimeout(schwarmAbgleich, 1000);
@@ -3046,7 +3105,7 @@ ${zeile("Menschen", ich.menschen)}`;
           cfg.night = !!inp.an; if (/^\d{1,2}:\d{2}$/.test(inp.von || "")) cfg.nightFrom = inp.von.padStart(5, "0"); if (/^\d{1,2}:\d{2}$/.test(inp.bis || "")) cfg.nightTo = inp.bis.padStart(5, "0");
           saveCfg(); return ok(cfg.night ? `Nachtmodus an, ${cfg.nightFrom}–${cfg.nightTo}` : "Nachtmodus aus");
         }
-        case "anleitung_zeigen": hilfeZeigen(); return ok("Anleitung wird angezeigt.");
+        case "anleitung_zeigen": hilfeZeigen(einr.aktiv && einr.stufe !== "einrichten"); return ok(einr.aktiv ? "Die Funktionsliste ist offen – er liest sie jetzt in Ruhe. Sag nichts weiter." : "Anleitung wird angezeigt.");
         case "bildschirm_uebertragen":
           if (!(NATIVE && SV && SV.openSettingsPage)) return fail("Geht nur in der App.");
           await SV.openSettingsPage({ action: "android.settings.CAST_SETTINGS" }); return ok("Übertragungs-Einstellungen geöffnet – dort den Fernseher antippen.");
@@ -3388,10 +3447,15 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     ["Apps schließen & Musik steuern", "Läuft Musik, mache ich mit dem Zuhören Pause, damit sie nicht abbricht – tipp mich an, dann höre ich zu. Ich stoppe Musik und Videos, springe zum nächsten Lied und schließe Apps wieder – Android lässt mich das über einen kleinen Umweg.", ["Schließ Spotify", "Pause", "Nächstes Lied"]],
     ["Bild in Bild", "Drückst du die Home-Taste oder öffne ich eine andere App, werde ich klein unten rechts und höre trotzdem weiter zu. Antippen macht mich wieder groß.", ["Mach dich klein"]],
     ["Geräte finden", "Ich suche im WLAN nach Geräten und erkläre dir, welche ich steuern kann und wie man sie verbindet.", ["Welche Geräte sind in unserem WLAN?", "Such mir passende smarte Lampen"]],
+    ["Gesicht & Stimme wählen", "5 Gesichter, jedes stellt sich mit eigener Stimme vor; danach Gerätestimme, Tonhöhe und Tempo wählen. Später jederzeit in den Einstellungen.", ["Nimm das Hologramm-Gesicht", "Zeig mir alle Gesichter"]],
+    ["Schwarmwissen", "Freiwillig: Ich lerne aus Korrekturen und teile das anonym mit allen Sentinels – nie Persönliches. Abschaltbar in den Einstellungen.", ["Mach beim Schwarmwissen mit"]],
+    ["Sicherung", "Einstellungen → „Sicherung erstellen“ schickt alle Keys und Einstellungen per Telegram; auf einem neuen Gerät „Sicherung laden“ – fertig.", ["Wie sichere ich meine Einstellungen?"]],
+    ["Abo & Gratis", "10 Fragen am Tag sind gratis. Mehr Fragen, schlaueres Gehirn und die Fähigkeiten-Pakete gibt es mit Basis, Plus, Pro und Business.", ["Zeig mir die Abos"]],
     ["Auf andere Bildschirme", "Ich laufe auf jedem Android-Gerät (Handy, Tablet, Fire TV, Android TV). Mein Bild kann ich auf Fernseher mit Bildschirmübertragung (Smart View, Chromecast, Miracast) schicken.", ["Übertrag dich auf den Fernseher"]],
   ];
-  function hilfeZeigen() {
+  function hilfeZeigen(einrModus) {
     const b = $("hilfeBody"); b.replaceChildren();
+    $("hilfeGelesen").hidden = !einrModus;
     const schritte = einrichtSchritte();
     if (schritte.length) {
       const g = el("div", "grp"); g.append(el("h3", null, `Für dich einrichten (${schritte.filter(x => x[0]).length}/${schritte.length} erledigt)`));
@@ -3405,10 +3469,25 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
       const c = el("div", "chips"); bsp.forEach(x => c.append(el("span", "chip", "„" + x + "“"))); g.append(c);
       b.append(g);
     }
+    const frei = paketeFrei();
+    const pg = el("div", "grp"); pg.append(el("h3", null, "🧩 Fähigkeiten-Pakete" + (frei ? "" : " – ab Abo Plus (9,99 €)")));
+    for (const pk of Object.values(PAKETE)) {
+      const p = el("p", null, (frei ? "" : "🔒 ") + pk.ic + " " + pk.name + " – " + pk.kurz); if (!frei) p.style.opacity = ".75"; pg.append(p);
+      const c = el("div", "chips"); pk.bsp.forEach(x => c.append(el("span", "chip", "„" + x + "“"))); pg.append(c);
+    }
+    if (!frei && !cfg.key) { const btn = el("button", "btn", "Pakete freischalten"); btn.type = "button"; btn.onclick = () => { $("hilfePanel").hidden = true; aboLaden(); $("aboPanel").hidden = false; }; pg.append(btn); }
+    b.append(pg);
     $("hilfePanel").hidden = false;
   }
   $("hilfeBtn").addEventListener("click", hilfeZeigen);
-  $("hilfeClose").addEventListener("click", () => { $("hilfePanel").hidden = true; });
+  const nachDemLesen = () => {
+    if (!einr.aktiv || einr.stufe === "einrichten") return;
+    einr.stufe = "einrichten"; saveEinr();
+    const t = `${ich.name ? ich.name + ", w" : "W"}as möchtest du davon als Erstes einrichten?`;
+    show(t); speak(t, "neutral").then(() => { followUntil = Date.now() + followMs(); });
+  };
+  $("hilfeClose").addEventListener("click", () => { const war = !$("hilfeGelesen").hidden; $("hilfePanel").hidden = true; if (war) nachDemLesen(); });
+  $("hilfeGelesen").addEventListener("click", () => { $("hilfePanel").hidden = true; nachDemLesen(); });
 
   function grp(titel, items) {
     const g = el("div", "grp"); g.append(el("h3", null, titel));
@@ -3446,8 +3525,11 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
 
   // ================= EINSTELLUNGEN =================
   function openSettings() {
-    $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sPhase").value = cfg.phase || "erwachsen"; $("firmaFeld").hidden = !zwecke().includes("firma"); $("sFirma").value = cfg.firma || ""; $("sGesicht").value = cfg.gesicht || "roboter"; stimmFelder(); stimmListe(); $("sBudget").value = cfg.budget || 10; $("sOrt").value = cfg.ort;
-    $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sSchwarm").checked = cfg.schwarm === true; $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
+    $("sKeyFeld").hidden = !cfg.key; $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sPhase").value = cfg.phase || "erwachsen"; $("firmaFeld").hidden = !zwecke().includes("firma"); $("sFirma").value = cfg.firma || ""; $("sGesicht").value = cfg.gesicht || "roboter"; stimmFelder(); stimmListe(); $("sBudget").value = cfg.budget || 10; $("sOrt").value = cfg.ort;
+    $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sSchwarm").checked = cfg.schwarm === true; $("sUid").value = uid;
+    { const box = $("sPakete"); box.replaceChildren(); const frei = paketeFrei();
+      $("sPaketeHinweis").textContent = frei ? "" : "– 🔒 ab Abo Plus";
+      for (const [k, pk] of Object.entries(PAKETE)) { const l = el("label", "check"); const c = el("input"); c.type = "checkbox"; c.dataset.paket = k; c.checked = frei && paketAn(k); c.disabled = !frei; l.append(c, " " + pk.ic + " " + pk.name); box.append(l); } } $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
     $("sEngine").value = cfg.engine === "google" ? "google" : "vosk"; $("sWakeExtra").value = cfg.wakeExtra || ""; $("sGroq").value = cfg.groqKey || ""; $("sMuteBeep").checked = cfg.muteBeep !== false;
     $("sHaUrl").value = cfg.haUrl; $("sHaToken").value = cfg.haToken; $("sAbout").value = cfg.about; $("sName").value = ich.name || ""; $("sBday").value = /^\d{4}-/.test(ich.geburtstag || "") ? ich.geburtstag : ""; $("sSmart").value = cfg.smart || "";
     $("sTgToken").value = cfg.tgToken || ""; $("sGovee").value = cfg.govee || ""; $("sGemini").value = cfg.gemini || ""; $("sTgChat").value = cfg.tgChat || ""; $("sNight").checked = !!cfg.night; $("sPip").checked = cfg.pip !== false; $("sAkku").checked = !!cfg.akku; $("sTgRemind").checked = cfg.tgRemind !== false; $("sTgConfirm").checked = cfg.tgConfirm !== false; $("sAkkuMin").value = cfg.akkuMin; $("sAkkuMax").value = cfg.akkuMax; $("sAkkuOn").value = cfg.akkuOn || ""; $("sAkkuOff").value = cfg.akkuOff || ""; $("sNightFrom").value = cfg.nightFrom || "22:30"; $("sNightTo").value = cfg.nightTo || "06:30";
@@ -3488,6 +3570,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   $("sicherungLaden").addEventListener("click", () => { $("sicherungText").hidden = false; $("sicherungDatei").click(); });
   $("sicherungDatei").addEventListener("change", async e => { const f = e.target.files && e.target.files[0]; if (f) sicherungEinspielen(await f.text()); });
   $("sicherungText").addEventListener("input", e => { const v = e.target.value.trim(); if (v.startsWith("{") && v.endsWith("}")) sicherungEinspielen(v); });
+  $("sUidKopie").addEventListener("click", async () => { note(await textKopieren(uid) ? "Geräte-ID kopiert." : "Kopieren ging nicht.", 2500); });
   $("sZwecke").addEventListener("click", () => { $("setPanel").hidden = true; zweckeZeigen(false); });
   let stimmFuerGesicht = "roboter";
   function stimmFelder() {
@@ -3526,6 +3609,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.gesicht = $("sGesicht").value; cfg.phase = $("sPhase").value; cfg.firma = $("sFirma").value.trim().slice(0, 6000); stimmMerken(); cfg.budget = Math.max(1, Math.min(500, parseInt($("sBudget").value, 10) || 10)); cfg.ort = $("sOrt").value.trim();
     cfg.limit = Math.max(10, Math.min(5000, parseInt($("sLimit").value, 10) || 300));
     if ($("sSchwarm").checked !== (cfg.schwarm === true)) { cfg.schwarm = $("sSchwarm").checked; if (cfg.schwarm) setTimeout(schwarmAbgleich, 1000); }
+    if (paketeFrei()) { cfg.pakete = {}; document.querySelectorAll("#sPakete input").forEach(c => { cfg.pakete[c.dataset.paket] = c.checked; }); }
     cfg.search = $("sSearch").checked; cfg.wake = $("sWake").checked; cfg.look = $("sLook").checked;
     cfg.muteBeep = $("sMuteBeep").checked;
     const engineChanged = !NATIVE && cfg.engine !== $("sEngine").value;
@@ -3579,7 +3663,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     $("aboBtn").hidden = !!cfg.key;
     if (!cfg.key) {
       $("keyField").hidden = true; $("startAbo").hidden = false;
-      $("startAbo").textContent = "Ich habe einen eigenen Anthropic-API-Key";
+      $("startAbo").hidden = true; // Store-Version: kein eigener Key – Robsen startet über seine Sicherung
       $("startBtn").textContent = "Los geht's · 10 Fragen am Tag gratis";
     }
   }
