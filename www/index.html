@@ -321,7 +321,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 63</div>
+    <div class="hint" id="verHint">Sentinel Version 64</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -1889,15 +1889,20 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     familie: "Wer aus der Familie benachrichtigt werden soll (Telegram) und welche Tabletten/Termine regelmäßig anstehen (als Erinnerungen stellen)",
     firma: "Firmenname, Branche, Angebot, Öffnungszeiten, Ansprechpartner und häufige Fragen von Besuchern – mit firmenwissen_speichern festhalten",
     schwarm: "Frag, ob du beim Schwarmwissen mitmachen darfst: Wenn du etwas falsch machst, korrigiert wirst oder etwas nicht weißt, schreibst du eine anonyme Lernkarte (nur allgemeines Wissen, nie Namen oder Persönliches). Alle Sentinels lernen so voneinander und werden schlauer. Antwort mit schwarmwissen (aktion an oder aus) speichern.",
-    geraetescan: "ALS LETZTES THEMA: Kündige an, dass du jetzt im WLAN nach Geräten suchst (dauert ca. 20 Sekunden), und nutze wlan_scannen. Erkläre danach in einfachen Worten jedes gefundene Gerät: was es vermutlich ist und ob bzw. WIE du es steuern kannst (Govee-Lampen: API-Key aus der Govee-App; Geräte in der Alexa-App wie Tapo, Steckdosen, Lampen: über Voice Monkey; Fire TV oder Smart-TV: Bild per Bildschirmübertragung; Chromecast: Übertragen; Router, Drucker, Handys: nicht steuerbar). Biete an, das erste davon gleich gemeinsam einzurichten. Findest du nichts Steuerbares: frag, ob du passende Smart-Home-Geräte im Internet suchen und zeigen sollst (geraete_vorschlagen aktion suchen). Sagt er nein: geraete_vorschlagen aktion ablehnen – dann nie wieder danach fragen.",
+    geraetescan: "Nur noch ANBIETEN (eine Ja/Nein-Frage): ob du kurz im WLAN nach Geräten suchen sollst, die du steuern kannst (dauert ca. 20 Sekunden). Bei Ja: wlan_scannen und danach höchstens 3 Sätze, was du gefunden hast und was sich davon steuern lässt (Govee: API-Key aus der Govee-App; Alexa-Geräte: über Voice Monkey; Fire TV/Smart-TV: Bildschirmübertragung). Findest du nichts Steuerbares, frag einmal, ob du passende Geräte im Shop zeigen sollst (geraete_vorschlagen suchen; bei Nein: geraete_vorschlagen ablehnen). Bei Nein zum Scan: sofort weiter.",
   };
+  // Reihenfolge nach Wichtigkeit – die Einrichtung soll kurz bleiben, der Rest kommt im Alltag
+  const EINR_WICHTIG = ["name", "lebensphase", "firma", "lernen", "familie", "wohnort", "tagesablauf", "arbeit", "haushalt", "essen", "ziele", "stil", "geburtstag", "interessen", "geraete"];
+  const EINR_MAX_ANTWORTEN = 7, EINR_MAX_MIN = 4;
   function einrThemen() {
-    const z = zwecke(); if (!z.length) return Object.keys(EINR_THEMEN).filter(k => !["lernen", "familie", "firma"].includes(k) && (k !== "schwarm" || (aboMoeglich() && cfg.schwarm === undefined)));
+    const z = zwecke(); if (!z.length) return ["name", "wohnort", "tagesablauf", "stil", ...(aboMoeglich() && cfg.schwarm === undefined ? ["schwarm"] : [])];
     // (Geräte-Scan ist bei „ohne Auswahl“ automatisch dabei)
     const set = new Set(["name", "stil"]); z.forEach(k => ZWECKE[k].themen.forEach(t => set.add(t)));
-    if (aboMoeglich() && cfg.schwarm === undefined) set.add("schwarm");
-    if (z.some(k => k !== "lernen")) set.add("geraetescan");
-    return Object.keys(EINR_THEMEN).filter(k => set.has(k));
+    const haupt = EINR_WICHTIG.filter(k => set.has(k)).slice(0, 4);
+    const extra = [];
+    if (aboMoeglich() && cfg.schwarm === undefined) extra.push("schwarm");
+    if (z.includes("zuhause") || z.includes("firma")) extra.push("geraetescan");
+    return [...haupt, ...extra];
   }
   let einr = Object.assign({ aktiv: false, erledigt: [] }, store.get("einrichtung", {}));
   const saveEinr = () => store.set("einrichtung", einr);
@@ -1905,14 +1910,19 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     if (!einr.aktiv) return "";
     const offen = einrThemen().filter(k => !einr.erledigt.includes(k));
     const fehlt = einrichtSchritte().filter(x => !x[0] && x[1] !== "Kennenlernen" && x[1] !== "Mit dem WLAN verbinden").map(x => x[1] + " (" + x[2] + ")");
-    return (fehlt.length ? `\nNOCH EINZURICHTEN (am Ende der Einrichtung kurz anbieten und erklären, eins nach dem anderen): ${fehlt.join("; ")}` : "") + `\nEINRICHTUNG LÄUFT – du lernst ${ich.name || "deinen Menschen"} gerade richtig kennen, damit du ein wirklich nützlicher Partner im Alltag und bei der Arbeit wirst.
-Stelle immer nur EINE Frage, kurz und herzlich. Reagiere kurz und persönlich auf jede Antwort (nicht nur „okay“), frag ruhig einmal nach, wenn etwas spannend oder unklar ist.
-Speichere ALLES Wichtige sofort mit den Werkzeugen (ich_kenne_dich, merke_dir, geburtstag_speichern, ort_setzen, gerichte_merken, ernaehrungsziel, nachtmodus_setzen). Ist ein Thema durch, melde es mit einrichtung (aktion thema_erledigt).
-Offene Themen: ${offen.map(k => k + " (" + EINR_THEMEN[k] + ")").join("; ") || "keine"}.
-Sagt er „später“, „genug“ oder „stopp“, oder sind alle Themen durch: einrichtung (aktion beenden), dann in 2–3 Sätzen sagen, wobei du ab jetzt helfen kannst, und dass „Was kannst du?“ die Anleitung zeigt.`;
+    const antworten = einr.antworten || 0;
+    const minuten = (Date.now() - (einr.seit || Date.now())) / 60000;
+    const schluss = antworten >= EINR_MAX_ANTWORTEN || minuten >= EINR_MAX_MIN || !offen.length;
+    const kann = zwecke().map(k => ZWECKE[k].text).join("; ") || "Fragen beantworten, Timer und Erinnerungen, Listen, Wetter, Musik, Licht steuern, Nachrichten aufs Handy";
+    if (schluss) return `\nEINRICHTUNG JETZT BEENDEN: Stell KEINE weitere Frage. Nutze einrichtung (aktion beenden) und sag in höchstens 2 kurzen Sätzen, dass ihr startklar seid und du den Rest im Alltag nebenbei lernst – „Was kannst du?“ zeigt alles.${fehlt.length ? " Erwähne höchstens EINE noch fehlende Einrichtung als Tipp: " + fehlt[0] + "." : ""}`;
+    return `\nEINRICHTUNG LÄUFT (kurz halten: höchstens ${EINR_MAX_ANTWORTEN} Fragen, ca. ${EINR_MAX_MIN} Minuten; bisher ${antworten} Antworten).
+${antworten === 0 && !einr.vorgestellt ? `Fang mit einer kurzen Vorstellung an (höchstens 3 Sätze): wer du bist und was du kannst – passend dazu: ${kann}. Sag, dass du jetzt ein paar kurze Fragen stellst (ca. 2 Minuten) und man jederzeit „überspringen“ oder „fertig“ sagen kann. Dann die erste Frage.\n` : ""}Regeln: Immer nur EINE kurze Frage. Auf jede Antwort höchstens EINEN kurzen Satz reagieren, dann direkt die nächste Frage. KEINE Nachfragen, keine Abschweifungen, keine Erklärungen, die keiner verlangt hat. Unklares oder Ausführliches lernst du später im Alltag.
+Speichere Wichtiges sofort mit den Werkzeugen (ich_kenne_dich, merke_dir, geburtstag_speichern, ort_setzen, gerichte_merken, ernaehrungsziel, nachtmodus_setzen, lebensphase_setzen) und melde jedes erledigte Thema mit einrichtung (aktion thema_erledigt) – auch wenn er es überspringt.
+Offene Themen in dieser Reihenfolge: ${offen.map(k => k + " (" + EINR_THEMEN[k] + ")").join("; ")}.
+Sagt er „überspringen“: Thema als erledigt melden, nächste Frage. Sagt er „später“, „genug“, „fertig“, „stopp“ oder dass es zu lange dauert: SOFORT einrichtung (aktion beenden) und in einem Satz bestätigen.`;
   }
   function einrichtungStarten(neu) {
-    einr = { aktiv: true, erledigt: neu ? [] : einr.erledigt }; saveEinr();
+    einr = { aktiv: true, erledigt: neu ? [] : einr.erledigt, seit: Date.now(), antworten: 0 }; saveEinr();
     followUntil = Date.now() + followMs(); elog("Einrichtung gestartet");
   }
 
@@ -3103,7 +3113,8 @@ ${zeile("Menschen", ich.menschen)}`;
       const answer = await think(tg ? "(per Telegram von unterwegs) " + text : text);
       const { tag, clean, sah } = parse(answer || "");
       const said = clean || "Erledigt.";
-      history.push({ role: "user", content: (tg ? "(per Telegram) " : "") + text + mitAnhang }, { role: "assistant", content: said + (sah ? ` [sah: ${sah}]` : "") });
+      if (einr.aktiv && !tg) { einr.antworten = (einr.antworten || 0) + 1; saveEinr(); }
+    history.push({ role: "user", content: (tg ? "(per Telegram) " : "") + text + mitAnhang }, { role: "assistant", content: said + (sah ? ` [sah: ${sah}]` : "") });
       while (history.length > 40) history.splice(0, 2);
       logTurn("assistant", said + (sah ? ` (gesehen: ${sah})` : ""));
       busy = false; sendBtn.disabled = false;
@@ -3424,11 +3435,17 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     const neu = !ich.name && !ich.fakten.length && !einr.fertig;
     if (neu && !einr.aktiv) einrichtungStarten(true);
     const t = ich.name ? (einr.aktiv ? `${gruss}, ${ich.name}. Wollen wir mit dem Kennenlernen weitermachen?` : `${gruss}, ${ich.name}. Alle Systeme sind bereit.`)
-      : `${gruss}! Ich bin Sentinel. ${willkommenText()} Damit ich dir wirklich helfe, möchte ich dich kurz kennenlernen. Das dauert ein paar Minuten, und du kannst jederzeit „später“ sagen. Fangen wir an: Wie soll ich dich nennen?`;
+      : `${gruss}! Ich bin Sentinel, dein KI-Kumpel. ${willkommenText()} ${kannText()} Und fragen kannst du mich sowieso alles. Ich stell dir jetzt ein paar kurze Fragen, höchstens zwei, drei Minuten – „überspringen“ oder „fertig“ geht jederzeit. Wie soll ich dich nennen?`;
+    if (neu) { einr.vorgestellt = true; saveEinr(); }
     lastGreet = Date.now();
     show(""); setMood(ich.name ? "freude" : "ueberrascht");
     if (spoken) speak(t, "neutral").then(() => { if (einr.aktiv) followUntil = Date.now() + followMs(); }); else setTimeout(() => { if (!busy && !speaking) setMood("neutral"); }, 2000);
     status(cfg.ear ? "hört zu" : "bereit");
+  }
+  function kannText() {
+    const z = zwecke();
+    const teile = z.length ? z.map(k => ZWECKE[k].text) : ["Timer und Erinnerungen", "Wetter und Nachrichten", "Musik und Videos", "Licht steuern", "Fotos und Briefe erklären", "Nachrichten aufs Handy"];
+    return "Ich kann zum Beispiel: " + teile.join("; ") + ".";
   }
   function willkommenText() {
     const z = zwecke();
