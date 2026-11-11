@@ -41,9 +41,10 @@ export function kosten(u, model) {
 }
 
 // Welche Stufe hat der Nutzer laut RevenueCat? (10 Minuten zwischengespeichert)
-async function stufeHolen(env, user) {
+async function stufeHolen(env, user, frisch) {
   if (!env.RC_SECRET) return { stufe: user.tier || "probe", topups: [] };
-  if (Date.now() - (user.tier_checked || 0) < 10 * 60000) return { stufe: user.tier, topups: null };
+  const cacheMs = (user.tier || "probe") === "probe" ? 60000 : 10 * 60000; // Gratis nur 1 Min. merken, damit ein Kauf schnell greift
+  if (!frisch && Date.now() - (user.tier_checked || 0) < cacheMs) return { stufe: user.tier, topups: null };
   const r = await fetch(`https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(user.uid)}`, { headers: { authorization: `Bearer ${env.RC_SECRET}` } });
   if (!r.ok) return { stufe: user.tier || "probe", topups: null };
   const s = (await r.json()).subscriber || {};
@@ -59,7 +60,7 @@ async function stufeHolen(env, user) {
   return { stufe, topups };
 }
 
-async function nutzerLaden(env, uid) {
+async function nutzerLaden(env, uid, frisch) {
   let u = await env.DB.prepare("SELECT * FROM users WHERE uid = ?").bind(uid).first();
   if (!u) {
     await env.DB.prepare("INSERT INTO users (uid, tier, created) VALUES (?, 'probe', ?)").bind(uid, Date.now()).run();
@@ -69,7 +70,7 @@ async function nutzerLaden(env, uid) {
   if (u.day !== heute()) { u.day = heute(); u.req_day = 0; }
   const vip = await env.DB.prepare("SELECT uid FROM vip WHERE uid = ?").bind(uid).first();
   if (vip) { u.vip = true; u.tier = "business"; return u; } // Robsens eigene Geräte: alles frei
-  const { stufe, topups } = await stufeHolen(env, u);
+  const { stufe, topups } = await stufeHolen(env, u, frisch);
   if (stufe !== u.tier || topups) { u.tier = stufe; u.tier_checked = Date.now(); }
   if (topups) for (const t of topups) {
     const neu = await env.DB.prepare("INSERT OR IGNORE INTO topups (tx, uid, month, usd) VALUES (?, ?, ?, ?)").bind(String(t.tx), uid, monat(), t.eur * USD_PRO_EUR).run();
@@ -190,7 +191,7 @@ export default {
     const uid = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uid)) return fehler(401, "authentication_error", "Unbekanntes Gerät");
     try {
-      if (url.pathname === "/v1/me" && req.method === "GET") { const u = await nutzerLaden(env, uid); await speichern(env, u); return json(stand(u)); }
+      if (url.pathname === "/v1/me" && req.method === "GET") { const u = await nutzerLaden(env, uid, url.searchParams.get("frisch") === "1"); await speichern(env, u); return json(stand(u)); }
       if (url.pathname === "/v1/messages" && req.method === "POST") return await chat(req, env, uid);
       if (url.pathname === "/v1/bild" && req.method === "POST") return await bild(req, env, uid);
       if (url.pathname === "/v1/wissen" && req.method === "POST") return await wissenMelden(req, env, uid, url.origin);

@@ -329,7 +329,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 70</div>
+    <div class="hint" id="verHint">Sentinel Version 71</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -3436,7 +3436,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   }
   async function aboLaden() {
     $("aboStand").textContent = "Lade …";
-    try { const r = await fetch(serverUrl() + "/v1/me", { headers: { authorization: "Bearer " + uid } }); aboStand = await r.json(); store.set("aboStand", aboStand); } catch (e) {}
+    try { const r = await fetch(serverUrl() + "/v1/me?frisch=1", { headers: { authorization: "Bearer " + uid } }); aboStand = await r.json(); store.set("aboStand", aboStand); } catch (e) {}
     const a = aboStand || {};
     $("aboStand").textContent = a.stufe ? (a.stufe === "probe" ? `Gratis: heute noch ${a.probe_rest ?? "?"} von 10 Fragen – mit einem Abo geht mehr.` : `Stufe ${a.name}: diesen Monat ${String(a.verbraucht_eur).replace(".", ",")} € von ${String(a.budget_eur).replace(".", ",")} € verbraucht · heute ${a.anfragen_heute}${a.limit_heute ? " von " + a.limit_heute : ""} Anfragen.`) : "Server nicht erreichbar.";
     $("aboNachschub").hidden = a.stufe !== "business";
@@ -3453,7 +3453,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   }
   async function kaufen(paket, name) {
     if (!paket) { note("Abos sind erst in der Google-Play-Version verfügbar.", 5000); return; }
-    try { await RC().purchasePackage({ aPackage: paket }); note("Danke! " + name + " ist aktiv.", 4000); setTimeout(aboLaden, 1500); }
+    try { await RC().purchasePackage({ aPackage: paket }); note("Danke! " + name + " ist aktiv.", 4000); setTimeout(aboLaden, 1500); setTimeout(aboLaden, 8000); }
     catch (e) { if (!/cancel/i.test(String(e && (e.code || e.message)))) note("Kauf ging nicht: " + (e.message || e), 6000); }
   }
   async function nachschubKaufen() {
