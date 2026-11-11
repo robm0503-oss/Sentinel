@@ -46,8 +46,9 @@ async function stufeHolen(env, user, frisch) {
   const cacheMs = (user.tier || "probe") === "probe" ? 60000 : 10 * 60000; // Gratis nur 1 Min. merken, damit ein Kauf schnell greift
   if (!frisch && Date.now() - (user.tier_checked || 0) < cacheMs) return { stufe: user.tier, topups: null };
   const r = await fetch(`https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(user.uid)}`, { headers: { authorization: `Bearer ${env.RC_SECRET}` } });
-  if (!r.ok) return { stufe: user.tier || "probe", topups: null };
+  if (!r.ok) { user.rc_diag = "RevenueCat HTTP " + r.status; return { stufe: user.tier || "probe", topups: null }; }
   const s = (await r.json()).subscriber || {};
+  user.rc_diag = "ok, Berechtigungen: " + (Object.entries(s.entitlements || {}).map(([k, e]) => k + " bis " + (e.expires_date || "∞")).join(", ") || "keine");
   let stufe = "probe";
   for (const [id, e] of Object.entries(s.entitlements || {})) {
     if (RANG.includes(id) && (!e.expires_date || Date.parse(e.expires_date) > Date.now()) && RANG.indexOf(id) > RANG.indexOf(stufe)) stufe = id;
@@ -191,7 +192,7 @@ export default {
     const uid = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uid)) return fehler(401, "authentication_error", "Unbekanntes Gerät");
     try {
-      if (url.pathname === "/v1/me" && req.method === "GET") { const u = await nutzerLaden(env, uid, url.searchParams.get("frisch") === "1"); await speichern(env, u); return json(stand(u)); }
+      if (url.pathname === "/v1/me" && req.method === "GET") { const u = await nutzerLaden(env, uid, url.searchParams.get("frisch") === "1"); await speichern(env, u); return json(Object.assign(stand(u), u.rc_diag ? { rc: u.rc_diag } : {})); }
       if (url.pathname === "/v1/messages" && req.method === "POST") return await chat(req, env, uid);
       if (url.pathname === "/v1/bild" && req.method === "POST") return await bild(req, env, uid);
       if (url.pathname === "/v1/wissen" && req.method === "POST") return await wissenMelden(req, env, uid, url.origin);
