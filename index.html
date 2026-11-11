@@ -308,6 +308,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     </div>
     <label class="check"><input id="sSearch" type="checkbox"> Im Internet suchen dürfen</label>
     <div class="field"><label>Fähigkeiten-Pakete <span id="sPaketeHinweis" class="hint"></span></label><div id="sPakete" style="display:grid;gap:6px"></div></div>
+    <div class="field"><label>Freischaltcode</label><div style="display:flex;gap:8px"><input id="sCode" type="text" autocomplete="off" autocapitalize="characters" placeholder="Code eingeben" style="flex:1"><button class="ghost" id="sCodeOk" type="button">Einlösen</button></div></div>
     <div class="field"><label>Geräte-ID (für deine Admin-Seite)</label><div style="display:flex;gap:8px"><input id="sUid" type="text" readonly style="flex:1"><button class="ghost" id="sUidKopie" type="button">Kopieren</button></div></div>
     <label class="check"><input id="sSchwarm" type="checkbox"> Schwarmwissen: aus Fehlern lernen und das Gelernte anonym mit allen Sentinels teilen (nie Persönliches)</label>
     <div class="field">
@@ -329,7 +330,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 71</div>
+    <div class="hint" id="verHint">Sentinel Version 72</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -3623,6 +3624,14 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   $("sicherungLaden").addEventListener("click", () => { $("sicherungText").hidden = false; $("sicherungDatei").click(); });
   $("sicherungDatei").addEventListener("change", async e => { const f = e.target.files && e.target.files[0]; if (f) sicherungEinspielen(await f.text()); });
   $("sicherungText").addEventListener("input", e => { const v = e.target.value.trim(); if (v.startsWith("{") && v.endsWith("}")) sicherungEinspielen(v); });
+  $("sCodeOk").addEventListener("click", async () => {
+    const code = $("sCode").value.trim(); if (!code) return;
+    try {
+      const r = await fetch(serverUrl() + "/v1/code", { method: "POST", headers: { authorization: "Bearer " + uid, "content-type": "application/json" }, body: JSON.stringify({ code }) });
+      const j = await r.json(); note(j.text || (j.ok ? "Freigeschaltet." : "Code stimmt nicht."), 4000);
+      if (j.ok) { $("sCode").value = ""; await aboLaden(); }
+    } catch (e) { note("Keine Verbindung zum Server.", 4000); }
+  });
   $("sUidKopie").addEventListener("click", async () => { note(await textKopieren(uid) ? "Geräte-ID kopiert." : "Kopieren ging nicht.", 2500); });
   $("sZwecke").addEventListener("click", () => { $("setPanel").hidden = true; zweckeZeigen(false); });
   let stimmFuerGesicht = "roboter";

@@ -1,7 +1,7 @@
 // Sentinel-Server: verwaltet Abo-Stufen, Limits und Budget und spricht mit Claude.
 // Die App schickt ihre Anfrage hierher statt direkt zu Anthropic; der API-Key bleibt auf dem Server.
 
-import { wissenMelden, wissenHolen, admin, tagesbericht } from "./schwarm.js";
+import { wissenMelden, wissenHolen, admin, tagesbericht, codeEinloesen } from "./schwarm.js";
 
 const USD_PRO_EUR = 1.08;
 
@@ -195,6 +195,7 @@ export default {
       if (url.pathname === "/v1/me" && req.method === "GET") { const u = await nutzerLaden(env, uid, url.searchParams.get("frisch") === "1"); await speichern(env, u); return json(Object.assign(stand(u), u.rc_diag ? { rc: u.rc_diag } : {})); }
       if (url.pathname === "/v1/messages" && req.method === "POST") return await chat(req, env, uid);
       if (url.pathname === "/v1/bild" && req.method === "POST") return await bild(req, env, uid);
+      if (url.pathname === "/v1/code" && req.method === "POST") return await codeEinloesen(req, env, uid);
       if (url.pathname === "/v1/wissen" && req.method === "POST") return await wissenMelden(req, env, uid, url.origin);
       if (url.pathname === "/v1/wissen" && req.method === "GET") return await wissenHolen(env);
       return fehler(404, "not_found", "Gibt es nicht");

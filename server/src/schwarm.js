@@ -130,6 +130,14 @@ export async function admin(req, env, url) {
     else await env.DB.prepare("INSERT OR IGNORE INTO vip (uid, seit) VALUES (?, ?)").bind(uidV, heute()).run();
     return html(url.searchParams.get("weg") ? "VIP entfernt" : "✅ Gerät freigeschaltet", `<p>${esc(uidV)}</p><p><a href="${basis}/admin?k=${k}">Zurück zur Übersicht</a></p>`);
   }
+  if (url.pathname === "/admin/code") { // Freischaltcode anlegen bzw. löschen
+    const c = String(url.searchParams.get("code") || "").trim().toUpperCase();
+    if (!/^[A-Z0-9-]{8,40}$/.test(c)) return html("Ungültiger Code", `<p>Der Code braucht mindestens 8 Zeichen (Buchstaben, Zahlen, Bindestrich). <a href="${basis}/admin?k=${k}">Zurück</a></p>`, 400);
+    if (url.searchParams.get("weg")) await env.DB.prepare("DELETE FROM codes WHERE code = ?").bind(c).run();
+    else await env.DB.prepare("INSERT OR IGNORE INTO codes (code, name, uses, seit) VALUES (?, ?, 0, ?)").bind(c, String(url.searchParams.get("name") || "").slice(0, 60), heute()).run();
+    return html(url.searchParams.get("weg") ? "Code gelöscht" : "✅ Code angelegt", `<p class="k">${esc(c)}</p><p><small>Wer diesen Code in Sentinel → Einstellungen → Freischaltcode eingibt, bekommt alles frei (VIP).</small></p><p><a href="${basis}/admin?k=${k}">Zurück zur Übersicht</a></p>`);
+  }
+  const codes = (await env.DB.prepare("SELECT code, name, uses, seit FROM codes ORDER BY seit").all()).results || [];
   const vips = (await env.DB.prepare("SELECT uid, seit FROM vip ORDER BY seit").all()).results || [];
   const neu = (await env.DB.prepare("SELECT id, text, thema, meldungen FROM wissen WHERE status = 'neu' ORDER BY meldungen DESC, id DESC LIMIT 100").all()).results || [];
   const frei = (await env.DB.prepare("SELECT id, text, meldungen FROM wissen WHERE status = 'frei' ORDER BY id DESC LIMIT 100").all()).results || [];
@@ -143,6 +151,9 @@ export async function admin(req, env, url) {
      <h3>Meine Geräte (VIP – alles frei)</h3>
      <ul>${vips.map(v => `<li class="k">${esc(v.uid)} <small>seit ${esc(v.seit)}</small> &nbsp; <a href="${basis}/admin/vip?k=${k}&uid=${v.uid}&weg=1">entfernen</a></li>`).join("") || "<li>noch keins</li>"}</ul>
      <form action="${basis}/admin/vip" method="get"><input type="hidden" name="k" value="${esc(env.ADMIN_KEY)}"><input name="uid" placeholder="Geräte-ID aus Sentinel → Einstellungen" style="width:100%;padding:10px;border-radius:8px;border:1px solid #444;background:#111;color:#eee"><button style="margin-top:8px;padding:10px 16px">Gerät freischalten</button></form>
+     <h3>Freischaltcodes (VIP für Google-Prüfer, Freunde, Tester)</h3>
+     <ul>${codes.map(c => `<li class="k">${esc(c.code)} <small>${esc(c.name || "")} · ${c.uses}× benutzt · seit ${esc(c.seit)}</small> &nbsp; <a href="${basis}/admin/code?k=${k}&code=${encodeURIComponent(c.code)}&weg=1">löschen</a></li>`).join("") || "<li>noch keiner</li>"}</ul>
+     <form action="${basis}/admin/code" method="get"><input type="hidden" name="k" value="${esc(env.ADMIN_KEY)}"><input name="code" placeholder="Neuer Code, mind. 8 Zeichen, z. B. PRUEFER-7K3M9Q" style="width:100%;padding:10px;border-radius:8px;border:1px solid #444;background:#111;color:#eee"><input name="name" placeholder="Für wen? (z. B. Google-Prüfung)" style="width:100%;margin-top:6px;padding:10px;border-radius:8px;border:1px solid #444;background:#111;color:#eee"><button style="margin-top:8px;padding:10px 16px">Code anlegen</button></form>
      <h3>Freigegeben (${frei.length})</h3><ul>${(await Promise.all(frei.map(w => zeile(w, false)))).join("")}</ul>`);
 }
 
@@ -158,4 +169,22 @@ export async function tagesbericht(env) {
   if (!neu.c && !hit.length) return;
   const text = `🧠 Sentinel-Tagesbericht\n\nWartende Lernkarten: ${neu.c}\n\nHäufigste Fehler (7 Tage):\n${hit.map((f, i) => `${i + 1}. ${f.tag}: ${f.n}×`).join("\n") || "keine"}\n\nÜbersicht: ${env.SERVER_URL || ""}/admin?k=${env.ADMIN_KEY}`;
   await telegram(env, text);
+}
+
+// Freischaltcode einlösen → Gerät wird VIP (max. 10 Versuche pro Gerät und Tag)
+export async function codeEinloesen(req, env, uid) {
+  const j = (x, st = 200) => new Response(JSON.stringify(x), { status: st, headers: { "content-type": "application/json", "access-control-allow-origin": "*" } });
+  let body = {}; try { body = await req.json(); } catch (e) {}
+  const c = String(body.code || "").trim().toUpperCase();
+  const tag = heute();
+  const v = await env.DB.prepare("SELECT n FROM code_versuche WHERE uid = ? AND tag = ?").bind(uid, tag).first();
+  if (v && v.n >= 10) return j({ ok: false, text: "Zu viele Versuche – morgen nochmal." }, 429);
+  const treffer = c && await env.DB.prepare("SELECT code FROM codes WHERE code = ?").bind(c).first();
+  if (!treffer) {
+    await env.DB.prepare("INSERT INTO code_versuche (uid, tag, n) VALUES (?, ?, 1) ON CONFLICT(uid, tag) DO UPDATE SET n = n + 1").bind(uid, tag).run();
+    return j({ ok: false, text: "Dieser Code stimmt nicht." }, 400);
+  }
+  await env.DB.prepare("INSERT OR IGNORE INTO vip (uid, seit) VALUES (?, ?)").bind(uid, tag).run();
+  await env.DB.prepare("UPDATE codes SET uses = uses + 1 WHERE code = ?").bind(c).run();
+  return j({ ok: true, text: "Freigeschaltet – alles ist jetzt frei." });
 }

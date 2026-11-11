@@ -125,3 +125,17 @@ console.log("ALLE TESTS OK");
   assert.equal((await worker.fetch(new Request("https://x/admin/vip?k=falsch&uid=" + uidV), env)).status, 403);
   console.log("VIP ok");
 }
+
+// Freischaltcode
+{
+  const uidC = "88888888-2222-4333-8444-555555555555";
+  assert.equal((await worker.fetch(new Request("https://x/admin/code?k=geheim&code=kurz"), env)).status, 400);
+  assert.equal((await worker.fetch(new Request("https://x/admin/code?k=geheim&code=pruefer-abc123&name=Google"), env)).status, 200);
+  const post = code => worker.fetch(new Request("https://x/v1/code", { method: "POST", headers: { authorization: "Bearer " + uidC, "content-type": "application/json" }, body: JSON.stringify({ code }) }), env);
+  assert.equal((await post("FALSCH-12345")).status, 400);
+  const ok = await post(" Pruefer-ABC123 "); assert.equal(ok.status, 200);
+  const me = await worker.fetch(new Request("https://x/v1/me", { headers: { authorization: "Bearer " + uidC } }), env).then(r => r.json());
+  assert.equal(me.vip, true);
+  assert.ok((await (await worker.fetch(new Request("https://x/admin?k=geheim"), env)).text()).includes("1× benutzt"));
+  console.log("Freischaltcode ok");
+}
