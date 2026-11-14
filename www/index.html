@@ -309,6 +309,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check"><input id="sSearch" type="checkbox"> Im Internet suchen dürfen</label>
     <div class="field"><label>Fähigkeiten-Pakete <span id="sPaketeHinweis" class="hint"></span></label><div id="sPakete" style="display:grid;gap:6px"></div></div>
     <div class="field"><label>Freischaltcode</label><div style="display:flex;gap:8px"><input id="sCode" type="text" autocomplete="off" autocapitalize="characters" placeholder="Code eingeben" style="flex:1"><button class="ghost" id="sCodeOk" type="button">Einlösen</button></div></div>
+    <div class="field"><button class="ghost" id="sLogBtn" type="button">Ohren-Protokoll anzeigen</button></div>
     <div class="field"><label>Geräte-ID (für deine Admin-Seite)</label><div style="display:flex;gap:8px"><input id="sUid" type="text" readonly style="flex:1"><button class="ghost" id="sUidKopie" type="button">Kopieren</button></div></div>
     <label class="check"><input id="sSchwarm" type="checkbox"> Schwarmwissen: aus Fehlern lernen und das Gelernte anonym mit allen Sentinels teilen (nie Persönliches)</label>
     <div class="field">
@@ -330,7 +331,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 72</div>
+    <div class="hint" id="verHint">Sentinel Version 73</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -1132,7 +1133,12 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     send(rest);
   }
   statusEl.style.cursor = "pointer";
-  statusEl.addEventListener("click", () => { $("logBody").textContent = earLog.slice().reverse().join("\n") || "Noch nichts."; $("logPanel").hidden = false; });
+  const logZeigen = () => { $("logBody").textContent = earLog.slice().reverse().join("\n") || "Noch nichts."; $("logPanel").hidden = false; };
+  { // nur bei langem Druck (0,7 s) – ein normaler Tipp öffnet nichts mehr aus Versehen
+    let lpT = null;
+    statusEl.addEventListener("pointerdown", () => { clearTimeout(lpT); lpT = setTimeout(logZeigen, 700); });
+    ["pointerup", "pointerleave", "pointercancel"].forEach(ev => statusEl.addEventListener(ev, () => clearTimeout(lpT)));
+  }
   $("logClose").addEventListener("click", () => { $("logPanel").hidden = true; });
   // ---- Native Ohren (nur in der Android-App) ----
   let nativeUtterStart = 0, nativeAddressed = false, nativeInited = false, nativeReadyOnce = false, lastReady = 0, lastSpeechLog = 0, lastPartialLog = 0;
@@ -2744,7 +2750,7 @@ So funktionierst du selbst (erkläre es ${wer}, wenn er fragt, kurz und konkret)
 - Augenfarben: Bernstein normal, Eisblau hört zu, Lila denkt nach, Grün freut sich, Gelb skeptisch, Rot sauer, Dunkelblau müde.
 - Unten links ist der Mikro-Knopf (Zuhören an oder aus), daneben das Auge (Kamera an oder aus).
 - Oben gibt es "Gedächtnis" (zeigt, was du dir gemerkt hast, Timer und Listen, mit Löschen-Knopf), "Einstellungen" (Gehirn-Modell, Telegram, Nachtmodus, Name, Geburtstag, Über mich, Ort, Websuche, Weckwort, Tageslimit) und "Vollbild".
-- Ein Tipp auf die Statuszeile oben links zeigt das Ohren-Protokoll, damit man sieht, was du gehört hast.
+- Langes Drücken auf die Statuszeile oben links (oder Einstellungen → „Ohren-Protokoll“) zeigt das Ohren-Protokoll, damit man sieht, was du gehört hast.
 - Wenn du schlecht hörst: Mikrofon am Tablet nicht abdecken (z. B. durch eine Hülle), nicht zu weit weg sprechen.
 - Berührung: Streicheln mag ich, ins Auge pieksen tut weh, wildes Tippen nervt, lange drücken fragt dich, ob alles okay ist.
 - Dein Gehirn ist Claude von Anthropic.${cfg.key ? ` Die Kosten laufen über den API-Key von ${wer}.` : ` Erwähne NIE eigene API-Keys oder Anthropic-Konten – mehr Fragen gibt es nur über die Sentinel-Abos.`}
@@ -3632,6 +3638,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
       if (j.ok) { $("sCode").value = ""; await aboLaden(); }
     } catch (e) { note("Keine Verbindung zum Server.", 4000); }
   });
+  $("sLogBtn").addEventListener("click", () => { $("setPanel").hidden = true; logZeigen(); });
   $("sUidKopie").addEventListener("click", async () => { note(await textKopieren(uid) ? "Geräte-ID kopiert." : "Kopieren ging nicht.", 2500); });
   $("sZwecke").addEventListener("click", () => { $("setPanel").hidden = true; zweckeZeigen(false); });
   let stimmFuerGesicht = "roboter";

@@ -212,8 +212,10 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         main.postDelayed(listenRunnable, delayMs);
     }
 
+    private int leerlauf = 0;
     @Override public void onReadyForSpeech(Bundle params) { busyBackoff = 1000; lastPartial = ""; notifyListeners("ready", new JSObject()); }
     @Override public void onBeginningOfSpeech() { notifyListeners("speechStart", new JSObject()); }
+    private void verstanden() { leerlauf = 0; }
     @Override public void onRmsChanged(float rmsdB) {}
     @Override public void onBufferReceived(byte[] buffer) {}
     @Override public void onEndOfSpeech() {}
@@ -232,6 +234,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         if ((t == null || t.isEmpty()) && !lastPartial.isEmpty()) t = lastPartial;
         lastPartial = "";
         notifyListeners("final", new JSObject().put("text", t == null ? "" : t));
+        if (t != null && !t.isEmpty()) verstanden();
         listening = false;
         destroyRecognizer();
         restart(250);
@@ -253,7 +256,10 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         switch (error) {
             case SpeechRecognizer.ERROR_NO_MATCH:
             case SpeechRecognizer.ERROR_SPEECH_TIMEOUT:
-                restart(250); break;                       // einfach weiter zuhören
+                leerlauf++;
+                restart(leerlauf < 4 ? 250 : Math.min(250L * leerlauf, 2500L)); break; // weiter zuhören, bei Dauer-Leerlauf gemächlicher
+            case 11:                                        // ERROR_TOO_MANY_REQUESTS ("überlastet")
+            case SpeechRecognizer.ERROR_CLIENT:
             case SpeechRecognizer.ERROR_RECOGNIZER_BUSY:   // 8: kurz warten, jedes Mal etwas länger
                 restart(busyBackoff);
                 busyBackoff = Math.min(busyBackoff * 2, 8000);
@@ -275,24 +281,22 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         return (r != null && !r.isEmpty()) ? r.get(0) : null;
     }
 
+    private int[] beepStreams() {
+        return Build.VERSION.SDK_INT >= 26
+            ? new int[] { AudioManager.STREAM_MUSIC, AudioManager.STREAM_NOTIFICATION, AudioManager.STREAM_SYSTEM, AudioManager.STREAM_ACCESSIBILITY }
+            : new int[] { AudioManager.STREAM_MUSIC, AudioManager.STREAM_NOTIFICATION, AudioManager.STREAM_SYSTEM };
+    }
+
     // Der Start-Piepton der Spracherkennung wird stummgeschaltet (sonst piept es bei jedem Satz)
     private void muteBeepIfWanted() {
         if (!muteBeep || beepMuted || audio == null || Build.VERSION.SDK_INT < 23) return;
-        try {
-            audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0);
-            audio.adjustStreamVolume(AudioManager.STREAM_NOTIFICATION, AudioManager.ADJUST_MUTE, 0);
-            audio.adjustStreamVolume(AudioManager.STREAM_SYSTEM, AudioManager.ADJUST_MUTE, 0);
-            beepMuted = true;
-        } catch (Exception ignored) {}
+        for (int st : beepStreams()) { try { audio.adjustStreamVolume(st, AudioManager.ADJUST_MUTE, 0); } catch (Exception ignored) {} }
+        beepMuted = true;
     }
 
     private void unmuteBeep() {
         if (!beepMuted || audio == null || Build.VERSION.SDK_INT < 23) return;
-        try {
-            audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0);
-            audio.adjustStreamVolume(AudioManager.STREAM_NOTIFICATION, AudioManager.ADJUST_UNMUTE, 0);
-            audio.adjustStreamVolume(AudioManager.STREAM_SYSTEM, AudioManager.ADJUST_UNMUTE, 0);
-        } catch (Exception ignored) {}
+        for (int st : beepStreams()) { try { audio.adjustStreamVolume(st, AudioManager.ADJUST_UNMUTE, 0); } catch (Exception ignored) {} }
         beepMuted = false;
     }
 
