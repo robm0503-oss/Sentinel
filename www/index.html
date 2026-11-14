@@ -331,7 +331,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 73</div>
+    <div class="hint" id="verHint">Sentinel Version 74</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -1189,6 +1189,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       elog("Ohren: " + (ERRNAME[c] || ("Fehler " + c)) + (ev && ev.message ? " " + ev.message : ""));
     });
     SV.addListener("musik", ev => { musikLaeuft = !!(ev && ev.aktiv); lastReady = Date.now(); elog(musikLaeuft ? "Musik läuft – Ohren machen Pause (antippen zum Reden)" : "Musik aus – ich höre wieder zu"); if (!busy && !speaking) status(musikLaeuft ? "Musik läuft" : "hört zu"); });
+    SV.addListener("erkenner", ev => elog(ev && ev.art === "geraet" ? "Ohren: Erkennung direkt auf dem Gerät (ohne Piepton)" : "Ohren: Google-Erkennung" + (ev && ev.grund ? " – Geräte-Erkennung ging nicht (" + ev.grund + ")" : "")));
     SV.addListener("ttsDone", ev => { const f = ttsWait[ev && ev.id]; if (f) { delete ttsWait[ev.id]; f(); } });
   }
   function nativeEarsOn(trotzMusik) {

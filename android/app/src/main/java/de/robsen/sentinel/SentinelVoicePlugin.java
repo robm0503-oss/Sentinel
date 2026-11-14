@@ -186,7 +186,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         if (musikLief) { musikLief = false; notifyListeners("musik", new JSObject().put("aktiv", false)); }
         try {
             destroyRecognizer();
-            recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
+            recognizer = neuerErkenner();
             recognizer.setRecognitionListener(this);
             muteBeepIfWanted();
             recognizer.startListening(intent());
@@ -196,6 +196,44 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
             notifyListeners("error", new JSObject().put("code", -1).put("message", String.valueOf(e.getMessage())));
             restart(1500);
         }
+    }
+
+    // Ab Android 13: Erkennung direkt auf dem Gerät (ohne Google-Dienst-Oberfläche -> kein Piepton bei jedem Neustart).
+    // Klappt sie nicht (Sprachpaket fehlt o. ä.), automatisch zurück zur normalen Erkennung.
+    private boolean geraetErkennerAus = false, geraetGemeldet = false, paketAngefragt = false;
+    private boolean nutztGeraet = false;
+    private SpeechRecognizer neuerErkenner() {
+        nutztGeraet = false;
+        if (Build.VERSION.SDK_INT >= 33 && !geraetErkennerAus) {
+            try {
+                if (SpeechRecognizer.isOnDeviceRecognitionAvailable(getContext())) {
+                    SpeechRecognizer r = SpeechRecognizer.createOnDeviceSpeechRecognizer(getContext());
+                    nutztGeraet = true;
+                    if (!geraetGemeldet) { geraetGemeldet = true; notifyListeners("erkenner", new JSObject().put("art", "geraet")); }
+                    return r;
+                }
+            } catch (Exception e) { geraetErkennerAus = true; }
+        }
+        if (!geraetGemeldet) { geraetGemeldet = true; notifyListeners("erkenner", new JSObject().put("art", "google")); }
+        return SpeechRecognizer.createSpeechRecognizer(getContext());
+    }
+    private int geraetFehler = 0;
+    private void geraetFehlgeschlagen(int error) {
+        if (!nutztGeraet) return;
+        if (error == 12 || error == 13) { // Sprache nicht verfügbar/unterstützt -> Paket anfordern, normale Erkennung nehmen
+            if (Build.VERSION.SDK_INT >= 33 && !paketAngefragt && recognizer != null) {
+                paketAngefragt = true;
+                try { recognizer.triggerModelDownload(intent()); } catch (Exception ignored) {}
+            }
+            umschalten("Sprachpaket fehlt");
+        } else if (error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_SERVER || error == 11) {
+            if (++geraetFehler >= 4) umschalten("Fehler " + error);
+        }
+    }
+    private void umschalten(String grund) {
+        if (geraetErkennerAus) return;
+        geraetErkennerAus = true;
+        notifyListeners("erkenner", new JSObject().put("art", "google").put("grund", grund));
     }
 
     private void destroyRecognizer() {
@@ -213,7 +251,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
     }
 
     private int leerlauf = 0;
-    @Override public void onReadyForSpeech(Bundle params) { busyBackoff = 1000; lastPartial = ""; notifyListeners("ready", new JSObject()); }
+    @Override public void onReadyForSpeech(Bundle params) { geraetFehler = 0; busyBackoff = 1000; lastPartial = ""; notifyListeners("ready", new JSObject()); }
     @Override public void onBeginningOfSpeech() { notifyListeners("speechStart", new JSObject()); }
     private void verstanden() { leerlauf = 0; }
     @Override public void onRmsChanged(float rmsdB) {}
@@ -252,6 +290,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
             return;
         }
         notifyListeners("error", new JSObject().put("code", error));
+        geraetFehlgeschlagen(error);
         destroyRecognizer();
         switch (error) {
             case SpeechRecognizer.ERROR_NO_MATCH:
