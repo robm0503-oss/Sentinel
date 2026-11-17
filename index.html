@@ -332,7 +332,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 77</div>
+    <div class="hint" id="verHint">Sentinel Version 78</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -1156,7 +1156,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       if (nativeAddressed && !busy && !speaking) setMood("zuhoeren");
     });
     // Android beendet eine Runde oft mitten im Satz. Darum sammeln wir die Stücke und schicken
-    // den Satz erst ab, wenn 1,6 Sekunden lang nichts Neues kam.
+    // den Satz erst ab, wenn 1 Sekunde lang nichts Neues kam.
     let nBuf = "", nFlushT = null;
     const nFlush = () => {
       clearTimeout(nFlushT);
@@ -1173,7 +1173,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       if (!t) { elog("Ohren: Satz zu Ende, aber leer"); return; }
       nBuf += " " + t;
       if (!nativeAddressed && addressed(nBuf, nativeUtterStart || Date.now())) nativeAddressed = true;
-      clearTimeout(nFlushT); nFlushT = setTimeout(nFlush, 1600);
+      clearTimeout(nFlushT); nFlushT = setTimeout(nFlush, 1000); // 1 s Stille reicht, dann geht's los
     });
     SV.addListener("speechStart", () => { if (nBuf) { clearTimeout(nFlushT); nFlushT = setTimeout(nFlush, 6000); } });
     SV.addListener("ready", () => { if (!nativeReadyOnce) { nativeReadyOnce = true; elog("Ohren bereit – ich höre"); } lastAlive = Date.now(); lastReady = Date.now(); });
@@ -3358,7 +3358,9 @@ ${zeile("Menschen", ich.menschen)}`;
     const nameM = text.match(/\b(?:ich hei(?:ß|ss)e|mein name ist|nenn mich)\s+([A-ZÄÖÜa-zäöüß][\wäöüß-]{1,30})/i);
     if (nameM) { const n = nameM[1].charAt(0).toUpperCase() + nameM[1].slice(1); if (n.toLowerCase() !== "sentinel") { ich.name = n; saveIch(); elog("Name gespeichert: " + n); } }
     try {
+      const t0Antwort = Date.now();
       const answer = await think(tg ? "(per Telegram von unterwegs) " + text : text);
+      elog(`Antwortzeit: ${((Date.now() - t0Antwort) / 1000).toFixed(1)} s` + (letzteWerkzeuge.length ? ` (mit ${letzteWerkzeuge.join(", ")})` : ""));
       const { tag, clean, sah } = parse(answer || "");
       const said = clean || "Erledigt.";
       if (einr.aktiv && !tg) { einr.antworten = (einr.antworten || 0) + 1; saveEinr(); }
