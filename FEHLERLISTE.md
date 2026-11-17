@@ -20,6 +20,7 @@ Robsen schickt tagsüber alles rein, abends wird gefixt und gesammelt hochgelade
   - Abnehmen begleiten: Gewicht/Ziel verfolgen, Wochen-Check-in
   - Fasten-Timer (z. B. 16:8) mit Erinnerungen für Start/Ende
   - Essen per Foto oder Zuruf erfassen → Kalorien/Nährwerte schätzen, Tagesbilanz
+  - Makro-Tracking: Protein, Kohlenhydrate, Fett, Ballaststoffe, Zucker, Wasser – mit Tageszielen (z. B. Protein pro kg Körpergewicht), Fortschrittsbalken und Hinweis „heute fehlen noch 40 g Protein“ + passende Snack-Vorschläge
   - verbindet sich mit Trink-Erinnerung, Rezepten (Kühlschrank-Foto) und Einkaufsliste
   - Hinweis: keine medizinischen Versprechen, bei Vorerkrankungen Arzt; Google-Gesundheitsrichtlinie beachten
 - Weitere Ideen (noch offen): Morgen-Briefing · Live-Dolmetscher · Homescreen-Widget · Pakete vom Server nachladen · Video-KI voll automatisch
