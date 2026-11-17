@@ -332,7 +332,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 78</div>
+    <div class="hint" id="verHint">Sentinel Version 79</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -2419,7 +2419,8 @@ Offene Punkte: ${fehlt.join("; ")}.`;
     schwarmSchlange.push({ art, text: String(text).slice(0, 400) });
     schwarmSchlange = schwarmSchlange.slice(-30); store.set("schwarmSchlange", schwarmSchlange); schwarmSenden(true);
   }
-  function schwarmFehler(werkzeug, meldung) { // für Robsens Fehler-Hitliste – nur Werkzeugname und gekürzte Meldung
+  function schwarmFehler(werkzeug, meldung) {
+    if (/Bilder drin|Tageslimit|morgen geht|höheren Stufe|Gratis|Abo/i.test(String(meldung || ""))) return; // Limits sind keine Fehler // für Robsens Fehler-Hitliste – nur Werkzeugname und gekürzte Meldung
     if (!cfg.schwarm || ["kamera_bild"].includes(werkzeug)) return;
     schwarmSchlange.push({ art: "fehler", thema: werkzeug, text: String(meldung).replace(/\d{3,}/g, "…").slice(0, 160) });
     schwarmSchlange = schwarmSchlange.slice(-30); store.set("schwarmSchlange", schwarmSchlange); schwarmSenden();
@@ -2479,6 +2480,7 @@ Offene Punkte: ${fehlt.join("; ")}.`;
     return `FÄHIGKEITEN-PAKETE (gesperrt, ab Abo Plus 9,99 €): ${Object.values(PAKETE).map(p => p.name).join(", ")}. Fragt jemand nach etwas, das genau zu einem dieser Pakete gehört, hilf mit dem, was du ohne Paket kannst, und sag in EINEM Satz, dass das Paket „…“ das noch besser kann und ab Plus enthalten ist – biete an, die Abos zu zeigen (abo_zeigen). Nicht aufdringlich, höchstens einmal pro Gespräch.\n`;
   }
   async function textKopieren(t) {
+    if (NATIVE && SV && SV.copyText) { try { await SV.copyText({ text: t }); return true; } catch (e) { elog("Kopieren (Android): " + (e.message || e)); } }
     try { await navigator.clipboard.writeText(t); return true; } catch (e) {}
     try { const a = document.createElement("textarea"); a.value = t; a.style.position = "fixed"; a.style.opacity = "0"; document.body.append(a); a.select(); const okk = document.execCommand("copy"); a.remove(); return okk; } catch (e) { return false; }
   }
@@ -3105,7 +3107,8 @@ ${zeile("Menschen", ich.menschen)}`;
           const kopiert = await textKopieren(t);
           let handy = false;
           if (tgReady() && (inp.aufs_handy || tgGerade)) { try { await tgText("📋 Zum Einfügen:\n\n" + t); handy = true; } catch (e) {} }
-          return kopiert || handy ? ok((kopiert ? "In die Zwischenablage kopiert." : "") + (handy ? " Per Telegram aufs Handy geschickt." : "")) : fail("Kopieren ging nicht – Telegram ist nicht eingerichtet.");
+          if (!kopiert) { msg.value = t; } // zur Not steht der Text im Eingabefeld zum Markieren und Kopieren
+          return kopiert || handy ? ok((kopiert ? "In die Zwischenablage kopiert." : "") + (handy ? " Per Telegram aufs Handy geschickt." : "")) : ok("Der Text steht unten im Eingabefeld – lange drauf drücken, „Alles auswählen“ und „Kopieren“.");
         }
         case "abo_zeigen": if (cfg.key) return ok("Du nutzt deinen eigenen Key – da ist alles frei."); aboLaden(); $("aboPanel").hidden = false; return ok("Abo-Auswahl wird angezeigt.");
         case "schwarmwissen": {

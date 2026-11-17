@@ -1,6 +1,9 @@
 package de.robsen.sentinel;
 
 import android.Manifest;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.BatteryManager;
@@ -108,6 +111,19 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
     private long busyBackoff = 1000;
     private String lastPartial = "";
     private final Runnable listenRunnable = this::listen;
+
+    // Text in die Zwischenablage (die WebView darf das oft nicht selbst)
+    @PluginMethod
+    public void copyText(PluginCall call) {
+        String t = call.getString("text", "");
+        getActivity().runOnUiThread(() -> {
+            try {
+                ClipboardManager cm = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+                cm.setPrimaryClip(ClipData.newPlainText("Sentinel", t));
+                call.resolve(new JSObject().put("ok", true));
+            } catch (Exception e) { call.reject("Kopieren ging nicht: " + e.getMessage()); }
+        });
+    }
 
     @PluginMethod
     public void start(PluginCall call) {
