@@ -40,6 +40,10 @@ Robsen schickt tagsüber alles rein, abends wird gefixt und gesammelt hochgelade
   - Privat: Einkauf/Vorrat abfotografieren, Warnung vor Ablauf + Rezept-Vorschlag
   - Einzelhandel (Paket für Märkte): MHD-Kontrolle im Laden – Regale/Ware fotografieren oder erfassen, Liste was wann abläuft, Reduzierungs-Vorschläge. Robsen schätzt: spart ihm ca. 4 Std. Arbeit pro Woche → eigenes Business-Paket / Verkaufsargument für Händler
 - Rest (Auto, Nachrichten, Aufwach-Routine, Unwetter, Pakete, Inventar): weitgehend über Erinnerungen/Gedächtnis abgedeckt, nicht extra geplant
+- Geplant (17.11., Robsen: „mega wichtig für Alleinlebende“): **Sprach-Tagebuch**
+  - abends kurz erzählen, Sentinel schreibt mit, fragt einfühlsam nach, zeigt Stimmung & Highlights über Wochen
+  - Begleiter-Charakter für Alleinlebende; bei anhaltend gedrückter Stimmung behutsam auf Hilfe hinweisen
+- Prüfen (17.11.): **WhatsApp statt/zusätzlich zu Telegram** – über WhatsApp Business (Cloud-API): eine zentrale Sentinel-Nummer, Meta-Firmenverifizierung, Nachrichten laufen über den Server; von Sentinel angestoßene Nachrichten (z. B. Erinnerungen) kosten pro Nachricht ein paar Cent. Idee: als Plus-Funktion, Telegram bleibt gratis.
 - Weitere Ideen (noch offen): Morgen-Briefing · Live-Dolmetscher · Homescreen-Widget · Pakete vom Server nachladen · Video-KI voll automatisch
 
 ## Erledigt
