@@ -14,6 +14,14 @@ Robsen schickt tagsüber alles rein, abends wird gefixt und gesammelt hochgelade
   - Trink- und Pausen-Erinnerung (passt zum Fitness-Coach)
   - Quiz & Spiele für die Familie (Familienquiz, Wortspiele mit Kindern)
   - Sentinel teilen / NFC-Übergabe (Handy ans Tablet → Sentinel zieht mit Gedächtnis um)
+- Geplant (17.11.): **Fitness- & Ernährungs-Coach Pro** – soll Ernährungs-Apps komplett ersetzen:
+  - Trainingspläne und Ernährungspläne (auf Ziel, Alltag und Vorlieben zugeschnitten)
+  - Schritte im Blick (Schrittzähler, Tagesziel, Motivation)
+  - Abnehmen begleiten: Gewicht/Ziel verfolgen, Wochen-Check-in
+  - Fasten-Timer (z. B. 16:8) mit Erinnerungen für Start/Ende
+  - Essen per Foto oder Zuruf erfassen → Kalorien/Nährwerte schätzen, Tagesbilanz
+  - verbindet sich mit Trink-Erinnerung, Rezepten (Kühlschrank-Foto) und Einkaufsliste
+  - Hinweis: keine medizinischen Versprechen, bei Vorerkrankungen Arzt; Google-Gesundheitsrichtlinie beachten
 - Weitere Ideen (noch offen): Morgen-Briefing · Live-Dolmetscher · Homescreen-Widget · Pakete vom Server nachladen · Video-KI voll automatisch
 
 ## Erledigt
