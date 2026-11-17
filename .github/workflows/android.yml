@@ -3,6 +3,7 @@ name: Android-App bauen
 on:
   push:
     branches: [main]
+    paths-ignore: ["**.md", "store/**", "server/**", "datenschutz.html"]  # Listen, Grafiken, Server: kein App-Build nötig
   workflow_dispatch:
 
 permissions:
