@@ -33,6 +33,13 @@ Robsen schickt tagsüber alles rein, abends wird gefixt und gesammelt hochgelade
   - Geburtstage & Geschenkideen
   - Reise-Organizer: Packliste, Reiseplan, Tipps vor Ort, Dolmetscher
   - Pflanzen-Doktor ausbauen (Paket Garten, statt PictureThis)
+- Geplant (17.11., Robsen: „heftig“): **Preisvergleich Wocheneinkauf**
+  - Einkaufsliste → „wo bekomme ich was diese Woche am günstigsten?“, Vorschlag aufgeteilt nach Märkten inkl. Ersparnis
+  - Klärungsbedarf: Datenquelle für Prospekt-/Angebotspreise (keine offene Schnittstelle bei Marktguru/kaufDA; Lizenz/Partner prüfen)
+- Geplant (17.11.): **MHD-Wächter**
+  - Privat: Einkauf/Vorrat abfotografieren, Warnung vor Ablauf + Rezept-Vorschlag
+  - Einzelhandel (Paket für Märkte): MHD-Kontrolle im Laden – Regale/Ware fotografieren oder erfassen, Liste was wann abläuft, Reduzierungs-Vorschläge. Robsen schätzt: spart ihm ca. 4 Std. Arbeit pro Woche → eigenes Business-Paket / Verkaufsargument für Händler
+- Rest (Auto, Nachrichten, Aufwach-Routine, Unwetter, Pakete, Inventar): weitgehend über Erinnerungen/Gedächtnis abgedeckt, nicht extra geplant
 - Weitere Ideen (noch offen): Morgen-Briefing · Live-Dolmetscher · Homescreen-Widget · Pakete vom Server nachladen · Video-KI voll automatisch
 
 ## Erledigt
