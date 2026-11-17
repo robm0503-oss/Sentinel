@@ -331,7 +331,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 75</div>
+    <div class="hint" id="verHint">Sentinel Version 76</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -2695,6 +2695,7 @@ Lies immer nur EINEN Schritt vor, kurz und klar, und melde ihn mit kochschritt. 
   async function api(body) {
     if (aboModus()) { const d = await serverApi(body); countUsage(d.usage, (d.sentinel && d.sentinel.modell) || body.model); return d; }
     if (!cfg.key) throw new ApiError("Kein API-Key", "nokey");
+    if (body.sentinel_folge) { body = { ...body }; delete body.sentinel_folge; } // nur für den Sentinel-Server
     let res;
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), 90000); // nach 90 Sekunden abbrechen statt ewig zu hängen
@@ -3258,12 +3259,14 @@ ${zeile("Menschen", ich.menschen)}`;
     const work = [...history.slice(model === HAIKU ? -12 : -20), { role: "user", content }];
     let text = "", lastText = "", hochgestuft = false;
     const ergebnisse = [];
+    let ersteAnfrage = true; // nur die erste Server-Anfrage einer Frage zählt als „Frage“
     for (let round = 0; round < 8; round++) {
       let data;
       try {
         const sys = systemBlocks();
         if (cfg.model === "auto" && model === HAIKU && !hochgestuft && sonnetMoeglich() && Array.isArray(sys)) sys.push({ type: "text", text: "Wenn diese Frage echtes Nachdenken, Planen, Erklären oder einen längeren Text braucht, antworte NUR mit [hoch] und sonst nichts. Einfache Dinge erledigst du direkt." });
-        data = await api({ model, max_tokens: 4000, system: sys, tools: tools(), messages: work });
+        data = await api({ model, max_tokens: 4000, system: sys, tools: tools(), messages: work, ...(ersteAnfrage ? {} : { sentinel_folge: true }) });
+        ersteAnfrage = false;
       } catch (e) {
         if (e.kind === "search" && cfg.search) { cfg.search = false; saveCfg(); note("Websuche ist für deinen API-Key nicht freigeschaltet. Sie ist jetzt aus.", 6000); round--; continue; }
         throw e;

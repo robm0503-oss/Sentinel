@@ -139,3 +139,13 @@ console.log("ALLE TESTS OK");
   assert.ok((await (await worker.fetch(new Request("https://x/admin?k=geheim"), env)).text()).includes("1× benutzt"));
   console.log("Freischaltcode ok");
 }
+
+// Folgeschritte zählen nicht als neue Frage
+{
+  const uidF = "77777777-2222-4333-8444-555555555555";
+  const frage = folge => worker.fetch(new Request("https://x/v1/messages", { method: "POST", headers: { authorization: "Bearer " + uidF, "content-type": "application/json" }, body: JSON.stringify({ model: "claude-haiku-5-5", max_tokens: 50, messages: [{ role: "user", content: "hi" }], ...(folge ? { sentinel_folge: true } : {}) }) }), env);
+  await frage(false); await frage(true); await frage(true);
+  const me = await worker.fetch(new Request("https://x/v1/me", { headers: { authorization: "Bearer " + uidF } }), env).then(r => r.json());
+  assert.equal(me.anfragen_heute, 1);
+  console.log("Folgeschritte ok");
+}

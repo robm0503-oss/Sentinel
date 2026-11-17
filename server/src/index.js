@@ -108,6 +108,8 @@ async function chat(req, env, uid) {
   try { body = await req.json(); } catch (e) { return fehler(400, "invalid_request_error", "Ungültige Anfrage"); }
   // Das Kennenlernen bei der Einrichtung zählt in der Probe nicht mit (höchstens EINRICHTUNG_GRATIS Anfragen)
   const einrWunsch = !!body.sentinel_einrichtung; delete body.sentinel_einrichtung;
+  // Folgeschritte derselben Frage (Werkzeug-Runden) zählen nicht als neue Frage und werden nicht vom Tageslimit gestoppt
+  const folge = !!body.sentinel_folge; delete body.sentinel_folge;
   let gratisEinr = false;
   if (u.tier === "probe" && einrWunsch) {
     const e = await env.DB.prepare("SELECT n FROM einrichtung WHERE uid = ?").bind(u.uid).first();
@@ -117,11 +119,11 @@ async function chat(req, env, uid) {
   if (u.tier === "probe") {
     if (gratisEinr) { /* Kennenlernen – zählt nicht */ } else {
     const s = await env.DB.prepare("SELECT probe_req FROM stats WHERE day = ?").bind(heute()).first();
-    if ((u.req_day || 0) >= st.proTag) { await speichern(env, u); return fehler(429, "tageslimit", `Die ${st.proTag} Gratisfragen für heute sind verbraucht – morgen geht's weiter. Mit einem Abo kannst du sofort weitermachen.`, { stand: stand(u) }); }
+    if (!folge && (u.req_day || 0) >= st.proTag) { await speichern(env, u); return fehler(429, "tageslimit", `Die ${st.proTag} Gratisfragen für heute sind verbraucht – morgen geht's weiter. Mit einem Abo kannst du sofort weitermachen.`, { stand: stand(u) }); }
     if (s && s.probe_req >= Number(env.PROBE_DAY_CAP || 3000)) return fehler(429, "probe_voll", "Die Probe ist heute ausgelastet. Versuch es morgen oder wähle ein Abo.");
     }
   } else {
-    if (st.proTag && u.req_day >= st.proTag) { await speichern(env, u); return fehler(429, "tageslimit", `Tageslimit von ${st.proTag} Anfragen erreicht. Morgen geht's weiter – oder nimm eine höhere Stufe.`, { stand: stand(u) }); }
+    if (!folge && st.proTag && u.req_day >= st.proTag) { await speichern(env, u); return fehler(429, "tageslimit", `Tageslimit von ${st.proTag} Anfragen erreicht. Morgen geht's weiter – oder nimm eine höhere Stufe.`, { stand: stand(u) }); }
     const budgetUsd = st.budgetEur * USD_PRO_EUR + (u.topup_usd || 0);
     if (u.used_usd >= budgetUsd) { await speichern(env, u); return fehler(402, u.tier === "business" ? "nachschub_noetig" : "budget_leer", u.tier === "business" ? "Das Monatsbudget ist aufgebraucht. Ein Nachschub-Paket macht sofort weiter." : "Das Monatsbudget deiner Stufe ist aufgebraucht. Ab nächstem Monat geht's weiter – oder nimm eine höhere Stufe.", { stand: stand(u) }); }
   }
@@ -137,7 +139,7 @@ async function chat(req, env, uid) {
   const data = await r.json().catch(() => null);
   if (!r.ok || !data) return json(data || { type: "error", error: { type: "api_error", message: "Gehirn nicht erreichbar" } }, r.status || 502);
   const usd = kosten(data.usage, model);
-  u.used_usd += usd; if (!gratisEinr) u.req_day += 1;
+  u.used_usd += usd; if (!gratisEinr && !folge) u.req_day += 1;
   if (gratisEinr) await env.DB.prepare("INSERT INTO einrichtung (uid, n) VALUES (?, 1) ON CONFLICT(uid) DO UPDATE SET n = n + 1").bind(u.uid).run();
   else if (u.tier === "probe") u.probe_used = (u.probe_used || 0) + 1;
   await speichern(env, u);
