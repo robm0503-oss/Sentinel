@@ -23,6 +23,16 @@ Robsen schickt tagsüber alles rein, abends wird gefixt und gesammelt hochgelade
   - Makro-Tracking: Protein, Kohlenhydrate, Fett, Ballaststoffe, Zucker, Wasser – mit Tageszielen (z. B. Protein pro kg Körpergewicht), Fortschrittsbalken und Hinweis „heute fehlen noch 40 g Protein“ + passende Snack-Vorschläge
   - verbindet sich mit Trink-Erinnerung, Rezepten (Kühlschrank-Foto) und Einkaufsliste
   - Hinweis: keine medizinischen Versprechen, bei Vorerkrankungen Arzt; Google-Gesundheitsrichtlinie beachten
+- Geplant (17.11.): **„Sentinel ersetzt 10 Apps“** – Werbeaussage für Store & Video
+  - Dokumenten-Scanner: Foto → sauberes PDF + Erklärung (statt Adobe Scan/CamScanner)
+  - Verträge & Kündigungen: Laufzeiten merken, vor Ablauf warnen, Kündigung als PDF (statt Volt/Aboalarm)
+  - Garantie- & Beleg-Ordner: Bon fotografieren, an Garantie-Ende erinnern
+  - Schlaf & Entspannung: Atemübungen, Einschlafgeschichten, Meditation (statt Calm/Headspace)
+  - Sprachen lernen: tägliche 5-Minuten-Lektion (Paket Sprachlehrer ausbauen, statt Duolingo)
+  - Hausaufgabenhilfe: Aufgabe fotografieren, Schritt für Schritt erklären
+  - Geburtstage & Geschenkideen
+  - Reise-Organizer: Packliste, Reiseplan, Tipps vor Ort, Dolmetscher
+  - Pflanzen-Doktor ausbauen (Paket Garten, statt PictureThis)
 - Weitere Ideen (noch offen): Morgen-Briefing · Live-Dolmetscher · Homescreen-Widget · Pakete vom Server nachladen · Video-KI voll automatisch
 
 ## Erledigt
