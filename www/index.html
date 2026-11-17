@@ -331,7 +331,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 74</div>
+    <div class="hint" id="verHint">Sentinel Version 75</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -3219,6 +3219,8 @@ ${zeile("Menschen", ich.menschen)}`;
 
   // ---- Automatik: welches Gehirn für welche Frage ----
   const HAIKU = "claude-haiku-5-5", SONNET = "claude-sonnet-5-5";
+  // Im Abo-Modus gibt der Server Sonnet erst ab Plus (oder VIP) frei – vorher nicht nach [hoch] fragen
+  const sonnetMoeglich = () => !aboModus() || !!(aboStand && (aboStand.vip || ["plus", "pro", "business"].includes(aboStand.stufe)));
   const SCHWER_RE = /\b(warum|wieso|weshalb|erklär|erklaer|wie funktioniert|was bedeutet|unterschied|vergleich|vor- und nachteil|soll ich|was meinst du|rat|tipp|hilf mir|problem|plan|planen|strategie|idee|ideen|überleg|ueberleg|analys|rechne|berechne|schreib|formulier|text für|brief|mail|rezept|kochen|backen|essensplan|nächste woche|abnehmen|ernährung|geschichte|witz|gedicht|trading|steuer|recht|vertrag|code|programm|erstell|lebenslauf|bewerbung|dokument|anschreiben|präsentation|zusammenfass|flug|reise|urlaub|hausaufgabe)\w*/i;
   let lastSonnet = 0;
   const budgetEuro = () => (kosten.monat === monat() ? kosten.usd : 0) * 0.92; // grob in Euro
@@ -3260,15 +3262,18 @@ ${zeile("Menschen", ich.menschen)}`;
       let data;
       try {
         const sys = systemBlocks();
-        if (cfg.model === "auto" && model === HAIKU && !hochgestuft && Array.isArray(sys)) sys.push({ type: "text", text: "Wenn diese Frage echtes Nachdenken, Planen, Erklären oder einen längeren Text braucht, antworte NUR mit [hoch] und sonst nichts. Einfache Dinge erledigst du direkt." });
+        if (cfg.model === "auto" && model === HAIKU && !hochgestuft && sonnetMoeglich() && Array.isArray(sys)) sys.push({ type: "text", text: "Wenn diese Frage echtes Nachdenken, Planen, Erklären oder einen längeren Text braucht, antworte NUR mit [hoch] und sonst nichts. Einfache Dinge erledigst du direkt." });
         data = await api({ model, max_tokens: 4000, system: sys, tools: tools(), messages: work });
       } catch (e) {
         if (e.kind === "search" && cfg.search) { cfg.search = false; saveCfg(); note("Websuche ist für deinen API-Key nicht freigeschaltet. Sie ist jetzt aus.", 6000); round--; continue; }
         throw e;
       }
       const t0 = data.content.filter(c => c.type === "text").map(c => c.text).join("").trim();
-      if (model === HAIKU && cfg.model === "auto" && !hochgestuft && /^\[hoch\]/i.test(t0) && budgetEuro() < (cfg.budget || 10) * 0.8) {
-        hochgestuft = true; model = SONNET; elog("Gehirn: hochgestuft auf Sonnet"); round--; continue;
+      if (model === HAIKU && cfg.model === "auto" && !hochgestuft && /^\[hoch\]/i.test(t0)) {
+        hochgestuft = true; // nur einmal fragen
+        if (sonnetMoeglich() && budgetEuro() < (cfg.budget || 10) * 0.8) { model = SONNET; elog("Gehirn: hochgestuft auf Sonnet"); }
+        else elog("Gehirn: Hochstufen nicht möglich – antwortet selbst");
+        round--; continue; // gleiche Frage nochmal, diesmal ohne [hoch]-Option -> es kommt eine echte Antwort
       }
       work.push({ role: "assistant", content: data.content });
       text = t0.replace(/\[hoch\]/gi, "").trim();
