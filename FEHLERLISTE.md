@@ -8,6 +8,7 @@ Robsen schickt tagsüber alles rein, abends wird gefixt und gesammelt hochgelade
 
 ## Wünsche (größer, nicht für die Abend-Runde)
 - 17.11. Fitness-Daten: Schritte zählen etc. → Variante A: eigener Schrittzähler über den Handy-Sensor (einfach). Variante B: Health Connect (liest Samsung Health/Google Fit: Schritte, Schlaf, Puls) – braucht extra Google-Freigabe und Anpassung der Datensicherheit, daher erst nach dem Store-Start.
+- Ideen-Sammlung (17.11., noch nicht entschieden): Morgen-Briefing beim Aufstehen · Live-Dolmetscher für den Urlaub · Kühlschrank-Foto → Rezept · Kassenzettel scannen → Haushaltsbuch · Trink-/Pausen-Erinnerung · Homescreen-Widget · Quiz & Spiele für Familie · Sentinel teilen / NFC-Übergabe · Fähigkeiten-Pakete vom Server nachladen · Video-KI voll automatisch
 
 ## Erledigt
 - 17.11. Piepton beim Zuhören (v74, Store 1.73)
