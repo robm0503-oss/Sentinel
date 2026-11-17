@@ -129,6 +129,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <canvas id="face" width="480" height="480" aria-label="Sentinels Gesicht"></canvas>
     <div class="top">
       <span id="status">SENTINEL</span>
+      <button id="fragenZaehler" class="ghost" type="button" hidden style="padding:2px 10px;font-size:12px;align-self:flex-start;margin-right:auto"></button>
       <span class="tbtns">
         <button class="ghost" id="aboBtn" type="button" hidden>Abo</button>
         <button class="ghost" id="hilfeBtn" type="button">Anleitung</button>
@@ -331,7 +332,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 76</div>
+    <div class="hint" id="verHint">Sentinel Version 77</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -2681,7 +2682,7 @@ Lies immer nur EINEN Schritt vor, kurz und klar, und melde ihn mit kochschritt. 
     } catch (e) { clearTimeout(timer); throw new ApiError("Kein Internet", ctl.signal.aborted ? "timeout" : "net"); }
     clearTimeout(timer);
     const data = await res.json().catch(() => null);
-    if (data && data.stand) { aboStand = data.stand; store.set("aboStand", aboStand); }
+    if (data && data.stand) { aboStand = data.stand; store.set("aboStand", aboStand); zaehlerZeigen(); }
     if (!res.ok) {
       const t = (data && data.error && data.error.type) || "", m = (data && data.error && data.error.message) || ("HTTP " + res.status);
       if (["abo_noetig", "budget_leer", "nachschub_noetig", "tageslimit", "probe_voll"].includes(t)) { const e = new ApiError(m, "abo"); e.aboTyp = t; throw e; }
@@ -2689,7 +2690,7 @@ Lies immer nur EINEN Schritt vor, kurz und klar, und melde ihn mit kochschritt. 
       if (res.status >= 500) throw new ApiError(m, "busy");
       throw new ApiError(m, "other");
     }
-    if (data.sentinel) { aboStand = data.sentinel; store.set("aboStand", aboStand); }
+    if (data.sentinel) { aboStand = data.sentinel; store.set("aboStand", aboStand); zaehlerZeigen(); }
     return data;
   }
   async function api(body) {
@@ -3450,12 +3451,22 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     try { await RC().configure({ apiKey: RC_KEY, appUserID: uid }); rcBereit = true; } catch (e) { elog("Abo-System: " + (e.message || e)); }
     return rcBereit;
   }
+  // Fragen-Zähler oben links: wie viele Fragen heute noch übrig sind (nur im Abo-/Gratis-Modus mit Tageslimit)
+  function zaehlerZeigen() {
+    const z = $("fragenZaehler"); if (!z) return;
+    const a = aboStand || {};
+    if (!aboModus() || !a.stufe || a.vip || !a.limit_heute) { z.hidden = true; return; }
+    const rest = Math.max(0, a.limit_heute - (a.anfragen_heute || 0));
+    z.textContent = `${a.stufe === "probe" ? "Gratis" : a.name}: noch ${rest}/${a.limit_heute} Fragen heute`;
+    z.style.color = rest <= 2 ? "#ffb347" : "";
+    z.hidden = false;
+  }
   async function aboLaden() {
     $("aboStand").textContent = "Lade …";
     try { const r = await fetch(serverUrl() + "/v1/me?frisch=1", { headers: { authorization: "Bearer " + uid } }); aboStand = await r.json(); store.set("aboStand", aboStand); } catch (e) {}
     const a = aboStand || {};
     $("aboStand").textContent = a.stufe ? (a.stufe === "probe" ? `Gratis: heute noch ${a.probe_rest ?? "?"} von 10 Fragen – mit einem Abo geht mehr.` : `Stufe ${a.name}: diesen Monat ${String(a.verbraucht_eur).replace(".", ",")} € von ${String(a.budget_eur).replace(".", ",")} € verbraucht · heute ${a.anfragen_heute}${a.limit_heute ? " von " + a.limit_heute : ""} Anfragen.`) : "Server nicht erreichbar.";
-    $("aboNachschub").hidden = a.stufe !== "business";
+    $("aboNachschub").hidden = a.stufe !== "business"; zaehlerZeigen();
     let pakete = {};
     if (await rcStart()) {
       try { const o = await RC().getOfferings(); for (const p of ((o.current && o.current.availablePackages) || [])) pakete[(p.product && p.product.identifier || "").split(":")[0]] = p; } catch (e) { elog("Angebote: " + (e.message || e)); }
@@ -3648,6 +3659,8 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     } catch (e) { note("Keine Verbindung zum Server.", 4000); }
   });
   $("sLogBtn").addEventListener("click", () => { $("setPanel").hidden = true; logZeigen(); });
+  $("fragenZaehler").addEventListener("click", () => { aboLaden(); $("aboPanel").hidden = false; });
+  setTimeout(zaehlerZeigen, 1500);
   $("sUidKopie").addEventListener("click", async () => { note(await textKopieren(uid) ? "Geräte-ID kopiert." : "Kopieren ging nicht.", 2500); });
   $("sZwecke").addEventListener("click", () => { $("setPanel").hidden = true; zweckeZeigen(false); });
   let stimmFuerGesicht = "roboter";
