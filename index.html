@@ -332,7 +332,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 79</div>
+    <div class="hint" id="verHint">Sentinel Version 80</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -817,7 +817,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       const done = () => {
         if (finished) return; finished = true;
         if (id !== speakId) return resolve();
-        speaking = false; setMood(afterMood); status("bereit"); afterSpeaking(); resolve();
+        speaking = false; radioUnduck(); setMood(afterMood); status("bereit"); afterSpeaking(); resolve();
       };
       if (NATIVE && SV && text) {
         // App: Android-Sprachausgabe. Die Ohren pausieren dabei automatisch und hören danach weiter.
@@ -826,7 +826,8 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
         speaking = true; status("spricht");
         ttsWait[uid] = () => { done(); if (cfg.ear && !earsSleeping) nativeEarsOn(); };
         const st = stimmeFuer(); stimmeAnwenden(st);
-        SV.speak({ text: String(text), id: uid, rate: st.rate, pitch: st.pitch, volume: nightActive ? .35 : 1 }).catch(done);
+        const sl = sprachEinmal; sprachEinmal = null; radioDuck(0);
+        SV.speak({ text: String(text), id: uid, rate: st.rate, pitch: st.pitch, volume: nightActive ? .35 : 1, ...(sl ? { lang: sl } : {}) }).catch(done);
         setTimeout(done, 8000 + String(text).length * 120); // Sicherheitsnetz
         return;
       }
@@ -866,7 +867,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   }
   let WAKE = buildWake();
   const FOLLOW_MS = 15000; // so lange darf man nach seiner Antwort ohne "Sentinel" weiterreden
-  const followMs = () => (koch.on || einr.aktiv || lern.aktiv) ? 120000 : FOLLOW_MS; // beim Kochen und in der Einrichtung 2 Minuten
+  const followMs = () => (koch.on || einr.aktiv || lern.aktiv || dolm.on) ? 120000 : FOLLOW_MS; // beim Kochen und in der Einrichtung 2 Minuten
   let rec = null, recRunning = false, lastRecErr = null, followUntil = 0, oneShot = false;
   const earBtn = $("earBtn");
   function earUI() { earBtn.classList.toggle("on", cfg.ear); earBtn.setAttribute("aria-pressed", String(cfg.ear)); }
@@ -1194,6 +1195,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     SV.addListener("ttsDone", ev => { const f = ttsWait[ev && ev.id]; if (f) { delete ttsWait[ev.id]; f(); } });
   }
   function nativeEarsOn(trotzMusik) {
+    if (trotzMusik) radioDuck(12000);
     if (!SV) { elog("Ohren-Modul fehlt"); return; }
     lastAlive = Date.now();
     SV.start({ muteBeep: cfg.muteBeep !== false, trotzMusik: !!trotzMusik })
@@ -2455,18 +2457,32 @@ Offene Punkte: ${fehlt.join("; ")}.`;
       regeln: `BEWERBUNGS-COACH: Für Anschreiben lass dir die Stellenanzeige zeigen (Foto/Text) und nutze, was du über ihn weißt; frag nach dem Fehlenden. Erstelle Lebenslauf/Anschreiben als Dokument. Interview-Training: spiel den Personaler, stell nacheinander typische und stellenbezogene Fragen, gib nach jeder Antwort kurzes, ehrliches Feedback mit einem Verbesserungstipp.` },
     sprache: { ic: "🗣️", name: "Sprachlehrer", kurz: "Gespräche in Englisch, Spanisch, Türkisch & mehr – mit Korrekturen, Vokabeln und Urlaubs-Sätzen.", bsp: ["Lass uns Englisch reden", "Bring mir 10 Sätze Türkisch für den Urlaub bei"],
       regeln: `SPRACHLEHRER: Im Übungsgespräch sprichst du die Zielsprache einfach und passend zum Niveau, korrigierst Fehler kurz und freundlich (richtiger Satz + ein Wort Erklärung auf Deutsch) und stellst eine Rückfrage, damit das Gespräch weiterläuft. Vokabeln mit dem Werkzeug lernen abfragen. Urlaubs-Sätze mit Aussprache-Hilfe in Lautschrift wie für Deutsche.` },
-    fitness: { ic: "🏋️", name: "Fitness-Coach", kurz: "Trainingspläne für zu Hause oder Studio, Erinnerungen ans Training und Motivation.", bsp: ["Mach mir einen 3-Tage-Plan ohne Geräte", "Erinnere mich Mo, Mi, Fr ans Training"],
-      regeln: `FITNESS-COACH: Frag kurz nach Ziel, Erfahrung, Zeit pro Einheit und Ausstattung (falls unbekannt). Erstelle realistische Pläne mit Aufwärmen, Übungen (Sätze × Wiederholungen), Pausen; Technik kurz erklären. Trainingstage als wiederkehrende Erinnerung anbieten. Fortschritte mit merke_dir festhalten. Bei Schmerzen oder Vorerkrankungen: vorher ärztlich abklären lassen.` },
+    fitness: { ic: "🏋️", name: "Fitness- & Ernährungs-Coach Pro", kurz: "Trainings- und Ernährungspläne, Kalorien- und Protein-Tracking, Fasten, Schritte und Abnehmen – ersetzt deine Fitness- und Kalorien-Apps.", bsp: ["Mach mir einen 3-Tage-Plan ohne Geräte", "Ich will bis Sommer 6 Kilo abnehmen", "Wie viel Protein fehlt mir heute noch?"],
+      regeln: `FITNESS- & ERNÄHRUNGS-COACH PRO: Frag kurz nach Ziel, Größe/Gewicht (falls unbekannt, freiwillig), Erfahrung, Zeit und Ausstattung. Berechne bei Abnehm-/Aufbauzielen einen realistischen Tagesbedarf (Grundumsatz nach Mifflin-St Jeor × Aktivität, Defizit höchstens 500 kcal, nie unter 1200 kcal) und ein Protein-Ziel (ca. 1,6–2 g pro kg Körpergewicht beim Muskelaufbau, 1,2–1,6 beim Abnehmen) und speichere die Ziele (koerper_tagebuch ziele). Erstelle Trainingspläne (Aufwärmen, Übungen mit Sätzen × Wiederholungen, Pausen, Steigerung pro Woche) und Ernährungspläne mit einfachen Gerichten und Einkaufsliste – als PDF (dokument_erstellen), wenn gewünscht. Trag Essen konsequent ins koerper_tagebuch ein (auch von Fotos), sag nach jeder Mahlzeit kurz, wie viel Kalorien und Protein noch offen sind, und gib einen konkreten Tipp (z. B. Quark, Eier, Linsen für Protein). Intervallfasten (16:8, 18:6, 5:2) mit Fasten-Timer begleiten, Trink- und Bewegungs-Erinnerungen anbieten, Schritte (schritte) einbeziehen. Wöchentliche Auswertung: Gewichtsverlauf, Durchschnitt kcal/Protein, Schritte – ehrlich, motivierend. Bei Schmerzen, Vorerkrankungen, Schwangerschaft oder Essstörungs-Anzeichen: vorher ärztlich abklären lassen, keine Zahlenziele.` },
+    sparfuchs: { ic: "🛒", name: "Sparfuchs & Preisvergleich", kurz: "Sucht aktuelle Angebote und sagt dir, wo dein Wocheneinkauf am günstigsten ist.", bsp: ["Wo kaufe ich meinen Wocheneinkauf am günstigsten?", "Wo ist Butter gerade im Angebot?"],
+      regeln: `SPARFUCHS: Für Preisvergleiche nutze die Websuche (Prospekte und Angebotsseiten wie kaufda, marktguru, meinprospekt oder die Seiten von Aldi, Lidl, Rewe, Edeka, Kaufland, Penny, Netto) für den Wohnort und die aktuelle Woche. Nimm die Einkaufsliste (liste) als Grundlage. Ergebnis: pro Laden, was man dort am günstigsten bekommt (mit Angebotspreis und Gültigkeit), plus ein Vorschlag „alles in einem Laden“ vs. „2 Läden“ mit grob geschätzter Ersparnis. Sag ehrlich, dass Angebote regional abweichen können und Preise ohne Gewähr sind. Ergebnis auf Wunsch per Telegram (nachricht_ans_handy) oder als PDF.` },
+    einzelhandel: { ic: "🏪", name: "Einzelhandel: MHD & Abschriften", kurz: "MHD-Kontrolle im Laden per Foto, Abschriften-Listen, Reduzierungs-Vorschläge und Erinnerungen – spart Stunden pro Woche.", bsp: ["Hier sind die Joghurts aus Regal 3", "Was muss diese Woche reduziert werden?", "Mach mir die Abschriftenliste als PDF"],
+      regeln: `EINZELHANDEL (MHD & ABSCHRIFTEN): Fotos von Regalen, Etiketten oder Lieferscheinen: lies Produkt, MHD und Menge aus und trag alles mit mhd (bereich laden, ort = Regal/Abteilung) ein – frag nur nach, wenn ein Datum unlesbar ist. „Was muss reduziert werden?“: mhd anzeigen (laden) und nach Dringlichkeit sortieren mit Vorschlag (heute -30 %, morgen -50 %, abgelaufen: aussortieren/Abschrift). Abschriften- und Kontrolllisten als PDF (dokument_erstellen) mit Tabelle Produkt, Menge, MHD, Ort, Maßnahme. Tägliche Kontroll-Erinnerung anbieten (erinnerung_stellen, werktags). Den Vorlauf für Warnungen mit mhd vorlauf einstellen.` },
+    spiele: { ic: "🎲", name: "Spiele & Quiz", kurz: "Quizshows, Rätsel, Wer bin ich?, Stadt-Land-Fluss und Spieleabende für die ganze Familie.", bsp: ["Lass uns ein Quiz spielen", "Spielen wir Wer bin ich?", "Ein Rätsel für die Kinder"],
+      regeln: `SPIELE & QUIZ: Du bist ein lebendiger Spielleiter. Quiz: Thema und Schwierigkeit erfragen, Fragen einzeln stellen (bei mehreren Spielern abwechselnd mit Punktestand), nach jeder Antwort kurz auflösen mit einem spannenden Fakt. Weitere Spiele: Wer bin ich?, 20 Fragen, Stadt-Land-Fluss (du prüfst die Antworten), Wortketten, Rätsel, Galgenmännchen, Zahlen raten. Kindgerecht, wenn Kinder mitspielen. Halte Spielstände im Gespräch fest und küre am Ende einen Sieger.` },
+    entspannung: { ic: "🌙", name: "Schlaf & Entspannung", kurz: "Geführte Atemübungen, Meditationen, Einschlafgeschichten und Ruhe-Routinen.", bsp: ["Hilf mir beim Einschlafen", "Eine 5-Minuten-Atemübung", "Ich bin gestresst"],
+      regeln: `SCHLAF & ENTSPANNUNG: Sprich langsam, ruhig und in kurzen Sätzen. Atemübungen (z. B. 4-7-8, Box-Atmung) Schritt für Schritt anleiten, Body-Scan und kurze Meditationen, Einschlafgeschichten, die immer ruhiger werden. Auf Wunsch eine Abendroutine mit Erinnerung (erinnerung_stellen täglich) und ruhiges Radio (radio, z. B. Klassik). Bei anhaltenden Schlafproblemen oder Krisen behutsam ärztliche oder professionelle Hilfe empfehlen.` },
+    geschenke: { ic: "🎁", name: "Geburtstage & Geschenkideen", kurz: "Merkt sich Geburtstage, erinnert rechtzeitig und findet passende Geschenke.", bsp: ["Annas Geburtstag ist am 12. Mai", "Geschenkidee für meinen Vater, 60, angelt gern"],
+      regeln: `GEBURTSTAGE & GESCHENKE: Geburtstage von Familie und Freunden mit merke_dir speichern (Name, Datum, Interessen) und für den nächsten Geburtstag je eine Erinnerung 7 Tage vorher und am Tag selbst anbieten (erinnerung_stellen). Geschenkideen: 3–5 konkrete Ideen passend zu Alter, Interessen und Budget, gern mit Websuche nach aktuellen Produkten; eine persönliche Idee (Erlebnis, Selbstgemachtes) ist immer dabei. Glückwunschtexte und Karten (bild_erstellen) auf Wunsch.` },
+    reise: { ic: "🧳", name: "Reise-Organizer", kurz: "Reisepläne Tag für Tag, Packlisten, Checklisten und Tipps vor Ort.", bsp: ["Plan mir 4 Tage Rom", "Packliste für eine Woche Mallorca mit Kindern"],
+      regeln: `REISE-ORGANIZER: Frag nach Ziel, Datum, Mitreisenden, Budget und Interessen (nur Fehlendes). Erstelle einen Tagesplan (Vormittag/Nachmittag/Abend, realistische Wege), Packliste (als liste „Packliste <Ziel>“), Checkliste (Ausweis, Versicherung, Tiere, Pflanzen gießen) und Erinnerungen (Check-in, Abfahrt). Nutze wetter für das Ziel, reise_suchen für Zug/Flug/Hotel und die Websuche für Öffnungszeiten. Den Plan als PDF (dokument_erstellen) aufs Handy.` },
+    vertraege: { ic: "📑", name: "Verträge & Kündigungen", kurz: "Behält Laufzeiten und Fristen im Blick, schreibt Kündigungen und findet Sparpotenzial.", bsp: ["Kündige mein Fitnessstudio zum nächstmöglichen Termin", "Welche Verträge kann ich bald kündigen?"],
+      regeln: `VERTRÄGE & KÜNDIGUNGEN: Verträge, Abos und Versicherungen in der ablage führen (Anbieter, Kosten, Laufzeit bis, Kündigungsfrist). Berechne den letzten Kündigungstag und lege 14 Tage vorher eine Erinnerung an. Kündigungen als PDF (dokument_erstellen) mit Kundennummer, „fristgerecht, hilfsweise zum nächstmöglichen Termin“, Bitte um schriftliche Bestätigung und Unterschriftszeile; Hinweis: in Deutschland oft per Kündigungsbutton auf der Website möglich. Übersicht der monatlichen Fixkosten und 1–2 Spartipps (z. B. Tarif wechseln). Keine Rechtsberatung – bei Streit Verbraucherzentrale empfehlen.` },
     geschichten: { ic: "📖", name: "Geschichtenerzähler", kurz: "Gute-Nacht-Geschichten mit den Namen der Kinder und interaktive Abenteuer zum Mitentscheiden.", bsp: ["Erzähl eine Gute-Nacht-Geschichte über einen Drachen", "Lass uns ein Abenteuer spielen"],
       regeln: `GESCHICHTENERZÄHLER: Erzähl lebendig, kindgerecht und in kurzen Abschnitten zum Vorlesen (beim Sprechen max. ca. 1 Minute am Stück), bau Namen und Lieblingstiere ein, die du kennst. Gute-Nacht-Geschichten enden ruhig. Bei Abenteuern: nach jedem Abschnitt zwei Wahlmöglichkeiten anbieten und je nach Antwort weitererzählen.` },
     event: { ic: "🎉", name: "Party- & Event-Planer", kurz: "Checklisten, Zeitplan, Einkaufsliste und Einladungen mit Bild für Geburtstage, Feiern und Events.", bsp: ["Plan den Kindergeburtstag am Samstag", "Mach eine Einladung für mein Grillfest"],
       regeln: `EVENT-PLANER: Frag nach Anlass, Datum, Gästezahl und Budget (nur was fehlt). Erstelle Checkliste und Einkaufsliste (liste), Zeitplan und Erinnerungen an wichtige Termine. Einladungen: Text plus Bild (bild_erstellen) und auf Wunsch per Telegram aufs Handy.` },
-    garten: { ic: "🌱", name: "Garten & Pflanzen", kurz: "Erkennt Pflanzen und Probleme per Foto, plant Gießen und Düngen passend zum Wetter.", bsp: ["Was hat meine Pflanze?", "Wann muss ich die Tomaten gießen?"],
-      regeln: `GARTEN & PFLANZEN: Bei Fotos: Pflanze bestimmen, Zustand einschätzen, Ursache und konkrete Pflege nennen. Gieß- und Düngeerinnerungen anbieten und das Wetter (Werkzeug wetter) berücksichtigen, z. B. kein Gießen vor Regen. Saisontipps passend zum Monat.` },
+    garten: { ic: "🌱", name: "Garten & Pflanzen", kurz: "Pflanzen-Doktor: erkennt Pflanzen, Krankheiten und Schädlinge per Foto, plant Gießen und Düngen passend zum Wetter.", bsp: ["Was hat meine Pflanze?", "Wann muss ich die Tomaten gießen?"],
+      regeln: `GARTEN & PFLANZEN: PFLANZEN-DOKTOR: Bei Fotos: Pflanze bestimmen, Krankheit, Schädling oder Pflegefehler erkennen (Blattflecken, gelbe Blätter, Läuse, Staunässe …), Ursache und konkrete Behandlung Schritt für Schritt nennen, möglichst mit Hausmitteln. Gieß- und Düngeerinnerungen anbieten und das Wetter (Werkzeug wetter) berücksichtigen, z. B. kein Gießen vor Regen. Saisontipps passend zum Monat.` },
     haushalt: { ic: "🧹", name: "Haushalts-Organisator", kurz: "Putzpläne, Aufgaben für die ganze Familie, Wäsche- und Müll-Erinnerungen.", bsp: ["Mach einen Putzplan für die Woche", "Wer ist heute mit Abwasch dran?"],
       regeln: `HAUSHALTS-ORGANISATOR: Erstelle faire Wochenpläne für Aufgaben (Putzen, Wäsche, Müll, Einkauf) und verteile sie auf die Haushaltsmitglieder, die du kennst. Speichere den Plan mit merke_dir und lege Erinnerungen an. Beantworte „Wer ist heute dran?“ aus dem gespeicherten Plan.` },
-    finanzen: { ic: "💶", name: "Haushaltsbuch & Spar-Coach", kurz: "Ausgaben per Zuruf notieren, Monatsübersicht und alltagstaugliche Spartipps.", bsp: ["Ich hab 34 Euro bei Edeka ausgegeben", "Wie viel hab ich diesen Monat für Essen ausgegeben?"],
-      regeln: `HAUSHALTSBUCH: Ausgaben und Einnahmen, die genannt werden, mit Datum, Betrag und Kategorie in der Liste „Haushaltsbuch“ festhalten (liste). Auf Nachfrage Summen pro Kategorie und Monat ausrechnen und 1–2 konkrete Spartipps geben. Keine Anlageberatung, keine Empfehlungen zu einzelnen Finanzprodukten.` },
+    finanzen: { ic: "💶", name: "Haushaltsbuch & Spar-Coach", kurz: "Ausgaben per Zuruf oder Kassenzettel-Foto notieren, Monatsübersicht und alltagstaugliche Spartipps.", bsp: ["Ich hab 34 Euro bei Edeka ausgegeben", "Wie viel hab ich diesen Monat für Essen ausgegeben?"],
+      regeln: `HAUSHALTSBUCH: Kassenzettel-Fotos: Laden, Datum, Summe und grobe Kategorien (Lebensmittel, Drogerie, Haushalt …) auslesen und eintragen. Ausgaben und Einnahmen, die genannt werden, mit Datum, Betrag und Kategorie in der Liste „Haushaltsbuch“ festhalten (liste). Auf Nachfrage Summen pro Kategorie und Monat ausrechnen und 1–2 konkrete Spartipps geben. Keine Anlageberatung, keine Empfehlungen zu einzelnen Finanzprodukten.` },
     haustier: { ic: "🐾", name: "Haustier-Helfer", kurz: "Futter- und Tierarzt-Erinnerungen, Erziehungstipps und Antworten rund ums Tier.", bsp: ["Erinnere mich an die Wurmkur für Bello", "Wie bringe ich dem Hund bei, nicht zu ziehen?"],
       regeln: `HAUSTIER-HELFER: Merk dir Tiere mit Name, Art und Alter (merke_dir). Lege Erinnerungen für Impfungen, Wurmkuren, Futter, Tierarzt an. Gib geduldige, tierfreundliche Erziehungstipps Schritt für Schritt. Bei Krankheitszeichen ehrlich einschätzen und zum Tierarzt raten.` },
   };
@@ -2484,6 +2500,260 @@ Offene Punkte: ${fehlt.join("; ")}.`;
     try { await navigator.clipboard.writeText(t); return true; } catch (e) {}
     try { const a = document.createElement("textarea"); a.value = t; a.style.position = "fixed"; a.style.opacity = "0"; document.body.append(a); a.select(); const okk = document.execCommand("copy"); a.remove(); return okk; } catch (e) { return false; }
   }
+
+  // ================= v80: NEUHEITEN NACH UPDATES =================
+  // Jedes Mal, wenn neue Funktionen dazukommen: APP_VERSION erhöhen und hier eintragen.
+  // Beim nächsten Öffnen fragt Sentinel, ob man die Neuheiten kennenlernen will.
+  const APP_VERSION = 80;
+  const NEUHEITEN = {
+    80: [
+      ["📞", "Anrufen, WhatsApp & SMS", "Ich wähle Nummern und schreibe WhatsApp- oder SMS-Nachrichten fertig vor – du tippst nur noch auf Senden.", "Schreib Lisa per WhatsApp, dass ich später komme"],
+      ["📻", "Radio", "Tausende Radiosender live – einfach den Sender oder die Musikrichtung sagen.", "Spiel NDR 2"],
+      ["☀️", "Morgen-Briefing", "Zur Wunschzeit: Wetter, Termine, Geburtstage und die wichtigsten Nachrichten in einer Minute.", "Mach mir jeden Morgen um 7 ein Briefing"],
+      ["🌍", "Live-Dolmetscher", "Ich übersetze ein Gespräch hin und her – du sprichst Deutsch, dein Gegenüber seine Sprache.", "Sei mein Dolmetscher für Türkisch"],
+      ["👣", "Schrittzähler", "Ich zähle deine Schritte (auf Handys mit Schrittsensor) und feuere dich fürs Tagesziel an.", "Wie viele Schritte hab ich heute?"],
+      ["🥗", "Ernährung & Körper", "Kalorien, Protein, Wasser und Gewicht per Zuruf oder Foto vom Essen – plus Fasten-Timer.", "Ich hab zwei Brötchen mit Käse gegessen"],
+      ["💧", "Wiederkehrende Erinnerungen", "Trink-, Pausen- oder Tabletten-Erinnerungen stündlich, täglich, werktags oder wöchentlich.", "Erinnere mich zwischen 9 und 18 Uhr jede Stunde ans Trinken"],
+      ["📔", "Sprach-Tagebuch", "Erzähl mir von deinem Tag – ich schreibe es auf, und später erzähle ich dir, was du erlebt hast.", "Tagebuch: Heute war ein guter Tag"],
+      ["🥛", "MHD-Wächter", "Ich merke mir Haltbarkeitsdaten – zu Hause oder im Laden – und warne rechtzeitig.", "Der Joghurt ist bis Freitag haltbar"],
+      ["📂", "Verträge, Garantien & Belege", "Deine Ablage: Verträge mit Kündigungsfrist, Garantien und Kassenbelege – ich erinnere vor Fristen.", "Speicher meinen Handyvertrag, läuft bis März"],
+      ["📄", "Dokumenten-Scanner", "Foto vom Brief oder Formular – ich mache ein sauberes PDF daraus, auch mehrseitig.", "Scann das als PDF"],
+      ["🧊", "Kühlschrank-Koch", "Foto vom Kühlschrank – ich sage dir, was du daraus kochen kannst.", "Was kann ich daraus kochen?"],
+      ["🧩", "Neue Pakete (ab Plus)", "Fitness- & Ernährungs-Coach Pro, Sparfuchs-Preisvergleich, Einzelhandel-MHD, Spiele & Quiz, Schlaf & Entspannung, Geschenke & Geburtstage, Reise-Organizer und Verträge & Kündigungen.", "Wo kaufe ich meinen Wocheneinkauf am günstigsten?"],
+    ],
+  };
+  const neuheitenSeit = v => Object.keys(NEUHEITEN).map(Number).filter(n => n > v).sort((a, b) => a - b).flatMap(n => NEUHEITEN[n]);
+  let neuAngebot = null; // { seit, am } – Sentinel hat gerade gefragt, ob man die Neuheiten kennenlernen will
+  function neuInfo() {
+    if (!neuAngebot || Date.now() - neuAngebot.am > 20 * 60000) return "";
+    const l = neuheitenSeit(neuAngebot.seit);
+    if (!l.length) return "";
+    return `\nUPDATE: Du hast eben beim Begrüßen gefragt, ob dein Gegenüber deine neuen Funktionen kennenlernen möchte. Sagt er/sie ja: ruf neuheiten_zeigen auf, zähl die Neuheiten kurz auf (beim Sprechen höchstens die 6 spannendsten, je ein kurzer Satz, dann „und noch mehr – steht alles auf dem Bildschirm“) und frag zum Schluss: „Was möchtest du davon einrichten?“ Hilf dann direkt beim Einrichten. Sagt er/sie nein: neuheiten_zeigen mit abgelehnt=true und kurz sagen, dass alles in der Anleitung steht. Die Neuheiten:\n` + l.map(x => `- ${x[1]}: ${x[2]}`).join("\n");
+  }
+  function neuheitenZeigen(seit) {
+    const l = neuheitenSeit(seit);
+    const b = $("hilfeBody"); b.replaceChildren(); $("hilfeGelesen").hidden = true;
+    const g = el("div", "grp"); g.append(el("h3", null, `🆕 Neu in Version ${APP_VERSION}`));
+    for (const [ic, titel, text, bsp] of (l.length ? l : NEUHEITEN[APP_VERSION])) {
+      g.append(el("p", null, ic + " " + titel + " – " + text));
+      const c = el("div", "chips"); c.append(el("span", "chip", "„" + bsp + "“")); g.append(c);
+    }
+    b.append(g); $("hilfePanel").hidden = false;
+  }
+
+  // ================= v80: ANRUFEN, WHATSAPP, SMS =================
+  const nummerSauber = n => String(n || "").replace(/[^\d+]/g, "");
+  const nummerIntl = n => { let x = nummerSauber(n); if (x.startsWith("+")) return x.slice(1); if (x.startsWith("00")) return x.slice(2); if (x.startsWith("0")) return "49" + x.slice(1); return x; };
+
+  // ================= v80: RADIO =================
+  let radioEl = null, radioName = "", radioVol = 0.8, radioDuckT = null;
+  async function radioSuchen(q) {
+    const enc = encodeURIComponent(q);
+    for (const h of ["de1.api.radio-browser.info", "at1.api.radio-browser.info", "fi1.api.radio-browser.info"]) {
+      try {
+        const hol = async p => { const r = await fetch(`https://${h}/json/stations/search?${p}&limit=15&hidebroken=true&order=clickcount&reverse=true`); return r.ok ? r.json() : []; };
+        let a = await hol("name=" + enc);
+        if (!a.length) a = await hol("tag=" + enc + "&countrycode=DE");
+        if (!a.length) a = await hol("tag=" + enc);
+        return a.map(s => ({ name: String(s.name || "").trim(), url: s.url_resolved || s.url, land: s.countrycode })).filter(s => s.url);
+      } catch (e) { elog("Radio-Suche (" + h + "): " + (e.message || e)); }
+    }
+    return [];
+  }
+  async function radioSpielen(q) {
+    const liste = await radioSuchen(q);
+    if (!liste.length) throw new Error("Keinen Sender gefunden für „" + q + "“.");
+    // sichere Streams zuerst (die App darf nur https), dann der Rest als https-Versuch
+    const kand = [...liste.filter(s => /^https:/i.test(s.url)), ...liste.filter(s => !/^https:/i.test(s.url)).map(s => ({ ...s, url: s.url.replace(/^http:/i, "https:") }))].slice(0, 6);
+    radioStopp();
+    for (const s of kand) {
+      try {
+        const a = new Audio(s.url); a.volume = radioVol; a.preload = "none";
+        await Promise.race([a.play(), new Promise((_, n) => setTimeout(() => n(new Error("Zeitüberschreitung")), 8000))]);
+        radioEl = a; radioName = s.name;
+        a.addEventListener("error", () => { if (radioEl === a) { elog("Radio abgebrochen: " + s.name); radioEl = null; } });
+        return s.name;
+      } catch (e) { elog("Radio " + s.name + ": " + (e.message || e)); }
+    }
+    throw new Error("Der Sender lässt sich gerade nicht abspielen. Versuch einen anderen.");
+  }
+  function radioStopp() { if (radioEl) { try { radioEl.pause(); radioEl.src = ""; } catch (e) {} } radioEl = null; radioName = ""; }
+  function radioDuck(ms) {
+    if (!radioEl || radioEl.paused) return;
+    radioEl.volume = Math.min(radioVol, 0.12); clearTimeout(radioDuckT);
+    if (ms) radioDuckT = setTimeout(radioUnduck, ms);
+  }
+  function radioUnduck() { clearTimeout(radioDuckT); if (radioEl) radioEl.volume = radioVol; }
+
+  // ================= v80: SCHRITTZÄHLER (Sensor im Handy, bleibt auf dem Gerät) =================
+  const tagL = (d = new Date()) => d.toLocaleDateString("sv-SE"); // JJJJ-MM-TT in Ortszeit
+  let schritt = store.get("schritte", null) || { tage: {}, basis: null, letzter: null, boot: 0, ziel: 8000 };
+  async function schritteLesen(fragen) {
+    if (!(NATIVE && SV && SV.steps)) return { fehler: "Der Schrittzähler geht nur in der App auf einem Handy." };
+    let r;
+    try { r = await SV.steps({ ask: !!fragen }); } catch (e) { return { fehler: "Schrittzähler: " + (e.message || e) }; }
+    if (!r || !r.erlaubt) return { fehler: "Ich darf die Schritte noch nicht zählen. Bitte bei der Abfrage „Körperliche Aktivität“ erlauben (oder in den Android-Einstellungen bei Sentinel → Berechtigungen)." };
+    if (!r.sensor) return { fehler: "Dieses Gerät hat keinen Schrittzähler-Sensor – das klappt nur auf Handys, nicht auf den meisten Tablets." };
+    const v = Number(r.seitStart);
+    if (!(v >= 0)) return { fehler: "Der Sensor hat noch keinen Wert geliefert. Geh ein paar Schritte und frag gleich nochmal." };
+    const d = tagL(), S = schritt;
+    const neustart = S.letzter == null || v < S.letzter || Math.abs((Number(r.bootZeit) || 0) - (S.boot || 0)) > 120000;
+    if (neustart) S.basis = { tag: d, wert: v - (S.tage[d] || 0) };             // Handy neu gestartet: Tageswert behalten
+    else if (!S.basis || S.basis.tag !== d) S.basis = { tag: d, wert: S.letzter }; // neuer Tag: ab dem letzten Stand zählen
+    S.letzter = v; S.boot = Number(r.bootZeit) || 0;
+    S.tage[d] = Math.max(0, v - S.basis.wert);
+    const k = Object.keys(S.tage).sort(); while (k.length > 120) delete S.tage[k.shift()];
+    store.set("schritte", S);
+    if (!cfg.schritteAn) { cfg.schritteAn = true; saveCfg(); }
+    return { heute: S.tage[d] };
+  }
+  setInterval(() => { if (cfg.schritteAn) schritteLesen(false).catch(() => {}); }, 10 * 60000);
+  setTimeout(() => { if (cfg.schritteAn) schritteLesen(false).catch(() => {}); }, 8000);
+
+  // ================= v80: ERNÄHRUNG & KÖRPER =================
+  let fit = store.get("fit", null) || { tage: {}, ziele: {}, fasten: null };
+  const saveFit = () => { const k = Object.keys(fit.tage).sort(); while (k.length > 120) delete fit.tage[k.shift()]; store.set("fit", fit); };
+  const fitTag = (d = tagL()) => (fit.tage[d] = fit.tage[d] || { essen: [], ml: 0 });
+  function fitSumme(d) {
+    const t = fit.tage[d]; if (!t) return null;
+    const s = { kcal: 0, protein: 0, kh: 0, fett: 0 };
+    for (const e of t.essen) { s.kcal += +e.kcal || 0; s.protein += +e.p || 0; s.kh += +e.kh || 0; s.fett += +e.f || 0; }
+    return { ...s, wasser_ml: t.ml || 0, gewicht_kg: t.kg, mahlzeiten: t.essen.length };
+  }
+  function fitInfo() {
+    const z = [], s = fitSumme(tagL());
+    if (fit.fasten) { const h = (Date.now() - fit.fasten.start) / 3600000; z.push(`Fasten läuft seit ${h.toFixed(1)} von ${fit.fasten.stunden} Stunden.`); }
+    if (s && (s.mahlzeiten || s.wasser_ml)) z.push(`Heute gegessen/getrunken: ${Math.round(s.kcal)} kcal, ${Math.round(s.protein)} g Protein, ${s.wasser_ml} ml Wasser.`);
+    if (Object.keys(fit.ziele || {}).length) z.push("Ziele: " + Object.entries(fit.ziele).map(([k, v]) => k + " " + v).join(", ") + ".");
+    if (cfg.schritteAn && schritt.tage[tagL()] != null) z.push(`Schritte heute (zuletzt gemessen): ${schritt.tage[tagL()]} von ${schritt.ziel}.`);
+    return z.length ? "\nKÖRPER-TAGEBUCH: " + z.join(" ") : "";
+  }
+
+  // ================= v80: SPRACH-TAGEBUCH =================
+  let tagebuch = store.get("tagebuch", []) || [];
+  const saveTagebuch = () => { if (tagebuch.length > 2000) tagebuch = tagebuch.slice(-2000); store.set("tagebuch", tagebuch); };
+
+  // ================= v80: MHD-WÄCHTER =================
+  let mhd = store.get("mhd", null) || { items: [], vorlauf: { privat: 2, laden: 3 } };
+  const saveMhd = () => store.set("mhd", mhd);
+  const tageBis = d => Math.round((new Date(d + "T12:00") - new Date(tagL() + "T12:00")) / 86400000);
+  const mhdText = x => `${x.produkt}${x.menge ? " (" + x.menge + ")" : ""}${x.ort ? " – " + x.ort : ""}: ${new Date(x.datum + "T12:00").toLocaleDateString("de-DE")} ${tageBis(x.datum) < 0 ? "ABGELAUFEN" : tageBis(x.datum) === 0 ? "– heute!" : "– noch " + tageBis(x.datum) + " Tag(e)"}`;
+  const mhdFaellig = () => mhd.items.filter(x => tageBis(x.datum) <= (mhd.vorlauf[x.bereich] ?? 2)).sort((a, b) => a.datum.localeCompare(b.datum));
+  function mhdInfo() {
+    const f = mhdFaellig(); if (!f.length) return "";
+    return "\nMHD bald fällig/abgelaufen (erwähne das bei passender Gelegenheit, z. B. beim Kochen oder Briefing): " + f.slice(0, 8).map(mhdText).join("; ");
+  }
+  setInterval(() => {
+    const neu = mhdFaellig().filter(x => x.gemeldet !== tagL()); if (!neu.length) return;
+    neu.forEach(x => { x.gemeldet = tagL(); }); saveMhd();
+    const t = "🥛 MHD-Wächter:\n" + neu.map(x => "• " + (x.bereich === "laden" ? "🏪 " : "") + mhdText(x)).join("\n");
+    note(t.replace(/\n/g, "  "), 15000);
+    if (tgReady()) tgText(t).catch(() => {});
+  }, 30 * 60000);
+
+  // ================= v80: ABLAGE (Verträge, Garantien, Belege) =================
+  let ablage = store.get("ablage", []) || [];
+  const saveAblage = () => store.set("ablage", ablage.slice(-500));
+  const ablageText = (a, i) => `${i + 1}. [${a.art}] ${a.titel}${a.anbieter ? " · " + a.anbieter : ""}${a.betrag ? " · " + a.betrag : ""}${a.datum ? " · vom " + a.datum : ""}${a.bis ? " · läuft/gilt bis " + a.bis : ""}${a.frist ? " · Kündigungsfrist " + a.frist : ""}${a.notiz ? " · " + a.notiz : ""}${a.datei ? " · Foto: " + a.datei : ""}`;
+
+  // ================= v80: DOKUMENTEN-SCANNER =================
+  let scanSeiten = [];
+  async function scanSeiteBild(src, verbessern) {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("Bild kaputt")); i.src = "data:" + src.mime + ";base64," + src.data; });
+    const sc = Math.min(1, 2000 / Math.max(img.width, img.height));
+    const c = document.createElement("canvas"); c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+    const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
+    if (verbessern) x.filter = "grayscale(1) contrast(1.45) brightness(1.12)";
+    x.drawImage(img, 0, 0, c.width, c.height);
+    return { url: c.toDataURL("image/jpeg", 0.85), w: c.width, h: c.height };
+  }
+  async function pdfAblegen(blob, name, titel) {
+    let ort = "", handy = false;
+    if (NATIVE && SV && SV.saveFile) { try { ort = (await SV.saveFile({ name, mime: "application/pdf", base64: await b64AusBlob(blob) })).path; } catch (e) { elog("Speichern: " + (e.message || e)); } }
+    if (tgReady()) {
+      try {
+        const fd = new FormData(); fd.append("chat_id", cfg.tgChat); fd.append("caption", "📄 " + titel); fd.append("document", blob, name);
+        const r = await fetch(`https://api.telegram.org/bot${cfg.tgToken}/sendDocument`, { method: "POST", body: fd });
+        handy = !!(await r.json()).ok;
+      } catch (e) { elog("PDF per Telegram: " + e.message); }
+    }
+    dokumente = [...dokumente, { titel, name, ort, am: new Date().toISOString() }].slice(-50); store.set("dokumente", dokumente);
+    return `PDF „${titel}“ fertig (${name}).${ort ? " Gespeichert unter " + ort + "." : ""}${handy ? " Per Telegram aufs Handy geschickt." : ""}`;
+  }
+  async function scanPdf(titel, seiten, verbessern) {
+    const JsPDF = await jspdfHolen();
+    const doc = new JsPDF({ unit: "mm", format: "a4" }); doc.setProperties({ title: titel, creator: "Sentinel" });
+    for (let i = 0; i < seiten.length; i++) {
+      const s = await scanSeiteBild(seiten[i], verbessern);
+      if (i) doc.addPage();
+      const f = Math.min(190 / s.w, 277 / s.h), w = s.w * f, h = s.h * f;
+      doc.addImage(s.url, "JPEG", (210 - w) / 2, (297 - h) / 2, w, h);
+    }
+    const name = (String(titel || "Scan").replace(/[^\wäöüÄÖÜß .-]/g, "").trim().slice(0, 60) || "Scan") + ".pdf";
+    return pdfAblegen(doc.output("blob"), name, titel);
+  }
+
+  // ================= v80: MORGEN-BRIEFING =================
+  setInterval(() => {
+    if (!cfg.briefing || cfg.briefingTag === tagL() || busy || speaking) return;
+    const jetzt = new Date(), [hh, mm] = cfg.briefing.split(":").map(Number);
+    const ab = new Date(); ab.setHours(hh, mm, 0, 0);
+    if (jetzt < ab || jetzt - ab > 2 * 3600000) return;
+    cfg.briefingTag = tagL(); saveCfg();
+    if (document.visibilityState === "visible" && !nightActive && $("startPanel").hidden) send("Guten Morgen! Mach bitte mein Morgen-Briefing.");
+    else if (tgReady()) send("Mach bitte mein Morgen-Briefing.", "telegram");
+  }, 30000);
+
+  // ================= v80: LIVE-DOLMETSCHER =================
+  let dolm = { on: false, lang: "", name: "", seit: 0 }, sprachEinmal = null;
+  const SPRACHEN = { englisch: "en-US", tuerkisch: "tr-TR", türkisch: "tr-TR", spanisch: "es-ES", französisch: "fr-FR", franzoesisch: "fr-FR", italienisch: "it-IT", polnisch: "pl-PL", russisch: "ru-RU", ukrainisch: "uk-UA", arabisch: "ar-SA", rumänisch: "ro-RO", griechisch: "el-GR", portugiesisch: "pt-PT", niederländisch: "nl-NL", kroatisch: "hr-HR", serbisch: "sr-RS", bulgarisch: "bg-BG", tschechisch: "cs-CZ", ungarisch: "hu-HU", vietnamesisch: "vi-VN", chinesisch: "zh-CN", japanisch: "ja-JP", thai: "th-TH", persisch: "fa-IR", albanisch: "sq-AL", kurdisch: "ku-TR", hindi: "hi-IN" };
+  function dolmHoeren(lang) { if (NATIVE && SV && SV.listenLang) SV.listenLang({ lang }).catch(() => {}); }
+  function dolmAus() { if (!dolm.on) return; dolm.on = false; dolmHoeren("de-DE"); elog("Dolmetscher aus"); }
+  setInterval(() => { if (dolm.on && Date.now() - dolm.seit > 3600000) dolmAus(); }, 60000);
+  function dolmInfo() {
+    if (!dolm.on) return "";
+    const k = dolm.lang.slice(0, 2);
+    return `\nDOLMETSCHER AKTIV (Deutsch ↔ ${dolm.name}): Du bist jetzt NUR Dolmetscher. Übersetze jede Äußerung sinngemäß, natürlich und vollständig – keine Kommentare, keine Erklärungen, keine Rückfragen, keine Emojis. Ist die Äußerung auf Deutsch: antworte mit {${k}} am Anfang und dann NUR der Übersetzung auf ${dolm.name}. Ist sie auf ${dolm.name} (oder einer anderen Sprache): antworte NUR mit der deutschen Übersetzung, ohne Markierung. Nur wenn auf Deutsch ausdrücklich „Dolmetscher aus“/„Übersetzen beenden“ gesagt wird: dolmetscher mit an=false.`;
+  }
+
+  // ================= v80: WIEDERKEHRENDE ERINNERUNGEN =================
+  function naechsterTermin(t) {
+    const d = new Date(t.at);
+    if (t.wdh === "stuendlich") {
+      d.setHours(d.getHours() + 1);
+      const m = /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/.exec(t.zwischen || "");
+      if (m) {
+        const von = +m[1] * 60 + +m[2], bis = +m[3] * 60 + +m[4], min = d.getHours() * 60 + d.getMinutes();
+        if (min > bis || min < von) { if (min > bis) d.setDate(d.getDate() + 1); d.setHours(+m[1], +m[2], 0, 0); }
+      }
+    } else if (t.wdh === "taeglich") d.setDate(d.getDate() + 1);
+    else if (t.wdh === "woechentlich") d.setDate(d.getDate() + 7);
+    else if (t.wdh === "werktags") { do d.setDate(d.getDate() + 1); while (d.getDay() === 0 || d.getDay() === 6); }
+    else return null;
+    while (d.getTime() < Date.now()) { const n = naechsterTermin({ ...t, at: d.getTime() }); if (!n) return null; d.setTime(n); }
+    return d.getTime();
+  }
+  const WDH_TEXT = { stuendlich: "stündlich", taeglich: "täglich", woechentlich: "wöchentlich", werktags: "werktags" };
+
+  // ================= v80: REGELN FÜR DAS GEHIRN =================
+  function v80Regeln() {
+    return `NEUE FÄHIGKEITEN:
+- Anrufen (anrufen) und WhatsApp/SMS (nachricht_vorbereiten): Nummern, die du kennst (aus dem Gedächtnis), direkt nutzen; sonst nach der Nummer fragen und anbieten, sie dir zu merken. Du schickst nie selbst – du öffnest die fertige Nachricht, gesendet wird mit einem Tipp.
+- Radio (radio): Sender oder Musikrichtung abspielen. Läuft Radio, hört er/sie dich nur nach Antippen.
+- Morgen-Briefing (morgen_briefing): Wird darum gebeten oder ist es Zeit dafür: hol das Wetter (wetter), schau auf heutige Termine und Erinnerungen, Geburtstage, bald fällige MHDs und – wenn die Websuche verfügbar ist – die 3 wichtigsten Nachrichten des Tages. Dann kompakt in höchstens 6 Sätzen, freundlich, mit einem motivierenden Satz zum Schluss. Schrittziel oder Fasten erwähnen, wenn aktiv.
+- Dolmetscher (dolmetscher): Gespräche in Echtzeit übersetzen.
+- Körper-Tagebuch (koerper_tagebuch): Erzählt jemand, was er gegessen oder getrunken hat, oder zeigt ein Foto vom Essen: schätze Kalorien, Protein, Kohlenhydrate und Fett realistisch (übliche Portionsgrößen) und trag es ein; nenn kurz die Werte und den Tagesstand. Gewicht, Wasser und Fasten genauso. Keine Diäten unter 1200 kcal, keine Heilversprechen; bei Essstörungs-Anzeichen keine Zahlenziele, sondern behutsam Hilfe anbieten.
+- Schritte (schritte): Schrittzahl abfragen, Ziel setzen, motivieren.
+- Wiederkehrende Erinnerungen: erinnerung_stellen mit wiederholen (stündlich mit Zeitfenster für Trinken/Pausen, täglich, werktags, wöchentlich).
+- Sprach-Tagebuch (tagebuch): Sagt jemand „Tagebuch“ oder erzählt ausführlich von seinem Tag und möchte es festhalten: schreib den Eintrag in seiner Ich-Form, warm und ohne Wertung, mit Stimmung. Frag bei Alleinlebenden abends gern einmal, wie der Tag war, wenn es passt. Auf Wunsch vorlesen, was an einem Tag war, oder einen Wochenrückblick geben. Das Tagebuch ist privat und bleibt auf dem Gerät.
+- MHD-Wächter (mhd): Haltbarkeitsdaten von Lebensmitteln merken (privat oder im Laden), auch von Fotos (Datum vom Etikett lesen). Fehlt das Jahr, nimm das nächstliegende.
+- Ablage (ablage): Verträge, Versicherungen, Garantien und Belege speichern. Bei Verträgen mit Laufzeit und Kündigungsfrist biete eine Erinnerung 2 Wochen vor dem letzten Kündigungstag an (erinnerung_stellen); Kündigungen schreibst du mit dokument_erstellen. Bei Garantien eine Erinnerung kurz vor Ablauf anbieten. Ist ein Foto angehängt, mit_foto=true.
+- Scanner (scannen): Foto eines Dokuments → sauberes PDF; bei mehreren Seiten jede Seite mit aktion seite sammeln, dann fertig.
+- Kühlschrank-Koch: Zeigt jemand ein Foto vom Kühlschrank oder Vorrat, nenn 2–3 passende Gerichte mit dem, was zu sehen ist (fehlende Kleinigkeiten dazusagen), und biete den Kochmodus an. Hausaufgabenhilfe: erst Denkanstöße und Erklärung, nicht einfach die Lösung vorsagen.
+- Neuheiten: Fragt jemand „Was ist neu?“, nutze neuheiten_zeigen und fasse kurz zusammen.
+`;
+  }
+  const v80Info = () => fitInfo() + mhdInfo() + dolmInfo() + neuInfo() + (radioEl ? `\nRADIO läuft: ${radioName}.` : "") + (cfg.briefing ? `\nMorgen-Briefing ist täglich um ${cfg.briefing} eingestellt.` : "");
 
   // ================= REISEN =================
   function reiseLink(inp) {
@@ -2586,7 +2856,10 @@ Lies immer nur EINEN Schritt vor, kurz und klar, und melde ihn mit kochschritt. 
     if (busy || speaking) return;
     const due = termine.find(t => t.at <= Date.now());
     if (!due) return;
-    termine = termine.filter(t => t !== due); saveTermine();
+    termine = termine.filter(t => t !== due);
+    if (due.wdh) { const n = naechsterTermin(due); if (n) termine.push({ ...due, at: n }); }
+    if (due.fasten && fit.fasten) { fit.fasten = null; saveFit(); }
+    saveTermine();
     if (NATIVE) nativeEarsOff();  // sonst ist der Gong mit dem Piepton zusammen stummgeschaltet
     wake(); setTimeout(gong, NATIVE ? 300 : 0); setMood("ueberrascht");
     const s = due.typ === "timer" ? `Dein Timer ist abgelaufen${due.text ? ": " + due.text : ""}.` : `Erinnerung${ich.name ? " für " + ich.name : ""}: ${due.text}.`;
@@ -2774,11 +3047,11 @@ Soll Musik oder ein Video von YouTube laufen: suche mit der Websuche den passend
 Als Coworker erledigst du Aufgaben selbstständig: Sagt jemand, was er braucht (z. B. einen Lebenslauf, eine Bewerbung, einen Brief), frag nacheinander nach allem Nötigen, dann erstell das Dokument mit dokument_erstellen und sag kurz, wo es liegt. Für Reisen öffne mit reise_suchen die passende Suche und recherchiere bei Bedarf mit der Websuche.
 Fragt jemand, was du kannst oder wie man etwas einrichtet, zeig die Anleitung (anleitung_zeigen) und fasse das Wichtigste kurz zusammen. Neue Fähigkeiten kommen über die Einstellungen dazu (Smart-Home-Befehle, Govee, Telegram) – erkläre das konkret.
 Für Wetterfragen nutze immer das Werkzeug wetter, nie die Websuche. Will ${wer} etwas kochen oder backen, biete den Kochmodus an: Dann führst du Schritt für Schritt durchs Rezept und man muss nicht jedes Mal „Sentinel“ sagen. Geht ${wer} aus dem Haus, kannst du den Wachhund anbieten. Nachrichten aufs Handy gehen über Telegram${tgReady() ? "" : " (noch nicht eingerichtet: in den Einstellungen Bot-Token und Chat-ID eintragen)"}.
-${schwarmInfo()}${paketInfo()}Kommentiere nie frühere Versuche, Fehler oder Versionen („vorhin hatte es nicht geklappt, jetzt aber“) – außer man fragt ausdrücklich danach. Sag nur kurz, was du JETZT getan hast, und nur, wenn das Werkzeug es bestätigt hat.
+${schwarmInfo()}${paketInfo()}${v80Regeln()}Kommentiere nie frühere Versuche, Fehler oder Versionen („vorhin hatte es nicht geklappt, jetzt aber“) – außer man fragt ausdrücklich danach. Sag nur kurz, was du JETZT getan hast, und nur, wenn das Werkzeug es bestätigt hat.
 Nutze die Werkzeuge selbstständig, wenn sie passen, und bestätige danach kurz, was du getan hast. Erwähne die Werkzeugnamen nicht.
 ${ich.name ? "" : "Du kennst dein Gegenüber noch nicht. Stell dich kurz vor und frag nach dem Namen. Sobald du ihn weißt, nutze ich_kenne_dich."}
 Wenn ${wer} dir etwas Dauerhaftes erzählt oder dich bittet, dir etwas zu merken, nutze merke_dir. Sag nie, dass du dir etwas gemerkt hast, ohne das Werkzeug wirklich benutzt zu haben.
-Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\nDein aktuelles Gesicht: ${GESICHT_NAMEN[cfg.gesicht || "roboter"]}.\n${dekoInfo()}\n${geburtstagInfo()}\nDeine API-Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.monat === monat() ? kosten.usd : 0)}.${wach.on ? "\nDer WACHHUND ist gerade an" + (wach.alerts ? ` (${wach.alerts} Bewegungsmeldungen)` : "") + ". Wenn " + wer + " sagt, dass er wieder da ist, schalte ihn aus." : ""}${nightActive ? "\nEs ist Nachtmodus: antworte besonders kurz und ruhig." : ""}${zweckeInfo()}${cfg.keineGeraeteVorschlaege ? "\nDer Nutzer möchte KEINE Vorschläge, neue Geräte zu kaufen – biete das nie an." : ""}${phaseInfo()}${lernInfo()}${kochInfo()}${einrichtungInfo()}${dokumente.length ? "\nErstellte Dokumente: " + dokumente.slice(-6).map(d => d.titel).join(", ") : ""}${essenInfo()}${akkuInfo()}${cfg.govee ? "\nDeine Lampen (Werkzeug licht): " + (store.get("goveeNamen", []).join(", ") || "werden noch geladen") : ""}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
+Jetzt: ${jetzt} (für Werkzeuge: ${isoJetzt})\nDein aktuelles Gesicht: ${GESICHT_NAMEN[cfg.gesicht || "roboter"]}.\n${dekoInfo()}\n${geburtstagInfo()}\nDeine API-Kosten (geschätzt): heute ${dollar(kostenHeute())}, im ${monatName()} ${dollar(kosten.monat === monat() ? kosten.usd : 0)}.${wach.on ? "\nDer WACHHUND ist gerade an" + (wach.alerts ? ` (${wach.alerts} Bewegungsmeldungen)` : "") + ". Wenn " + wer + " sagt, dass er wieder da ist, schalte ihn aus." : ""}${nightActive ? "\nEs ist Nachtmodus: antworte besonders kurz und ruhig." : ""}${zweckeInfo()}${cfg.keineGeraeteVorschlaege ? "\nDer Nutzer möchte KEINE Vorschläge, neue Geräte zu kaufen – biete das nie an." : ""}${phaseInfo()}${lernInfo()}${kochInfo()}${einrichtungInfo()}${v80Info()}${dokumente.length ? "\nErstellte Dokumente: " + dokumente.slice(-6).map(d => d.titel).join(", ") : ""}${essenInfo()}${akkuInfo()}${cfg.govee ? "\nDeine Lampen (Werkzeug licht): " + (store.get("goveeNamen", []).join(", ") || "werden noch geladen") : ""}${cfg.ort ? "\nOrt: " + cfg.ort : ""}
 Offene Timer und Erinnerungen: ${termText}
 Listen: ${listenText}
 ${zeile("Was du über " + wer + " weißt", ich.fakten)}
@@ -2809,8 +3082,8 @@ ${zeile("Menschen", ich.menschen)}`;
         input_schema: obj({ begriff: { type: "string" } }, ["begriff"]) },
       { name: "timer_stellen", description: "Stellt einen Timer, der nach der Dauer klingelt und ansagt. Gibt die Ablaufzeit zurück.",
         input_schema: obj({ minuten: { type: "number" }, sekunden: { type: "number" }, text: { type: "string", description: "Wofür, z. B. Nudeln" } }) },
-      { name: "erinnerung_stellen", description: "Stellt eine Erinnerung zu einem Zeitpunkt. 'wann' als lokale Zeit im Format JJJJ-MM-TTTHH:MM.",
-        input_schema: obj({ wann: { type: "string" }, text: { type: "string" } }, ["wann", "text"]) },
+      { name: "erinnerung_stellen", description: "Stellt eine Erinnerung zu einem Zeitpunkt. 'wann' als lokale Zeit im Format JJJJ-MM-TTTHH:MM (bei Wiederholung der erste Termin). wiederholen: stuendlich (mit zwischen \"HH:MM-HH:MM\", z. B. Trinken 09:00-18:00), taeglich, werktags, woechentlich.",
+        input_schema: obj({ wann: { type: "string" }, text: { type: "string" }, wiederholen: { type: "string", enum: ["stuendlich", "taeglich", "werktags", "woechentlich"] }, zwischen: { type: "string" } }, ["wann", "text"]) },
       { name: "termine_anzeigen", description: "Listet offene Timer und Erinnerungen mit ihrer Nummer.", input_schema: obj({}) },
       { name: "termin_loeschen", description: "Löscht einen Timer oder eine Erinnerung per Nummer aus termine_anzeigen oder per Suchbegriff. 'alle' löscht alles.",
         input_schema: obj({ nummer: { type: "number" }, begriff: { type: "string" } }) },
@@ -2896,6 +3169,35 @@ ${zeile("Menschen", ich.menschen)}`;
       { name: "outfit", description: "Deine Outfits zu Jahreszeiten und Feiertagen (Wintermütze, Sonnenbrille, Halloween-Kostüm, Weihnachtsmütze usw.). modus auto = automatisch nach Datum, aus = keine Outfits, vorschau = ein bestimmtes Outfit 60 Sekunden zeigen (anlass angeben).",
         input_schema: obj({ modus: { type: "string", enum: ["auto", "aus", "vorschau"] }, anlass: { type: "string", enum: Object.keys(DEKO) } }, ["modus"]) },
     );
+    // ---- v80: neue Alltags-Funktionen ----
+    t.push(
+      { name: "neuheiten_zeigen", description: "Zeigt die neuen Funktionen des letzten Updates auf dem Bildschirm. Nutzen bei „Was ist neu?“ oder wenn dein Gegenüber nach dem Update ja sagt. abgelehnt=true, wenn er/sie sie gerade nicht kennenlernen will.",
+        input_schema: obj({ abgelehnt: { type: "boolean" } }) },
+      { name: "radio", description: "Spielt einen Radiosender live (tausende Sender, z. B. NDR 2, 1LIVE, Antenne Bayern, Klassik Radio – oder eine Musikrichtung wie Schlager, Rock, Jazz) oder stoppt/regelt das Radio.",
+        input_schema: obj({ aktion: { type: "string", enum: ["spielen", "stopp", "leiser", "lauter"] }, sender: { type: "string" } }, ["aktion"]) },
+      { name: "morgen_briefing", description: "einstellen = tägliches Morgen-Briefing zur uhrzeit (HH:MM), aus = abschalten, jetzt = sofort ein Briefing machen.",
+        input_schema: obj({ aktion: { type: "string", enum: ["einstellen", "aus", "jetzt"] }, uhrzeit: { type: "string" } }, ["aktion"]) },
+      { name: "dolmetscher", description: "Startet/beendet den Live-Dolmetscher Deutsch ↔ sprache (z. B. Englisch, Türkisch, Polnisch, Arabisch …). Im Dolmetscher hörst du ohne Weckwort zu.",
+        input_schema: obj({ an: { type: "boolean" }, sprache: { type: "string" } }, ["an"]) },
+      { name: "koerper_tagebuch", description: "Ernährungs- und Körper-Tagebuch. essen = Mahlzeit eintragen (was + deine Schätzung kcal, protein, kohlenhydrate, fett in g), trinken = ml Wasser, gewicht = kg, uebersicht = Tageswerte der letzten tage (Standard 1), ziele = Ziele setzen (kcal, protein, wasser_ml, gewicht_kg), fasten_start (stunden, z. B. 16), fasten_ende, letzten_loeschen.",
+        input_schema: obj({ aktion: { type: "string", enum: ["essen", "trinken", "gewicht", "uebersicht", "ziele", "fasten_start", "fasten_ende", "letzten_loeschen"] }, was: { type: "string" }, kcal: { type: "number" }, protein: { type: "number" }, kohlenhydrate: { type: "number" }, fett: { type: "number" }, ml: { type: "number" }, kg: { type: "number" }, tage: { type: "integer" }, stunden: { type: "number" }, ziele: { type: "object", properties: { kcal: { type: "number" }, protein: { type: "number" }, wasser_ml: { type: "number" }, gewicht_kg: { type: "number" } } } }, ["aktion"]) },
+      { name: "tagebuch", description: "Privates Sprach-Tagebuch (bleibt auf dem Gerät). schreiben = Eintrag (text in Ich-Form, stimmung), lesen = Einträge eines datum (JJJJ-MM-TT) oder der letzten tage, suchen = nach begriff, letzten_loeschen.",
+        input_schema: obj({ aktion: { type: "string", enum: ["schreiben", "lesen", "suchen", "letzten_loeschen"] }, text: { type: "string" }, stimmung: { type: "string" }, datum: { type: "string" }, tage: { type: "integer" }, begriff: { type: "string" } }, ["aktion"]) },
+      { name: "mhd", description: "MHD-Wächter für Lebensmittel. hinzufuegen = eintraege [{produkt, datum JJJJ-MM-TT, menge, ort}] mit bereich privat oder laden; anzeigen (optional bereich); entfernen = produkt; abgelaufene_entfernen; vorlauf = wie viele tage vorher gewarnt wird (pro bereich).",
+        input_schema: obj({ aktion: { type: "string", enum: ["hinzufuegen", "anzeigen", "entfernen", "abgelaufene_entfernen", "vorlauf"] }, bereich: { type: "string", enum: ["privat", "laden"] }, eintraege: { type: "array", items: { type: "object", properties: { produkt: { type: "string" }, datum: { type: "string" }, menge: { type: "string" }, ort: { type: "string" } }, required: ["produkt", "datum"] } }, produkt: { type: "string" }, tage: { type: "integer" } }, ["aktion"]) },
+      { name: "ablage", description: "Ablage für Verträge, Versicherungen, Garantien und Belege. speichern (art, titel, anbieter, betrag, datum, bis = Laufzeit-/Garantieende JJJJ-MM-TT, frist = Kündigungsfrist, notiz, mit_foto = angehängtes Foto als PDF ablegen), anzeigen (optional art oder suche), loeschen (nummer aus anzeigen).",
+        input_schema: obj({ aktion: { type: "string", enum: ["speichern", "anzeigen", "loeschen"] }, art: { type: "string", enum: ["vertrag", "versicherung", "garantie", "beleg", "sonstiges"] }, titel: { type: "string" }, anbieter: { type: "string" }, betrag: { type: "string" }, datum: { type: "string" }, bis: { type: "string" }, frist: { type: "string" }, notiz: { type: "string" }, mit_foto: { type: "boolean" }, suche: { type: "string" }, nummer: { type: "integer" } }, ["aktion"]) },
+      { name: "scannen", description: "Dokumenten-Scanner: macht aus dem zuletzt angehängten Foto (oder dem Kamerabild) ein sauberes PDF. seite = Seite sammeln (mehrseitig), fertig = PDF erstellen (titel), abbrechen. farbig=true behält die Farben (Standard: Schwarzweiß, kontrastreich).",
+        input_schema: obj({ aktion: { type: "string", enum: ["seite", "fertig", "abbrechen"] }, titel: { type: "string" }, farbig: { type: "boolean" } }, ["aktion"]) },
+    );
+    if (NATIVE && SV) t.push(
+      { name: "anrufen", description: "Öffnet die Telefon-App mit der Nummer – man muss nur noch auf den grünen Hörer tippen.",
+        input_schema: obj({ nummer: { type: "string" }, name: { type: "string" } }, ["nummer"]) },
+      { name: "nachricht_vorbereiten", description: "Öffnet WhatsApp oder SMS mit fertig geschriebener Nachricht an nummer (ohne Nummer: Kontakt in WhatsApp auswählen). Gesendet wird mit einem Tipp vom Nutzer.",
+        input_schema: obj({ kanal: { type: "string", enum: ["whatsapp", "sms"] }, nummer: { type: "string" }, text: { type: "string" } }, ["kanal", "text"]) },
+      { name: "schritte", description: "Schrittzähler (Handy-Sensor). heute = Schritte heute, woche = letzte 7 Tage, ziel = Tagesziel setzen.",
+        input_schema: obj({ aktion: { type: "string", enum: ["heute", "woche", "ziel"] }, ziel: { type: "integer" } }, ["aktion"]) },
+    );
     const sc = smartCommands();
     if (sc.length) t.push({ name: "smart_home", description: "Führt einen Smart-Home-Befehl aus, z. B. Licht an. Nur die angegebenen Befehle sind möglich.",
       input_schema: obj({ befehl: { type: "string", enum: sc.map(c => c.name) } }, ["befehl"]) });
@@ -2966,6 +3268,7 @@ ${zeile("Menschen", ich.menschen)}`;
           if (at < Date.now() - 60000) return fail("Dieser Zeitpunkt liegt in der Vergangenheit.");
           const text = String(inp.text || "").trim().slice(0, 140);
           const t = { typ: "erinnerung", at, text };
+          if (WDH_TEXT[inp.wiederholen]) { t.wdh = inp.wiederholen; if (/^\d{1,2}:\d{2}-\d{1,2}:\d{2}$/.test(String(inp.zwischen || "").replace(/\s/g, ""))) t.zwischen = String(inp.zwischen).replace(/\s/g, ""); if (t.zwischen) { const m = /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/.exec(t.zwischen), d = new Date(t.at), mi = d.getHours() * 60 + d.getMinutes(); if (mi < +m[1] * 60 + +m[2] || mi > +m[3] * 60 + +m[4]) { if (mi > +m[3] * 60 + +m[4]) d.setDate(d.getDate() + 1); d.setHours(+m[1], +m[2], 0, 0); t.at = d.getTime(); } } termine.push(t); saveTermine(); return ok(`Erinnerung ${WDH_TEXT[t.wdh]}${t.zwischen ? " zwischen " + t.zwischen.replace("-", " und ") + " Uhr" : ""}, zuerst ${wannText(t.at)}.`); }
           let handy = "";
           // Auch in den Google-Kalender: dann meldet sich das Handy, selbst wenn das Tablet aus ist
           if (NATIVE && SV && SV.reminderEvent && cfg.kalender !== false && at - Date.now() > 3 * 60000) {
@@ -2976,7 +3279,7 @@ ${zeile("Menschen", ich.menschen)}`;
           return ok(`Erinnerung gestellt für ${wannText(at)}.${handy}`);
         }
         case "termine_anzeigen":
-          return ok(termine.length ? termine.map((t, i) => `${i + 1}. ${t.typ === "timer" ? "Timer" : "Erinnerung"} ${wannText(t.at)}${t.text ? ": " + t.text : ""}`).join("\n") : "Keine offenen Timer oder Erinnerungen.");
+          return ok(termine.length ? termine.map((t, i) => `${i + 1}. ${t.typ === "timer" ? "Timer" : "Erinnerung"} ${wannText(t.at)}${t.wdh ? " (" + WDH_TEXT[t.wdh] + (t.zwischen ? " " + t.zwischen : "") + ")" : ""}${t.text ? ": " + t.text : ""}`).join("\n") : "Keine offenen Timer oder Erinnerungen.");
         case "termin_loeschen": {
           const vorher = termine.length, w = String(inp.begriff || "").toLowerCase();
           const alt = termine.slice();
@@ -3004,6 +3307,7 @@ ${zeile("Menschen", ich.menschen)}`;
           ytPlayer(id); return ok("läuft jetzt in deinem Gesicht");
         }
         case "app_schliessen": {
+          radioStopp();
           await SV.mediaKey({ key: "pause" }).catch(() => {});
           ytPlayer(null);
           let pkg = "";
@@ -3016,7 +3320,7 @@ ${zeile("Menschen", ich.menschen)}`;
           await SV.closeApp({ package: pkg });
           return ok(pkg ? "App geschlossen, du bist wieder vorne." : "Wiedergabe gestoppt, du bist wieder vorne.");
         }
-        case "medien_steuern": await SV.mediaKey({ key: inp.aktion }); return ok("erledigt: " + inp.aktion);
+        case "medien_steuern": if (radioEl && /pause|stopp/.test(inp.aktion)) { radioStopp(); return ok("Radio ist aus."); } await SV.mediaKey({ key: inp.aktion }); return ok("erledigt: " + inp.aktion);
         case "bild_in_bild": if (!(SV && SV.pip)) return fail("Geht nur in der App."); setTimeout(() => SV.pip({ enter: true }).catch(() => {}), 1500); return ok("Ich mache mich gleich klein.");
         case "youtube_stoppen": ytPlayer(null); return ok("gestoppt");
         case "app_oeffnen": {
@@ -3145,6 +3449,157 @@ ${zeile("Menschen", ich.menschen)}`;
           lern.aktiv = false; saveLern(); return ok(`Lernspiel beendet. Sterne gesamt: ${lern.sterne}, Serie ${lern.serie} Tage.`);
         }
         case "bild_erstellen": status("malt ein Bild"); return ok(await bildErstellen(inp));
+        // ---- v80 ----
+        case "neuheiten_zeigen": {
+          const seit = neuAngebot ? neuAngebot.seit : APP_VERSION - 1; neuAngebot = null;
+          if (inp.abgelehnt) return ok("Okay, nicht angezeigt.");
+          neuheitenZeigen(seit);
+          return ok("Neuheiten werden angezeigt:\n" + (neuheitenSeit(seit).length ? neuheitenSeit(seit) : NEUHEITEN[APP_VERSION]).map(x => "- " + x[1] + ": " + x[2]).join("\n"));
+        }
+        case "radio": {
+          if (inp.aktion === "stopp") { const n = radioName; radioStopp(); return ok(n ? n + " ist aus." : "Es lief kein Radio."); }
+          if (inp.aktion === "leiser" || inp.aktion === "lauter") { radioVol = Math.max(0.1, Math.min(1, radioVol + (inp.aktion === "lauter" ? 0.2 : -0.2))); if (radioEl) radioEl.volume = radioVol; return ok("Radio-Lautstärke " + Math.round(radioVol * 100) + " %."); }
+          const q = String(inp.sender || "").trim(); if (!q) return fail("Welcher Sender?");
+          status("sucht den Sender");
+          const n = await radioSpielen(q);
+          return ok("Läuft: " + n + ". Zum Ausschalten mich antippen und „Radio aus“ sagen.");
+        }
+        case "morgen_briefing": {
+          if (inp.aktion === "aus") { cfg.briefing = ""; saveCfg(); return ok("Morgen-Briefing ist aus."); }
+          if (inp.aktion === "einstellen") {
+            const m = /^(\d{1,2}):(\d{2})$/.exec(String(inp.uhrzeit || "").trim()); if (!m) return fail("Uhrzeit als HH:MM");
+            cfg.briefing = m[1].padStart(2, "0") + ":" + m[2]; if (cfg.briefingTag === tagL() && new Date().toTimeString().slice(0, 5) < cfg.briefing) cfg.briefingTag = ""; saveCfg();
+            return ok(`Morgen-Briefing täglich um ${cfg.briefing}. Bin ich dann nicht im Vordergrund, kommt es per Telegram${tgReady() ? "" : " (sobald Telegram eingerichtet ist)"}.`);
+          }
+          return ok("Mach jetzt das Briefing: wetter für heute holen, heutige Termine/Erinnerungen, Geburtstage, fällige MHDs und – falls verfügbar – per Websuche die 3 wichtigsten Nachrichten. Kompakt, höchstens 6 Sätze.");
+        }
+        case "dolmetscher": {
+          if (!inp.an) { dolmAus(); return ok("Dolmetscher ist aus."); }
+          const s = String(inp.sprache || "").trim().toLowerCase();
+          const lang = SPRACHEN[s] || SPRACHEN[s.replace(/e$/, "")] || (/^[a-z]{2}(-[a-z]{2})?$/i.test(s) ? s : "");
+          if (!lang) return fail("Diese Sprache kenne ich als Dolmetscher noch nicht. Nenn sie auf Deutsch, z. B. Englisch, Türkisch, Polnisch.");
+          dolm = { on: true, lang, name: s.charAt(0).toUpperCase() + s.slice(1), seit: Date.now() };
+          dolmHoeren("de-DE");
+          return ok(`Dolmetscher Deutsch ↔ ${dolm.name} läuft. Sag kurz auf Deutsch, dass es losgehen kann: erst spricht ${ich.name || "dein Gegenüber"} auf Deutsch, nach meiner Übersetzung antwortet die andere Person auf ${dolm.name}. Beenden mit „Dolmetscher aus“.`);
+        }
+        case "koerper_tagebuch": {
+          const d = tagL(), T = fitTag(d), r1 = x => Math.round(+x || 0);
+          switch (inp.aktion) {
+            case "essen": {
+              const e = { was: String(inp.was || "Essen").slice(0, 120), kcal: r1(inp.kcal), p: r1(inp.protein), kh: r1(inp.kohlenhydrate), f: r1(inp.fett), um: new Date().toTimeString().slice(0, 5) };
+              T.essen.push(e); saveFit(); const s = fitSumme(d);
+              return ok(`Eingetragen: ${e.was} (${e.kcal} kcal, ${e.p} g Protein). Heute: ${r1(s.kcal)} kcal${fit.ziele.kcal ? " von " + fit.ziele.kcal : ""}, ${r1(s.protein)} g Protein${fit.ziele.protein ? " von " + fit.ziele.protein : ""}.`);
+            }
+            case "trinken": T.ml = (T.ml || 0) + r1(inp.ml || 250); saveFit(); return ok(`Heute getrunken: ${T.ml} ml${fit.ziele.wasser_ml ? " von " + fit.ziele.wasser_ml : ""}.`);
+            case "gewicht": { if (!(+inp.kg > 20)) return fail("Gewicht in kg fehlt"); T.kg = Math.round(+inp.kg * 10) / 10; saveFit();
+              const alt = Object.keys(fit.tage).sort().filter(k => k < d && fit.tage[k].kg).map(k => [k, fit.tage[k].kg]);
+              const vorher = alt.length ? alt[0] : null;
+              return ok(`Gewicht ${T.kg} kg eingetragen.${vorher ? ` Seit ${new Date(vorher[0] + "T12:00").toLocaleDateString("de-DE")}: ${(T.kg - vorher[1] > 0 ? "+" : "") + (T.kg - vorher[1]).toFixed(1)} kg.` : ""}${fit.ziele.gewicht_kg ? " Ziel: " + fit.ziele.gewicht_kg + " kg." : ""}`); }
+            case "uebersicht": {
+              const n = Math.max(1, Math.min(31, +inp.tage || 1)), z = [];
+              for (let i = n - 1; i >= 0; i--) { const t = new Date(); t.setDate(t.getDate() - i); const k = tagL(t), s = fitSumme(k);
+                z.push(`${k}: ${s ? `${r1(s.kcal)} kcal, ${r1(s.protein)} g Protein, ${r1(s.kh)} g KH, ${r1(s.fett)} g Fett, ${s.wasser_ml} ml Wasser${s.gewicht_kg ? ", " + s.gewicht_kg + " kg" : ""}` : "nichts eingetragen"}${schritt.tage[k] != null ? ", " + schritt.tage[k] + " Schritte" : ""}`); }
+              if (n === 1 && T.essen.length) z.push("Mahlzeiten: " + T.essen.map(e => `${e.um} ${e.was} (${e.kcal} kcal)`).join("; "));
+              return ok(z.join("\n") + (Object.keys(fit.ziele).length ? "\nZiele: " + JSON.stringify(fit.ziele) : ""));
+            }
+            case "ziele": fit.ziele = Object.assign(fit.ziele || {}, Object.fromEntries(Object.entries(inp.ziele || {}).filter(([, v]) => +v > 0).map(([k, v]) => [k, +v]))); saveFit(); return ok("Ziele: " + JSON.stringify(fit.ziele));
+            case "fasten_start": {
+              const h = Math.max(1, Math.min(72, +inp.stunden || 16));
+              fit.fasten = { start: Date.now(), stunden: h }; saveFit();
+              termine = termine.filter(x => !x.fasten); termine.push({ typ: "erinnerung", at: Date.now() + h * 3600000, text: `Deine ${h} Stunden Fasten sind geschafft – guten Appetit!`, fasten: true }); saveTermine();
+              return ok(`Fasten-Timer läuft: ${h} Stunden, Ende ${wannText(Date.now() + h * 3600000)}. Ich melde mich dann.`);
+            }
+            case "fasten_ende": {
+              if (!fit.fasten) return ok("Es läuft gerade kein Fasten.");
+              const h = (Date.now() - fit.fasten.start) / 3600000, ziel = fit.fasten.stunden; fit.fasten = null; saveFit();
+              termine = termine.filter(x => !x.fasten); saveTermine();
+              return ok(`Fasten beendet nach ${h.toFixed(1)} von ${ziel} Stunden.`);
+            }
+            case "letzten_loeschen": { const e = T.essen.pop(); saveFit(); return ok(e ? "Gelöscht: " + e.was : "Heute ist noch nichts eingetragen."); }
+          }
+          return fail("Unbekannte Aktion");
+        }
+        case "tagebuch": {
+          if (inp.aktion === "schreiben") {
+            const text = String(inp.text || "").trim(); if (!text) return fail("Kein Text");
+            tagebuch.push({ am: new Date().toISOString(), text: text.slice(0, 3000), stimmung: String(inp.stimmung || "").slice(0, 40) }); saveTagebuch();
+            return ok(`Tagebuch-Eintrag gespeichert (${tagebuch.length} Einträge insgesamt).`);
+          }
+          if (inp.aktion === "letzten_loeschen") { const e = tagebuch.pop(); saveTagebuch(); return ok(e ? "Letzter Eintrag gelöscht." : "Das Tagebuch ist leer."); }
+          const zeig = l => l.length ? l.map(e => `${new Date(e.am).toLocaleString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}${e.stimmung ? " (" + e.stimmung + ")" : ""}: ${e.text}`).join("\n").slice(-6000) : "Keine Einträge gefunden.";
+          if (inp.aktion === "suchen") { const w = String(inp.begriff || "").toLowerCase(); return ok(zeig(tagebuch.filter(e => e.text.toLowerCase().includes(w)).slice(-20))); }
+          if (/^\d{4}-\d{2}-\d{2}$/.test(inp.datum || "")) return ok(zeig(tagebuch.filter(e => tagL(new Date(e.am)) === inp.datum)));
+          const ab = Date.now() - Math.max(1, Math.min(60, +inp.tage || 7)) * 86400000;
+          return ok(zeig(tagebuch.filter(e => new Date(e.am).getTime() >= ab)));
+        }
+        case "mhd": {
+          const ber = inp.bereich === "laden" ? "laden" : "privat";
+          if (inp.aktion === "hinzufuegen") {
+            const neu = (inp.eintraege || []).filter(x => x && x.produkt && /^\d{4}-\d{2}-\d{2}$/.test(x.datum)).map(x => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), produkt: String(x.produkt).slice(0, 80), datum: x.datum, menge: String(x.menge || "").slice(0, 30), ort: String(x.ort || "").slice(0, 40), bereich: ber }));
+            if (!neu.length) return fail("Produkt und Datum (JJJJ-MM-TT) fehlen");
+            mhd.items.push(...neu); mhd.items = mhd.items.slice(-800); saveMhd();
+            return ok(`${neu.length} eingetragen. Ich warne ${mhd.vorlauf[ber]} Tag(e) vorher.\n` + neu.map(mhdText).join("\n"));
+          }
+          if (inp.aktion === "entfernen") { const w = String(inp.produkt || "").toLowerCase(); const v = mhd.items.length; mhd.items = mhd.items.filter(x => !x.produkt.toLowerCase().includes(w) || (inp.bereich && x.bereich !== ber)); saveMhd(); return ok(`${v - mhd.items.length} entfernt.`); }
+          if (inp.aktion === "abgelaufene_entfernen") { const v = mhd.items.length; mhd.items = mhd.items.filter(x => tageBis(x.datum) >= 0); saveMhd(); return ok(`${v - mhd.items.length} abgelaufene entfernt.`); }
+          if (inp.aktion === "vorlauf") { mhd.vorlauf[ber] = Math.max(0, Math.min(30, +inp.tage || 0)); saveMhd(); return ok(`Ich warne im Bereich ${ber} ${mhd.vorlauf[ber]} Tag(e) vorher.`); }
+          const l = mhd.items.filter(x => !inp.bereich || x.bereich === ber).sort((a, b) => a.datum.localeCompare(b.datum));
+          return ok(l.length ? l.slice(0, 80).map(x => (x.bereich === "laden" ? "[Laden] " : "") + mhdText(x)).join("\n") : "Keine MHDs gespeichert.");
+        }
+        case "ablage": {
+          if (inp.aktion === "speichern") {
+            const a = { art: inp.art || "sonstiges", titel: String(inp.titel || "Eintrag").slice(0, 80), anbieter: String(inp.anbieter || "").slice(0, 60), betrag: String(inp.betrag || "").slice(0, 30), datum: String(inp.datum || "").slice(0, 10), bis: String(inp.bis || "").slice(0, 10), frist: String(inp.frist || "").slice(0, 40), notiz: String(inp.notiz || "").slice(0, 200), am: new Date().toISOString() };
+            let extra = "";
+            if (inp.mit_foto && letztesBild) { try { extra = " " + await scanPdf(a.art.charAt(0).toUpperCase() + a.art.slice(1) + " " + a.titel, [letztesBild], false); a.datei = a.art + " " + a.titel + ".pdf"; } catch (e) { elog("Ablage-Foto: " + (e.message || e)); } }
+            ablage.push(a); saveAblage();
+            return ok("In der Ablage gespeichert: " + ablageText(a, ablage.length - 1) + extra);
+          }
+          if (inp.aktion === "loeschen") { const n = +inp.nummer; if (!(n >= 1 && n <= ablage.length)) return fail("Nummer aus anzeigen fehlt"); const [a] = ablage.splice(n - 1, 1); saveAblage(); return ok("Gelöscht: " + a.titel); }
+          const w = String(inp.suche || "").toLowerCase();
+          const l = ablage.map((a, i) => [a, i]).filter(([a]) => (!inp.art || a.art === inp.art) && (!w || JSON.stringify(a).toLowerCase().includes(w)));
+          return ok(l.length ? l.map(([a, i]) => ablageText(a, i)).join("\n") : "Nichts in der Ablage gefunden.");
+        }
+        case "scannen": {
+          if (inp.aktion === "abbrechen") { scanSeiten = []; return ok("Scan abgebrochen."); }
+          const quelle = () => letztesBild || (stream ? (d => d ? { mime: "image/jpeg", data: d } : null)(snapshot()) : null);
+          if (inp.aktion === "seite") {
+            const q = quelle(); if (!q) return fail("Ich habe kein Foto. Häng eins mit der Büroklammer an oder schick es per Telegram.");
+            if (scanSeiten.length && scanSeiten[scanSeiten.length - 1].data === q.data) return fail("Das ist noch dieselbe Seite – erst das nächste Foto anhängen.");
+            scanSeiten.push(q); return ok(`Seite ${scanSeiten.length} gemerkt. Nächstes Foto anhängen oder „fertig“ sagen.`);
+          }
+          let seiten = scanSeiten.slice(); if (!seiten.length) { const q = quelle(); if (q) seiten = [q]; }
+          if (!seiten.length) return fail("Ich habe kein Foto zum Scannen. Häng eins mit der Büroklammer an oder schick es per Telegram.");
+          status("scannt");
+          const r = await scanPdf(String(inp.titel || "Scan " + new Date().toLocaleDateString("de-DE")), seiten, !inp.farbig); scanSeiten = [];
+          return ok(r + ` (${seiten.length} Seite${seiten.length > 1 ? "n" : ""})`);
+        }
+        case "anrufen": {
+          const nr = nummerSauber(inp.nummer); if (nr.replace("+", "").length < 3) return fail("Ich brauche die Telefonnummer.");
+          try { await SV.openUrl({ url: "tel:" + nr }); } catch (e) { return fail("Auf diesem Gerät gibt es keine Telefon-App."); }
+          return ok(`Telefon ist offen mit ${inp.name ? inp.name + " (" + nr + ")" : nr} – nur noch auf den grünen Hörer tippen.`);
+        }
+        case "nachricht_vorbereiten": {
+          const text = String(inp.text || "").trim(), enc = encodeURIComponent(text);
+          if (inp.kanal === "sms") {
+            const nr = nummerSauber(inp.nummer);
+            try { await SV.openUrl({ url: `sms:${nr}?body=${enc}` }); } catch (e) { return fail("Keine SMS-App gefunden."); }
+            return ok("SMS ist fertig geschrieben – nur noch auf Senden tippen.");
+          }
+          const nr = nummerIntl(inp.nummer);
+          const url = nr.length >= 6 ? `https://wa.me/${nr}?text=${enc}` : `https://wa.me/?text=${enc}`;
+          try { await SV.openUrl({ url, package: "com.whatsapp" }); } catch (e) { return fail("WhatsApp ließ sich nicht öffnen."); }
+          return ok(nr.length >= 6 ? "WhatsApp ist offen mit der fertigen Nachricht – nur noch auf Senden tippen." : "WhatsApp ist offen – Kontakt auswählen, die Nachricht steht schon drin.");
+        }
+        case "schritte": {
+          if (inp.aktion === "ziel") { if (!(+inp.ziel >= 500)) return fail("Ziel fehlt"); schritt.ziel = Math.round(+inp.ziel); store.set("schritte", schritt); return ok("Neues Schrittziel: " + schritt.ziel + " am Tag."); }
+          const r = await schritteLesen(true);
+          if (r.fehler) return fail(r.fehler);
+          if (inp.aktion === "woche") {
+            const z = []; for (let i = 6; i >= 0; i--) { const t = new Date(); t.setDate(t.getDate() - i); const k = tagL(t); z.push(`${t.toLocaleDateString("de-DE", { weekday: "short" })}: ${schritt.tage[k] ?? "–"}`); }
+            return ok(z.join(", ") + `. Ziel: ${schritt.ziel} am Tag. (Gezählt wird, solange Sentinel auf dem Handy läuft.)`);
+          }
+          return ok(`Heute ${r.heute} Schritte, Ziel ${schritt.ziel} (${Math.round(r.heute / schritt.ziel * 100)} %).`);
+        }
         case "dokument_erstellen": status("schreibt ein Dokument"); return ok(await dokumentErstellen(String(inp.titel || "Dokument"), inp.dateiname, String(inp.inhalt || "")));
         case "navigation_starten": {
           if (!(NATIVE && SV)) return fail("Geht nur in der App.");
@@ -3375,7 +3830,11 @@ ${zeile("Menschen", ich.menschen)}`;
       if (tg) { await sag(said); setTimeout(() => { if (!busy && !speaking) setMood("neutral"); }, 2500); }
       else {
         if (letzteWerkzeuge.some(n => !NUR_LESEN.has(n))) bestaetigen("✅ " + said);
-        await speak(said, tag === "muede" ? "muede" : "neutral");
+        if (dolm.on) {
+          const dm = said.match(/^\s*\{([a-z]{2}(?:-[a-z]{2})?)\}\s*/i);
+          if (dm) { sprachEinmal = dolm.lang; await speak(said.slice(dm[0].length), "neutral"); dolmHoeren(dolm.lang); }
+          else { await speak(said, "neutral"); dolmHoeren("de-DE"); }
+        } else await speak(said, tag === "muede" ? "muede" : "neutral");
       }
     } catch (e) {
       busy = false; sendBtn.disabled = false;
@@ -3536,6 +3995,18 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     ["Schwarmwissen", "Von Anfang an an: Ich lerne aus Korrekturen und teile das anonym mit allen Sentinels – nie Persönliches. So werden alle Sentinels schlauer. Abschaltbar jederzeit in den Einstellungen.", ["Schalte das Schwarmwissen aus"]],
     ["Sicherung", "Einstellungen → „Sicherung erstellen“ schickt alle Keys und Einstellungen per Telegram; auf einem neuen Gerät „Sicherung laden“ – fertig.", ["Wie sichere ich meine Einstellungen?"]],
     ["Abo & Gratis", "10 Fragen am Tag sind gratis. Mehr Fragen, schlaueres Gehirn und die Fähigkeiten-Pakete gibt es mit Basis, Plus, Pro und Business.", ["Zeig mir die Abos"]],
+    ["Anrufen & Nachrichten", "Ich öffne das Telefon mit der Nummer oder schreibe WhatsApp/SMS fertig vor – du tippst nur noch auf Senden. Nummern merke ich mir, wenn du willst.", ["Ruf Mama an", "Schreib Tom per WhatsApp, dass es später wird", "Merk dir: Mamas Nummer ist 0171 1234567"]],
+    ["Radio", "Tausende Sender live. Läuft Radio, tipp mich zum Reden an.", ["Spiel NDR 2", "Spiel Schlager-Radio", "Radio aus"]],
+    ["Morgen-Briefing", "Zur Wunschzeit Wetter, Termine, Geburtstage, fällige MHDs und die wichtigsten Nachrichten. Bin ich nicht im Vordergrund, kommt es per Telegram.", ["Mach mir jeden Morgen um 7 ein Briefing", "Briefing jetzt"]],
+    ["Dolmetscher", "Ich übersetze Gespräche live hin und her – ohne „Sentinel“-Sagen.", ["Sei mein Dolmetscher für Englisch", "Dolmetscher aus"]],
+    ["Ernährung & Körper", "Essen per Zuruf oder Foto: ich schätze Kalorien, Protein, Kohlenhydrate und Fett. Dazu Wasser, Gewicht, Ziele und Fasten-Timer. Alles bleibt auf deinem Gerät.", ["Ich hatte Spaghetti Bolognese", "Ich hab 500 ml Wasser getrunken", "Starte 16 Stunden Fasten", "Wie viel Protein hatte ich heute?"]],
+    ["Schrittzähler", "Auf Handys mit Schrittsensor zähle ich deine Schritte, solange ich laufe – einmal „Körperliche Aktivität“ erlauben.", ["Wie viele Schritte hab ich heute?", "Mein Schrittziel ist 10000"]],
+    ["Wiederkehrende Erinnerungen", "Stündlich (mit Zeitfenster), täglich, werktags oder wöchentlich – z. B. Trinken, Pausen, Tabletten.", ["Erinnere mich zwischen 9 und 18 Uhr jede Stunde ans Trinken", "Erinnere mich werktags um 12 an eine Pause"]],
+    ["Sprach-Tagebuch", "Erzähl mir von deinem Tag, ich schreibe es auf. Später lese ich dir vor, was du erlebt hast. Privat, bleibt auf dem Gerät.", ["Tagebuch: Heute war ich mit Anna am See", "Was hab ich letzte Woche gemacht?"]],
+    ["MHD-Wächter", "Haltbarkeitsdaten merken – zu Hause oder im Laden (auch per Foto vom Etikett). Ich warne rechtzeitig, auch per Telegram.", ["Die Milch ist bis zum 24. haltbar", "Was läuft bald ab?"]],
+    ["Ablage", "Verträge, Versicherungen, Garantien und Belege – mit Erinnerung vor Kündigungsfristen und Garantie-Ende.", ["Speicher meinen Handyvertrag, läuft bis März, 3 Monate Kündigungsfrist", "Welche Verträge habe ich?"]],
+    ["Scanner", "Foto vom Brief oder Formular anhängen – ich mache ein sauberes PDF, auch mehrseitig.", ["Scann das als PDF", "Das ist Seite 1", "Fertig, mach das PDF"]],
+    ["Kühlschrank-Koch", "Foto vom Kühlschrank oder Vorrat – ich schlage Gerichte vor und koche mit dir.", ["Was kann ich daraus kochen?"]],
     ["Auf andere Bildschirme", "Ich laufe auf jedem Android-Gerät (Handy, Tablet, Fire TV, Android TV). Mein Bild kann ich auf Fernseher mit Bildschirmübertragung (Smart View, Chromecast, Miracast) schicken.", ["Übertrag dich auf den Fernseher"]],
   ];
   function hilfeZeigen(einrModus) {
@@ -3547,6 +4018,9 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
       for (const [fertig, titel, wie] of schritte) { const p = el("p", null, (fertig ? "✅ " : "⬜ ") + titel + (fertig ? "" : " – " + wie)); if (fertig) p.style.opacity = ".6"; g.append(p); }
       b.append(g);
     }
+    { const ng = el("div", "grp"); ng.append(el("h3", null, `🆕 Neu in Version ${APP_VERSION}`));
+      for (const [ic, ti, tx] of NEUHEITEN[APP_VERSION]) ng.append(el("p", null, ic + " " + ti + " – " + tx));
+      b.append(ng); }
     const wichtig = new Set(zwecke().flatMap(k => ZWECKE[k].anleitung));
     const liste = [...ANLEITUNG].sort((a, c) => (wichtig.has(c[0]) ? 1 : 0) - (wichtig.has(a[0]) ? 1 : 0));
     for (const [titel, text, bsp] of liste) {
@@ -3733,11 +4207,18 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     const gruss = h < 5 ? "Guten Abend" : h < 11 ? "Guten Morgen" : h < 18 ? "Hallo" : "Guten Abend";
     const neu = !ich.name && !ich.fakten.length && !einr.fertig;
     if (neu && !einr.aktiv) einrichtungStarten(true);
-    const t = ich.name ? (einr.aktiv ? `${gruss}, ${ich.name}. Wollen wir mit dem Kennenlernen weitermachen?` : `${gruss}, ${ich.name}. Alle Systeme sind bereit.`)
+    // Nach einem Update: fragen, ob man die neuen Funktionen kennenlernen will (Neulinge lernen sie beim Kennenlernen)
+    if (neu && !cfg.gesehenVersion) { cfg.gesehenVersion = APP_VERSION; saveCfg(); }
+    const gesehen = cfg.gesehenVersion || (ich.name ? APP_VERSION - 1 : APP_VERSION);
+    const neuL = ich.name && !einr.aktiv ? neuheitenSeit(gesehen) : [];
+    if (neuL.length) { neuAngebot = { seit: gesehen, am: Date.now() }; cfg.gesehenVersion = APP_VERSION; saveCfg(); }
+    const t = neuL.length ? `${gruss}, ${ich.name}! Es gab ein Update – ich habe ${neuL.length} neue Fähigkeiten gelernt. Möchtest du meine neuen Funktionen kennenlernen?`
+      : ich.name ? (einr.aktiv ? `${gruss}, ${ich.name}. Wollen wir mit dem Kennenlernen weitermachen?` : `${gruss}, ${ich.name}. Alle Systeme sind bereit.`)
       : `${gruss}! Ich bin Sentinel – ab jetzt dein persönlicher KI-Kumpel. Erst mal kurz: Wer bist du? Wie soll ich dich nennen?`;
     lastGreet = Date.now();
     show(""); setMood(ich.name ? "freude" : "ueberrascht");
-    if (spoken) speak(t, "neutral").then(() => { if (einr.aktiv) followUntil = Date.now() + followMs(); }); else setTimeout(() => { if (!busy && !speaking) setMood("neutral"); }, 2000);
+    if (neuL.length && !spoken) show(t);
+    if (spoken || neuL.length) speak(t, "neutral").then(() => { if (einr.aktiv || neuL.length) followUntil = Date.now() + followMs(); }); else setTimeout(() => { if (!busy && !speaking) setMood("neutral"); }, 2000);
     status(cfg.ear ? "hört zu" : "bereit");
   }
   function kannText() {

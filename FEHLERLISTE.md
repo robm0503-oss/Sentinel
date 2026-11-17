@@ -6,46 +6,25 @@ Robsen schickt tagsüber alles rein, abends wird gefixt und gesammelt hochgelade
 – noch nichts –
 
 ## Wünsche (größer, nicht für die Abend-Runde)
-- 17.11. Fitness-Daten: Schritte zählen etc. → Variante A: eigener Schrittzähler über den Handy-Sensor (einfach). Variante B: Health Connect (liest Samsung Health/Google Fit: Schritte, Schlaf, Puls) – braucht extra Google-Freigabe und Anpassung der Datensicherheit, daher erst nach dem Store-Start.
-- Geplant (von Robsen ausgewählt, 17.11.):
-  - Kühlschrank-Foto → Rezeptvorschläge
-  - Kassenzettel scannen → automatisch ins Haushaltsbuch
-  - Trink- und Pausen-Erinnerung (passt zum Fitness-Coach)
-  - Quiz & Spiele für die Familie (Familienquiz, Wortspiele mit Kindern)
-  - Sentinel teilen / NFC-Übergabe (Handy ans Tablet → Sentinel zieht mit Gedächtnis um)
-- Geplant (17.11.): **Fitness- & Ernährungs-Coach Pro** – soll Ernährungs-Apps komplett ersetzen:
-  - Trainingspläne und Ernährungspläne (auf Ziel, Alltag und Vorlieben zugeschnitten)
-  - Schritte im Blick (Schrittzähler, Tagesziel, Motivation)
-  - Abnehmen begleiten: Gewicht/Ziel verfolgen, Wochen-Check-in
-  - Fasten-Timer (z. B. 16:8) mit Erinnerungen für Start/Ende
-  - Essen per Foto oder Zuruf erfassen → Kalorien/Nährwerte schätzen, Tagesbilanz
-  - Makro-Tracking: Protein, Kohlenhydrate, Fett, Ballaststoffe, Zucker, Wasser – mit Tageszielen (z. B. Protein pro kg Körpergewicht), Fortschrittsbalken und Hinweis „heute fehlen noch 40 g Protein“ + passende Snack-Vorschläge
-  - verbindet sich mit Trink-Erinnerung, Rezepten (Kühlschrank-Foto) und Einkaufsliste
-  - Hinweis: keine medizinischen Versprechen, bei Vorerkrankungen Arzt; Google-Gesundheitsrichtlinie beachten
-- Geplant (17.11.): **„Sentinel ersetzt 10 Apps“** – Werbeaussage für Store & Video
-  - Dokumenten-Scanner: Foto → sauberes PDF + Erklärung (statt Adobe Scan/CamScanner)
-  - Verträge & Kündigungen: Laufzeiten merken, vor Ablauf warnen, Kündigung als PDF (statt Volt/Aboalarm)
-  - Garantie- & Beleg-Ordner: Bon fotografieren, an Garantie-Ende erinnern
-  - Schlaf & Entspannung: Atemübungen, Einschlafgeschichten, Meditation (statt Calm/Headspace)
-  - Sprachen lernen: tägliche 5-Minuten-Lektion (Paket Sprachlehrer ausbauen, statt Duolingo)
-  - Hausaufgabenhilfe: Aufgabe fotografieren, Schritt für Schritt erklären
-  - Geburtstage & Geschenkideen
-  - Reise-Organizer: Packliste, Reiseplan, Tipps vor Ort, Dolmetscher
-  - Pflanzen-Doktor ausbauen (Paket Garten, statt PictureThis)
-- Geplant (17.11., Robsen: „heftig“): **Preisvergleich Wocheneinkauf**
-  - Einkaufsliste → „wo bekomme ich was diese Woche am günstigsten?“, Vorschlag aufgeteilt nach Märkten inkl. Ersparnis
-  - Klärungsbedarf: Datenquelle für Prospekt-/Angebotspreise (keine offene Schnittstelle bei Marktguru/kaufDA; Lizenz/Partner prüfen)
-- Geplant (17.11.): **MHD-Wächter**
-  - Privat: Einkauf/Vorrat abfotografieren, Warnung vor Ablauf + Rezept-Vorschlag
-  - Einzelhandel (Paket für Märkte): MHD-Kontrolle im Laden – Regale/Ware fotografieren oder erfassen, Liste was wann abläuft, Reduzierungs-Vorschläge. Robsen schätzt: spart ihm ca. 4 Std. Arbeit pro Woche → eigenes Business-Paket / Verkaufsargument für Händler
-- Rest (Auto, Nachrichten, Aufwach-Routine, Unwetter, Pakete, Inventar): weitgehend über Erinnerungen/Gedächtnis abgedeckt, nicht extra geplant
-- Geplant (17.11., Robsen: „mega wichtig für Alleinlebende“): **Sprach-Tagebuch**
-  - abends kurz erzählen, Sentinel schreibt mit, fragt einfühlsam nach, zeigt Stimmung & Highlights über Wochen
-  - Begleiter-Charakter für Alleinlebende; bei anhaltend gedrückter Stimmung behutsam auf Hilfe hinweisen
-- Prüfen (17.11.): **WhatsApp statt/zusätzlich zu Telegram** – über WhatsApp Business (Cloud-API): eine zentrale Sentinel-Nummer, Meta-Firmenverifizierung, Nachrichten laufen über den Server; von Sentinel angestoßene Nachrichten (z. B. Erinnerungen) kosten pro Nachricht ein paar Cent. Idee: als Plus-Funktion, Telegram bleibt gratis.
-- Weitere Ideen (noch offen): Morgen-Briefing · Live-Dolmetscher · Homescreen-Widget · Pakete vom Server nachladen · Video-KI voll automatisch
+- Noch offen: Health Connect (Samsung Health/Google Fit: Schlaf, Puls) · Sentinel teilen / NFC-Übergabe · WhatsApp Business als Plus-Funktion (Cloud-API, Meta-Verifizierung, Kosten pro Nachricht) · Homescreen-Widget · Pakete vom Server nachladen · Video-KI voll automatisch · Preisvergleich mit echter Prospekt-Datenquelle (Lizenz/Partner) statt Websuche
+- Neuheiten-Regel: Bei jeder neuen Funktion APP_VERSION erhöhen und in NEUHEITEN eintragen → Sentinel fragt beim nächsten Öffnen „Möchtest du meine neuen Funktionen kennenlernen?“
 
 ## Erledigt
+- 17./18.11. nachts – **v80 „Was die Großen können“** (Store 1.87):
+  - Update-Ansage: nach jedem Update fragt Sentinel, ob man die neuen Funktionen kennenlernen will, zählt sie auf und fragt „Was möchtest du davon einrichten?“
+  - Anrufen (Telefon-App mit Nummer), WhatsApp/SMS fertig vorschreiben
+  - Radio (tausende Sender, radio-browser.info), leiser beim Sprechen
+  - Morgen-Briefing zur Wunschzeit (sonst per Telegram)
+  - Live-Dolmetscher Deutsch ↔ ~25 Sprachen (hört ohne Weckwort, spricht in der Fremdsprache)
+  - Schrittzähler (Handy-Sensor, neue Berechtigung „Körperliche Aktivität“)
+  - Ernährung & Körper: Kalorien/Protein/KH/Fett per Zuruf oder Foto, Wasser, Gewicht, Ziele, Fasten-Timer
+  - Wiederkehrende Erinnerungen (stündlich mit Zeitfenster, täglich, werktags, wöchentlich) → Trink-/Pausen-Erinnerung
+  - Sprach-Tagebuch (privat, auf dem Gerät)
+  - MHD-Wächter privat + Laden (Warnung + Telegram)
+  - Ablage: Verträge, Versicherungen, Garantien, Belege (mit Foto als PDF)
+  - Dokumenten-Scanner: Foto → PDF, mehrseitig
+  - Kühlschrank-Koch, Hausaufgabenhilfe, Kassenzettel → Haushaltsbuch, Pflanzen-Doktor
+  - Neue Pakete ab Plus: Fitness- & Ernährungs-Coach Pro, Sparfuchs (Preisvergleich per Websuche), Einzelhandel MHD & Abschriften, Spiele & Quiz, Schlaf & Entspannung, Geburtstage & Geschenke, Reise-Organizer, Verträge & Kündigungen
 - 17.11. abends: Kopieren in die Zwischenablage über Android (prompt_kopieren), Notlösung Eingabefeld; Tageslimits (z. B. Bilder) zählen nicht mehr als Fehler (v79, Store 1.86 – eingereicht)
 - 17.11. Piepton beim Zuhören (v74, Store 1.73)
 - 17.11. „Da kam gerade keine Antwort an“ bei schwierigen Fragen im Gratis-Modus (v75)

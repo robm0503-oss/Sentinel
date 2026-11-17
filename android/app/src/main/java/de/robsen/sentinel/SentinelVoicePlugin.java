@@ -1,6 +1,10 @@
 package de.robsen.sentinel;
 
 import android.Manifest;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -68,7 +72,8 @@ import java.util.Locale;
     name = "SentinelVoice",
     permissions = {
         @Permission(strings = { Manifest.permission.RECORD_AUDIO }, alias = "mic"),
-        @Permission(strings = { Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR }, alias = "calendar")
+        @Permission(strings = { Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR }, alias = "calendar"),
+        @Permission(strings = { "android.permission.ACTIVITY_RECOGNITION" }, alias = "activity")
     }
 )
 public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
@@ -175,7 +180,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         if (recognizerIntent == null) {
             Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
             i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-            i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "de-DE");
+            i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, hoerSprache);
             i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
             i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
             i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getContext().getPackageName());
@@ -368,6 +373,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
             call.resolve();
             return;
         }
+        final String lang = call.getString("lang");
         final float vol = Math.max(0.05f, Math.min(1f, call.getFloat("volume", 1f)));
         final long guardMs = Math.max(8000, text.length() * 150L);
         main.post(() -> {
@@ -378,6 +384,10 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
             destroyRecognizer();                            // beim Sprechen nicht zuhören
             listening = false;
             unmuteBeep();                                   // Ton an, sonst hört man ihn nicht
+            try {
+                if (lang != null && !lang.isEmpty()) { tts.setLanguage(Locale.forLanguageTag(lang)); fremdSprache = true; }
+                else if (fremdSprache) { fremdSprache = false; if (voiceName != null && !voiceName.isEmpty()) applyVoice(); else tts.setLanguage(Locale.GERMANY); }
+            } catch (Exception ignored) {}
             tts.setSpeechRate(rate);
             tts.setPitch(pitch);
             Bundle p = new Bundle();
@@ -422,6 +432,63 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         JSObject res = new JSObject();
         try { res.put("voices", arr); } catch (Exception ignored) {}
         call.resolve(res);
+    }
+
+    // ---------------- Dolmetscher: Sprache fürs Zuhören ----------------
+    private String hoerSprache = "de-DE";
+    private boolean fremdSprache = false;
+
+    @PluginMethod
+    public void listenLang(PluginCall call) {
+        String l = call.getString("lang", "de-DE");
+        hoerSprache = (l == null || l.isEmpty()) ? "de-DE" : l;
+        recognizerIntent = null;   // beim nächsten Zuhören neu bauen
+        call.resolve();
+    }
+
+    // ---------------- Schrittzähler (Hardware-Sensor, bleibt auf dem Gerät) ----------------
+    private SensorManager sensorManager;
+    private SensorEventListener stepListener;
+    private volatile long stepsSinceBoot = -1;
+
+    @PluginMethod
+    public void steps(PluginCall call) {
+        if (Build.VERSION.SDK_INT >= 29 && getPermissionState("activity") != PermissionState.GRANTED) {
+            if (call.getBoolean("ask", true)) { requestPermissionForAlias("activity", call, "stepsCallback"); return; }
+            call.resolve(new JSObject().put("erlaubt", false));
+            return;
+        }
+        readSteps(call);
+    }
+
+    @PermissionCallback
+    private void stepsCallback(PluginCall call) {
+        if (getPermissionState("activity") == PermissionState.GRANTED) readSteps(call);
+        else call.resolve(new JSObject().put("erlaubt", false));
+    }
+
+    private void readSteps(PluginCall call) {
+        if (sensorManager == null) sensorManager = (SensorManager) getContext().getSystemService(Context.SENSOR_SERVICE);
+        Sensor s = sensorManager == null ? null : sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER);
+        if (s == null) { call.resolve(new JSObject().put("erlaubt", true).put("sensor", false)); return; }
+        if (stepListener == null) {
+            stepListener = new SensorEventListener() {
+                @Override public void onSensorChanged(SensorEvent e) { stepsSinceBoot = (long) e.values[0]; }
+                @Override public void onAccuracyChanged(Sensor sensor, int accuracy) {}
+            };
+            // Dauerhaft angemeldet lassen: nur dann zählt der Sensor zuverlässig weiter
+            sensorManager.registerListener(stepListener, s, SensorManager.SENSOR_DELAY_NORMAL, 10_000_000);
+        }
+        final long start = System.currentTimeMillis();
+        Runnable warte = new Runnable() {
+            @Override public void run() {
+                if (stepsSinceBoot >= 0 || System.currentTimeMillis() - start > 3000) {
+                    call.resolve(new JSObject().put("erlaubt", true).put("sensor", true).put("seitStart", stepsSinceBoot)
+                        .put("bootZeit", System.currentTimeMillis() - android.os.SystemClock.elapsedRealtime()));
+                } else main.postDelayed(this, 200);
+            }
+        };
+        main.post(warte);
     }
 
     @PluginMethod
