@@ -19,6 +19,8 @@ globalThis.fetch = async (url, opt) => {
     return new Response(JSON.stringify({ content: [{ type: "text", text: JSON.stringify(antw) }], usage: { input_tokens: 10, output_tokens: 10 } }), { status: 200 });
   }
   gesendet.push(b);
+  if (JSON.stringify(b.messages).includes("EXTRA-TEST")) return new Response(JSON.stringify({ content: [{ type: "text", text: "[extra] Hello means Hallo." }], stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 10 } }), { status: 200 });
+  if (JSON.stringify(b.messages).includes("BILD-TEST")) return new Response(JSON.stringify({ content: [{ type: "tool_use", id: "t1", name: "bild_erstellen", input: {} }], stop_reason: "tool_use", usage: { input_tokens: 100, output_tokens: 10 } }), { status: 200 });
   return new Response(JSON.stringify({ content: [{ type: "text", text: "ok" }], stop_reason: "end_turn", usage: { input_tokens: 200000, output_tokens: 20000 } }), { status: 200 });
 };
 const env = { DB, ANTHROPIC_KEY: "k", RC_SECRET: "rc", PROBE_DAY_CAP: "3000", TG_TOKEN: "t", TG_CHAT: "1", ADMIN_KEY: "geheim", SERVER_URL: "https://x" };
@@ -74,8 +76,14 @@ console.log("ALLE TESTS OK");
   let r3;
   for (let i = 0; i < 5; i++) r3 = await c3({ ...msg, sentinel_einrichtung: true });
   if (r3.status !== 200) console.log(r3.j); assert.equal(r3.status, 200); assert.equal(r3.j.sentinel.probe_rest, 10); assert.equal(gesendet.at(-1).sentinel_einrichtung, undefined);
-  r3 = await c3(msg); assert.equal(r3.j.sentinel.probe_rest, 9);
-  for (let i = 0; i < 9; i++) r3 = await c3(msg);
+  // Fremdes Thema mitten in der Einrichtung zählt normal
+  r3 = await c3({ ...msg, messages: [{ role: "user", content: "EXTRA-TEST" }], sentinel_einrichtung: true }); assert.equal(r3.j.sentinel.probe_rest, 9);
+  r3 = await c3({ ...msg, messages: [{ role: "user", content: "BILD-TEST" }], sentinel_einrichtung: true }); assert.equal(r3.j.sentinel.probe_rest, 8);
+  r3 = await c3({ ...msg, messages: [{ role: "user", content: "BILD-TEST" }], sentinel_einrichtung: true, sentinel_folge: true }); assert.equal(r3.j.sentinel.probe_rest, 8);
+  r3 = await c3({ ...msg, sentinel_einrichtung: true }); assert.equal(r3.j.sentinel.probe_rest, 8);
+  console.log("Einrichtung: fremde Themen zählen ok");
+  r3 = await c3(msg); assert.equal(r3.j.sentinel.probe_rest, 7);
+  for (let i = 0; i < 7; i++) r3 = await c3(msg);
   assert.equal(r3.j.sentinel.probe_rest, 0); r3 = await c3(msg); assert.equal(r3.status, 429); assert.equal(r3.j.error.type, "tageslimit");
   r3 = await c3({ ...msg, sentinel_einrichtung: true }); assert.equal(r3.status, 200);
   console.log("Einrichtung gratis ok");

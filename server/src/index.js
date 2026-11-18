@@ -101,6 +101,15 @@ export function modellWaehlen(u, gewuenscht) {
   return m;
 }
 
+const NUTZ_WERKZEUGE = new Set(["bild_erstellen", "lernen", "wetter", "web_search", "dokument_erstellen", "reise_suchen", "navigation_starten", "radio", "kochmodus", "kochschritt", "prompt_kopieren", "tagebuch", "koerper_tagebuch", "scannen", "dolmetscher", "mhd", "ablage", "liste", "timer_stellen", "erinnerung_stellen", "anrufen", "nachricht_vorbereiten", "schritte", "app_oeffnen", "youtube_abspielen", "medien_steuern"]);
+export function ausserhalbEinrichtung(data) {
+  for (const c of (data && data.content) || []) {
+    if (c.type === "text" && /\[extra\]/i.test(c.text || "")) return true;
+    if ((c.type === "tool_use" || c.type === "server_tool_use") && NUTZ_WERKZEUGE.has(c.name)) return true;
+  }
+  return false;
+}
+
 async function chat(req, env, uid) {
   const u = await nutzerLaden(env, uid);
   const st = STUFEN[u.tier] || STUFEN.probe;
@@ -139,6 +148,8 @@ async function chat(req, env, uid) {
   const data = await r.json().catch(() => null);
   if (!r.ok || !data) return json(data || { type: "error", error: { type: "api_error", message: "Gehirn nicht erreichbar" } }, r.status || 502);
   const usd = kosten(data.usage, model);
+  // Beim Kennenlernen ist nur das Kennenlernen gratis – fremde Themen ([extra] oder Nutz-Werkzeuge) zählen normal
+  if (gratisEinr && !folge && ausserhalbEinrichtung(data)) gratisEinr = false;
   u.used_usd += usd; if (!gratisEinr && !folge) u.req_day += 1;
   if (gratisEinr) await env.DB.prepare("INSERT INTO einrichtung (uid, n) VALUES (?, 1) ON CONFLICT(uid) DO UPDATE SET n = n + 1").bind(u.uid).run();
   else if (u.tier === "probe") u.probe_used = (u.probe_used || 0) + 1;

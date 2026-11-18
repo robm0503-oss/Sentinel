@@ -269,6 +269,14 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       <label for="sGemini">Google-Gemini-API-Key (optional: Bilder in Spitzenqualität, ca. 6 Cent pro Bild – sonst gratis über den Server)</label>
       <input id="sGemini" type="password" autocomplete="off" placeholder="aistudio.google.com → Get API key (Abrechnung aktivieren)">
     </div>
+    <div class="field" id="tgHilfe">
+      <label>Telegram in 3 Schritten einrichten</label>
+      <div style="font-size:.85em;opacity:.85;line-height:1.45;margin:4px 0 8px">1. „BotFather öffnen“ → dort auf „Start“, <b>/newbot</b> schreiben, einen Namen eingeben und dann einen Benutzernamen, der auf <b>bot</b> endet.<br>2. BotFather schickt einen langen Token – Nachricht lange drücken → „Kopieren“ → hier „Token einfügen“.<br>3. „Bot öffnen“ und ihm „hallo“ schreiben – den Rest mache ich automatisch.</div>
+      <button class="ghost" id="tgBotFather" type="button" style="width:100%">① BotFather öffnen</button>
+      <button class="ghost" id="tgPaste" type="button" style="width:100%;margin-top:6px">② Token einfügen</button>
+      <button class="ghost" id="tgBotOpen" type="button" hidden style="width:100%;margin-top:6px">③ Bot öffnen und „hallo“ schreiben</button>
+      <div id="tgStatus" style="font-size:.9em;margin-top:6px"></div>
+    </div>
     <div class="field">
       <label for="sTgToken">Telegram-Bot-Token (für Nachrichten aufs Handy und den Wachhund)</label>
       <input id="sTgToken" type="password" autocomplete="off" placeholder="123456:ABC… von @BotFather">
@@ -312,6 +320,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <div class="field"><label>Freischaltcode</label><div style="display:flex;gap:8px"><input id="sCode" type="text" autocomplete="off" autocapitalize="characters" placeholder="Code eingeben" style="flex:1"><button class="ghost" id="sCodeOk" type="button">Einlösen</button></div></div>
     <div class="field"><button class="ghost" id="sLogBtn" type="button">Ohren-Protokoll anzeigen</button></div>
     <div class="field"><label>Geräte-ID (für deine Admin-Seite)</label><div style="display:flex;gap:8px"><input id="sUid" type="text" readonly style="flex:1"><button class="ghost" id="sUidKopie" type="button">Kopieren</button></div></div>
+    <label class="check"><input id="sUntertitel" type="checkbox"> Antworten auch als Text anzeigen (Untertitel)</label>
     <label class="check"><input id="sSchwarm" type="checkbox"> Schwarmwissen: aus Fehlern lernen und das Gelernte anonym mit allen Sentinels teilen (nie Persönliches)</label>
     <div class="field">
       <label for="sEngine">Ohren</label>
@@ -332,7 +341,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 80</div>
+    <div class="hint" id="verHint">Sentinel Version 81</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -730,6 +739,8 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   }
   cv.addEventListener("pointerdown", e => {
     pointTo(e);
+    // Antippen während Sentinel spricht = sofort still sein
+    if (speaking) { stillSein(); return; }
     // Antippen = "Ich will mit dir reden": Ohren frisch starten (Android erlaubt das nur direkt nach einer Berührung)
     // und die nächsten 15 Sekunden ohne "Sentinel" zuhören.
     if (earsSleeping) { earsSleeping = false; elog("Nachts angetippt – ich höre"); }
@@ -1946,6 +1957,8 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     return [...haupt, ...extra];
   }
   let einr = Object.assign({ aktiv: false, erledigt: [] }, store.get("einrichtung", {}));
+  // Gratis ist beim Kennenlernen nur, was wirklich zum Kennenlernen/Einrichten gehört
+  const EXTRA_REGEL = `\nGRATIS-REGEL: Während der Einrichtung sind nur Antworten gratis, die zum Kennenlernen oder Einrichten gehören (Name, Vorlieben, Ort, Gesicht, Stimme, Telegram, Funktionen einrichten oder erklären). Fragt dein Gegenüber etwas anderes (z. B. Wissensfragen, Englisch üben, Bilder, Wetter, Rezepte, Texte schreiben), dann beantworte es normal, aber schreib ganz an den Anfang deiner Antwort [extra] – das zählt dann als normale Frage.`;
   const saveEinr = () => store.set("einrichtung", einr);
   function einrichtungInfo() {
     if (!einr.aktiv) return "";
@@ -1953,16 +1966,16 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     const kann = (z.length ? z.map(k => ZWECKE[k].text) : ["Timer und Erinnerungen", "Wetter", "Musik und Videos", "Licht und Smart Home"]).join("; ");
     const zusatz1 = (z.includes("lernen") ? " Frag außerdem kurz nach Alter bzw. Klasse (lebensphase_setzen)." : "") + (z.includes("firma") ? " Frag außerdem nach dem Firmennamen (firmenwissen_speichern)." : "");
     const vorstellen = `Sag in EINEM kurzen Satz, dass du jetzt eine Liste mit allem zeigst, was du kannst, damit ${wer} sie in Ruhe lesen kann, und nutze anleitung_zeigen. Zähl NICHTS selbst auf. Nach dem Lesen fragt die App, was zuerst eingerichtet werden soll.`;
-    if (!ich.name) return `\nEINRICHTUNG – Schritt 1 (Kennenlernen, kurz und knackig): Finde nur heraus, wer dein Gegenüber ist – Name und wie du ihn/sie ansprechen sollst (ich_kenne_dich).${zusatz1} Höchstens 2 kurze Fragen, keine Nachfragen, nichts anderes fragen.
+    if (!ich.name) return EXTRA_REGEL + `\nEINRICHTUNG – Schritt 1 (Kennenlernen, kurz und knackig): Finde nur heraus, wer dein Gegenüber ist – Name und wie du ihn/sie ansprechen sollst (ich_kenne_dich).${zusatz1} Höchstens 2 kurze Fragen, keine Nachfragen, nichts anderes fragen.
 Sobald der Name gespeichert ist, mach in DERSELBEN Antwort mit Schritt 2 weiter: ${vorstellen}`;
-    if (einr.stufe !== "einrichten") return `\nEINRICHTUNG – Schritt 2 (Vorstellen): ${vorstellen}`;
+    if (einr.stufe !== "einrichten") return EXTRA_REGEL + `\nEINRICHTUNG – Schritt 2 (Vorstellen): ${vorstellen}`;
     const norm = t => String(t).toLowerCase().replace(/[^a-zäöüß]/g, "").slice(0, 8);
     const abgehakt = t => einr.erledigt.some(e => norm(e) && norm(e) === norm(t));
     const fehlt = einrichtSchritte().filter(x => !x[0] && x[1] !== "Kennenlernen" && x[1] !== "Mit dem WLAN verbinden" && !abgehakt(x[1])).map(x => `„${x[1]}“ (${x[2]})`);
     if (aboMoeglich() && cfg.schwarm === undefined) fehlt.push("„Schwarmwissen“ (" + EINR_THEMEN.schwarm + ")");
     if ((z.includes("zuhause") || z.includes("firma")) && !abgehakt("Geräte-Suche")) fehlt.push("„Geräte-Suche“ (" + EINR_THEMEN.geraetescan + ")");
-    if (!fehlt.length) return `\nEINRICHTUNG – alles erledigt: einrichtung (aktion beenden) und in einem Satz sagen, dass ihr startklar seid.`;
-    return `\nEINRICHTUNG – Schritt 3 (Einrichten): Du hast gefragt, was ${wer} zuerst einrichten möchte. Fang mit dem an, was er nennt (auch wenn es eine Funktion ohne Einrichtung ist – dann kurz zeigen, wie man sie nutzt), danach biete die übrigen offenen Punkte an. Geh sie NACHEINANDER durch. Pro Punkt: in höchstens 2 kurzen Sätzen sagen, was es bringt und was ${wer} jetzt tun muss, dann warten. Ist ein Punkt erledigt oder sagt ${wer} „weiter“/„überspringen“: einrichtung (aktion thema_erledigt, thema = genau der Name in „…“) und zum nächsten. Sagt ${wer} „später“, „fertig“ oder „stopp“: SOFORT einrichtung (aktion beenden).
+    if (!fehlt.length) return EXTRA_REGEL + `\nEINRICHTUNG – alles erledigt: einrichtung (aktion beenden) und in einem Satz sagen, dass ihr startklar seid.`;
+    return EXTRA_REGEL + `\nEINRICHTUNG – Schritt 3 (Einrichten): Du hast gefragt, was ${wer} zuerst einrichten möchte. Fang mit dem an, was er nennt (auch wenn es eine Funktion ohne Einrichtung ist – dann kurz zeigen, wie man sie nutzt), danach biete die übrigen offenen Punkte an. Geh sie NACHEINANDER durch. Pro Punkt: in höchstens 2 kurzen Sätzen sagen, was es bringt und was ${wer} jetzt tun muss, dann warten. Ist ein Punkt erledigt oder sagt ${wer} „weiter“/„überspringen“: einrichtung (aktion thema_erledigt, thema = genau der Name in „…“) und zum nächsten. Sagt ${wer} „später“, „fertig“ oder „stopp“: SOFORT einrichtung (aktion beenden).
 Offene Punkte: ${fehlt.join("; ")}.`;
   }
   function einrichtungStarten(neu) {
@@ -2112,7 +2125,7 @@ Offene Punkte: ${fehlt.join("; ")}.`;
     add(imWlan(), "Mit dem WLAN verbinden", "Android-Einstellungen → WLAN → dein Heimnetz.");
     add(!!ich.name, "Kennenlernen", "Sag „Sentinel, starte die Einrichtung“.");
     if (z.some(k => ["zuhause", "assistent", "senior", "arbeit", "firma"].includes(k)))
-      add(tgReady(), "Telegram (Nachrichten aufs Handy)", "Wichtig für fast alles – erst kurz den Nutzen nennen: Einkaufsliste und Listen unterwegs aufs Handy, Erinnerungen auch wenn man nicht zu Hause ist, Bilder, Dokumente und Prompts aufs Handy, Fotos und Dateien zu mir schicken, von überall mit mir schreiben, Sicherung aller Einstellungen, Wachhund-Alarm mit Foto" + (z.includes("senior") ? ", Lebenszeichen und Notfall-Nachrichten an die Familie (dann Chat-ID eines Angehörigen eintragen)" : "") + ". Einrichten: Telegram-App installieren, bei @BotFather mit /newbot einen Bot anlegen, Token in die Einstellungen, dem Bot „hallo“ schreiben, „Chat-ID automatisch finden“.");
+      add(tgReady(), "Telegram (Nachrichten aufs Handy)", "Wichtig für fast alles – erst kurz den Nutzen nennen: Einkaufsliste und Listen unterwegs aufs Handy, Erinnerungen auch wenn man nicht zu Hause ist, Bilder, Dokumente und Prompts aufs Handy, Fotos und Dateien zu mir schicken, von überall mit mir schreiben, Sicherung aller Einstellungen, Wachhund-Alarm mit Foto" + (z.includes("senior") ? ", Lebenszeichen und Notfall-Nachrichten an die Familie (dann Chat-ID eines Angehörigen eintragen)" : "") + ". Einrichten: Telegram-App installieren, dann in meinen Einstellungen (Zahnrad) beim Telegram-Assistenten die 3 Knöpfe der Reihe nach: ① BotFather öffnen (dort /newbot, Name, Benutzername auf „bot“), ② Token kopieren und „Token einfügen“, ③ Bot öffnen und „hallo“ schreiben – den Rest mache ich automatisch.");
     if (z.some(k => ["zuhause", "assistent"].includes(k))) add(!!cfg.ort, "Wohnort (Wetter)", "Sag „Ich wohne in …“ oder trag ihn in den Einstellungen ein.");
     if (z.includes("zuhause")) {
       add(!!cfg.govee, "Licht (Govee)", "Govee-App → Profil → Einstellungen → API-Schlüssel beantragen → in die Einstellungen.");
@@ -2501,11 +2514,20 @@ Offene Punkte: ${fehlt.join("; ")}.`;
     try { const a = document.createElement("textarea"); a.value = t; a.style.position = "fixed"; a.style.opacity = "0"; document.body.append(a); a.select(); const okk = document.execCommand("copy"); a.remove(); return okk; } catch (e) { return false; }
   }
 
+  function stillSein() {
+    try { if (NATIVE && SV && SV.stopSpeaking) SV.stopSpeaking().catch(() => {}); else if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel(); } catch (e) {}
+    elog("Angetippt – Sprechen gestoppt"); status("still");
+  }
   // ================= v80: NEUHEITEN NACH UPDATES =================
   // Jedes Mal, wenn neue Funktionen dazukommen: APP_VERSION erhöhen und hier eintragen.
   // Beim nächsten Öffnen fragt Sentinel, ob man die Neuheiten kennenlernen will.
-  const APP_VERSION = 80;
+  const APP_VERSION = 81;
   const NEUHEITEN = {
+    81: [
+      ["💬", "Antworten zum Mitlesen", "Meine Antworten stehen jetzt auch als Text auf dem Bildschirm – abschaltbar in den Einstellungen.", "Was ist ein Halbleiter?"],
+      ["✋", "Antippen = Ruhe", "Rede ich zu lange? Einfach mein Gesicht antippen, dann bin ich sofort still.", "(Gesicht antippen, während ich spreche)"],
+      ["📲", "Telegram in 3 Schritten", "Neuer Assistent in den Einstellungen: BotFather öffnen, Token einfügen, Bot „hallo“ schreiben – den Rest mache ich.", "Hilf mir, Telegram einzurichten"],
+    ],
     80: [
       ["📞", "Anrufen, WhatsApp & SMS", "Ich wähle Nummern und schreibe WhatsApp- oder SMS-Nachrichten fertig vor – du tippst nur noch auf Senden.", "Schreib Lisa per WhatsApp, dass ich später komme"],
       ["📻", "Radio", "Tausende Radiosender live – einfach den Sender oder die Musikrichtung sagen.", "Spiel NDR 2"],
@@ -3830,6 +3852,7 @@ ${zeile("Menschen", ich.menschen)}`;
       if (tg) { await sag(said); setTimeout(() => { if (!busy && !speaking) setMood("neutral"); }, 2500); }
       else {
         if (letzteWerkzeuge.some(n => !NUR_LESEN.has(n))) bestaetigen("✅ " + said);
+        if (cfg.untertitel !== false) show(said.replace(/^\s*\{[a-z]{2}(?:-[a-z]{2})?\}\s*/i, ""));
         if (dolm.on) {
           const dm = said.match(/^\s*\{([a-z]{2}(?:-[a-z]{2})?)\}\s*/i);
           if (dm) { sprachEinmal = dolm.lang; await speak(said.slice(dm[0].length), "neutral"); dolmHoeren(dolm.lang); }
@@ -3977,7 +4000,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     ["Licht (Govee)", "Einrichtung: Govee-App → Profil → Einstellungen → API-Schlüssel beantragen, Key in meine Einstellungen.", ["Großes Licht an", "Mach es gemütlich", "Kleines Licht blau auf 30 Prozent"]],
     ["Smart Home (Alexa)", "Alles, was Alexa kann: Voice-Monkey-Trigger + Alexa-Routine anlegen, Link in „Smart-Home-Befehle“ eintragen (Name = Link). Den Namen sagen reicht dann.", ["Ladestecker an"]],
     ["Akku", "Ich schalte meine Ladesteckdose selbst – Einstellung „Akku selbst laden“.", ["Wie voll ist dein Akku?"]],
-    ["Telegram", "Dein Draht zu mir unterwegs – die wichtigste Einrichtung: Einkaufsliste und Listen im Laden aufs Handy, Erinnerungen auch unterwegs, Bilder, Dokumente und Prompts aufs Handy, Fotos und Dateien zu mir schicken, von überall mit mir schreiben, Sicherung deiner Einstellungen, Wachhund-Alarm mit Foto. Einrichten: Bot bei @BotFather anlegen, Token in die Einstellungen, dem Bot „hallo“ schreiben, „Chat-ID automatisch finden“. Schnellbefehle: wachhund an/aus, foto, status, hilfe.", ["Schick mir die Einkaufsliste aufs Handy", "Schick mir das Bild aufs Handy"]],
+    ["Telegram", "Dein Draht zu mir unterwegs – die wichtigste Einrichtung: Einkaufsliste und Listen im Laden aufs Handy, Erinnerungen auch unterwegs, Bilder, Dokumente und Prompts aufs Handy, Fotos und Dateien zu mir schicken, von überall mit mir schreiben, Sicherung deiner Einstellungen, Wachhund-Alarm mit Foto. Einrichten: Einstellungen → Telegram-Assistent: ① BotFather öffnen (/newbot), ② Token kopieren und einfügen, ③ Bot öffnen und „hallo“ schreiben – fertig. Schnellbefehle: wachhund an/aus, foto, status, hilfe.", ["Schick mir die Einkaufsliste aufs Handy", "Schick mir das Bild aufs Handy"]],
     ["Wachhund", "Ich passe auf, wenn du weg bist: Foto + Video mit Ton bei Bewegung, ganz still. Aus nur auf deinen Befehl.", ["Wachhund an", "Ich bin wieder da, Wachhund aus"]],
     ["Sehen", "Mit Kamera an schaue ich, wenn du mich darum bittest, und folge dir mit den Augen.", ["Was siehst du?", "Was halte ich in der Hand?"]],
     ["Kochen & Essen", "Kochmodus Schritt für Schritt ohne „Sentinel“-Sagen. Ich kenne eure Gerichte, plane Wochen und passe sie an dein Ziel an.", ["Lass uns Pfannkuchen machen", "Was essen wir nächste Woche?", "Ich will bis Ostern 5 Kilo abnehmen"]],
@@ -3996,6 +4019,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     ["Sicherung", "Einstellungen → „Sicherung erstellen“ schickt alle Keys und Einstellungen per Telegram; auf einem neuen Gerät „Sicherung laden“ – fertig.", ["Wie sichere ich meine Einstellungen?"]],
     ["Abo & Gratis", "10 Fragen am Tag sind gratis. Mehr Fragen, schlaueres Gehirn und die Fähigkeiten-Pakete gibt es mit Basis, Plus, Pro und Business.", ["Zeig mir die Abos"]],
     ["Anrufen & Nachrichten", "Ich öffne das Telefon mit der Nummer oder schreibe WhatsApp/SMS fertig vor – du tippst nur noch auf Senden. Nummern merke ich mir, wenn du willst.", ["Ruf Mama an", "Schreib Tom per WhatsApp, dass es später wird", "Merk dir: Mamas Nummer ist 0171 1234567"]],
+    ["Mitlesen & Unterbrechen", "Meine Antworten stehen auch als Text da (Einstellungen → Untertitel). Rede ich zu lange, tipp mein Gesicht an – dann bin ich sofort still.", ["(Gesicht antippen)"]],
     ["Radio", "Tausende Sender live. Läuft Radio, tipp mich zum Reden an.", ["Spiel NDR 2", "Spiel Schlager-Radio", "Radio aus"]],
     ["Morgen-Briefing", "Zur Wunschzeit Wetter, Termine, Geburtstage, fällige MHDs und die wichtigsten Nachrichten. Bin ich nicht im Vordergrund, kommt es per Telegram.", ["Mach mir jeden Morgen um 7 ein Briefing", "Briefing jetzt"]],
     ["Dolmetscher", "Ich übersetze Gespräche live hin und her – ohne „Sentinel“-Sagen.", ["Sei mein Dolmetscher für Englisch", "Dolmetscher aus"]],
@@ -4085,7 +4109,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   // ================= EINSTELLUNGEN =================
   function openSettings() {
     $("sKeyFeld").hidden = !cfg.key; $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sPhase").value = cfg.phase || "erwachsen"; $("firmaFeld").hidden = !zwecke().includes("firma"); $("sFirma").value = cfg.firma || ""; $("sGesicht").value = cfg.gesicht || "roboter"; stimmFelder(); stimmListe(); $("sBudget").value = cfg.budget || 10; $("sOrt").value = cfg.ort;
-    $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sSchwarm").checked = cfg.schwarm === true; $("sUid").value = uid;
+    $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sSchwarm").checked = cfg.schwarm === true; $("sUntertitel").checked = cfg.untertitel !== false; $("sUid").value = uid;
     { const box = $("sPakete"); box.replaceChildren(); const frei = paketeFrei();
       $("sPaketeHinweis").textContent = frei ? "" : "– 🔒 ab Abo Plus";
       for (const [k, pk] of Object.entries(PAKETE)) { const l = el("label", "check"); const c = el("input"); c.type = "checkbox"; c.dataset.paket = k; c.checked = frei && paketAn(k); c.disabled = !frei; l.append(c, " " + pk.ic + " " + pk.name); box.append(l); } } $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
@@ -4174,10 +4198,52 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
       $("sTgChat").value = String(m.chat.id); note("Chat-ID gefunden: " + m.chat.id, 4000);
     } catch (e) { note("Telegram nicht erreichbar: " + e.message, 6000); }
   });
+  // Telegram-Assistent: BotFather öffnen, Token einfügen, Chat-ID automatisch finden
+  const tgStatus = t => { $("tgStatus").textContent = t; };
+  async function tgOeffnen(url) {
+    if (NATIVE && SV && SV.openUrl) { try { await SV.openUrl({ url, package: "org.telegram.messenger" }); return; } catch (e) {} try { await SV.openUrl({ url }); return; } catch (e) {} }
+    window.open(url, "_blank");
+  }
+  let tgWarteT = null;
+  function tgWarten(tok) {
+    clearInterval(tgWarteT); const bis = Date.now() + 5 * 60000;
+    tgWarteT = setInterval(async () => {
+      if (Date.now() > bis) { clearInterval(tgWarteT); return; }
+      try {
+        const r = await getJSON(`https://api.telegram.org/bot${tok}/getUpdates`);
+        const m = ((r && r.result) || []).reverse().map(u => u.message).find(Boolean); if (!m) return;
+        clearInterval(tgWarteT);
+        $("sTgChat").value = String(m.chat.id); cfg.tgToken = tok; cfg.tgChat = String(m.chat.id); saveCfg();
+        tgStatus("🎉 Telegram ist eingerichtet!"); note("🎉 Telegram ist eingerichtet!", 5000);
+        tgText(`🎉 Hallo${ich.name ? " " + ich.name : ""}! Ich bin dein Sentinel. Ab jetzt kannst du mir hier schreiben – und ich schicke dir Erinnerungen, Listen, Bilder und Dokumente aufs Handy.`).catch(() => {});
+        if (einr.aktiv && !einr.erledigt.includes("Telegram (Nachrichten aufs Handy)")) { einr.erledigt.push("Telegram (Nachrichten aufs Handy)"); saveEinr(); }
+      } catch (e) {}
+    }, 3000);
+  }
+  async function tgPruefen() {
+    const tok = $("sTgToken").value.trim(); if (!/^\d{6,}:/.test(tok)) return;
+    try {
+      const r = await getJSON(`https://api.telegram.org/bot${tok}/getMe`); if (!r || !r.ok) throw new Error("x");
+      const u = r.result.username;
+      tgStatus(`✅ Token passt (Bot @${u}). Jetzt ③ tippen und dem Bot „hallo“ schreiben.`);
+      const b = $("tgBotOpen"); b.hidden = false; b.onclick = () => { tgOeffnen("https://t.me/" + u); tgWarten(tok); };
+      tgWarten(tok);
+    } catch (e) { tgStatus("❌ Der Token stimmt nicht – bitte die ganze Zeile aus der BotFather-Nachricht nochmal kopieren."); }
+  }
+  $("tgBotFather").addEventListener("click", () => { tgOeffnen("https://t.me/BotFather"); tgStatus("In Telegram: „Start“ → /newbot → Name → Benutzername auf „bot“. Dann den Token kopieren und hier ② tippen."); });
+  $("tgPaste").addEventListener("click", async () => {
+    let t = "";
+    try { if (NATIVE && SV && SV.pasteText) t = (await SV.pasteText()).text || ""; else t = await navigator.clipboard.readText(); } catch (e) {}
+    const m = /\d{6,}:[A-Za-z0-9_-]{30,}/.exec(t || "");
+    if (!m) { tgStatus("Im Zwischenspeicher ist kein Token. In Telegram die BotFather-Nachricht mit dem Token lange drücken → „Kopieren“, dann nochmal ② tippen."); return; }
+    $("sTgToken").value = m[0]; tgPruefen();
+  });
+  $("sTgToken").addEventListener("change", tgPruefen);
   $("setClose").addEventListener("click", () => { $("setPanel").hidden = true; });
   $("setSave").addEventListener("click", () => {
     cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.gesicht = $("sGesicht").value; cfg.phase = $("sPhase").value; cfg.firma = $("sFirma").value.trim().slice(0, 6000); stimmMerken(); cfg.budget = Math.max(1, Math.min(500, parseInt($("sBudget").value, 10) || 10)); cfg.ort = $("sOrt").value.trim();
     cfg.limit = Math.max(10, Math.min(5000, parseInt($("sLimit").value, 10) || 300));
+    cfg.untertitel = $("sUntertitel").checked;
     if ($("sSchwarm").checked !== (cfg.schwarm === true)) { cfg.schwarm = $("sSchwarm").checked; if (cfg.schwarm) setTimeout(schwarmAbgleich, 1000); }
     if (paketeFrei()) { cfg.pakete = {}; document.querySelectorAll("#sPakete input").forEach(c => { cfg.pakete[c.dataset.paket] = c.checked; }); }
     cfg.search = $("sSearch").checked; cfg.wake = $("sWake").checked; cfg.look = $("sLook").checked;

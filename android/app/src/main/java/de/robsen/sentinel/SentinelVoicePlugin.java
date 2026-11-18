@@ -131,6 +131,21 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
     }
 
     @PluginMethod
+    public void pasteText(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            try {
+                ClipboardManager cm = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+                String t = "";
+                if (cm != null && cm.hasPrimaryClip() && cm.getPrimaryClip() != null && cm.getPrimaryClip().getItemCount() > 0) {
+                    CharSequence c = cm.getPrimaryClip().getItemAt(0).coerceToText(getContext());
+                    if (c != null) t = c.toString();
+                }
+                call.resolve(new JSObject().put("text", t));
+            } catch (Exception e) { call.reject("Einfügen ging nicht: " + e.getMessage()); }
+        });
+    }
+
+    @PluginMethod
     public void start(PluginCall call) {
         muteBeep = call.getBoolean("muteBeep", true);
         if (call.getBoolean("trotzMusik", false)) trotzMusikBis = System.currentTimeMillis() + 15000;
