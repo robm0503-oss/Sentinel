@@ -5,6 +5,10 @@ Robsen schickt tagsüber alles rein, abends wird gefixt und gesammelt hochgelade
 ## Offen (für heute Abend)
 - 18.11. Gratisfragen in der Kennenlern-/Einrichtungsphase: Bisher ist dort ALLES gratis (Tester hat nebenbei Englisch geübt, Zähler blieb bei 10/10). Neu: gratis nur, was wirklich zum Kennenlernen/Einrichten gehört (Name, Vorlieben, Ort, Telegram, Gesicht, Stimme …). Alles andere (Englisch üben, Bilder, Wetter, Wissensfragen …) zählt als normale Gratisfrage – auch mitten in der Einrichtung.
 
+- 18.11. (Ronny) Antworten auch als Text anzeigen (Untertitel), weil man nicht alles versteht – Antwort bleibt lesbar stehen, Einstellung „Antworten als Text“ standardmäßig an.
+- 18.11. (Ronny) Sprechen anhalten: Antippen des Gesichts (oder Stopp-Knopf) während Sentinel spricht → sofort still.
+- 18.11. (Ronny) Telegram-Einrichtung zu kompliziert → Schritt-für-Schritt-Assistent in den Einstellungen mit Knopf „Telegram öffnen“ (BotFather-Link), Token einfügen per Einfügen-Knopf, Chat-ID automatisch.
+
 ## Wünsche (größer, nicht für die Abend-Runde)
 - Noch offen: Health Connect (Samsung Health/Google Fit: Schlaf, Puls) · Sentinel teilen / NFC-Übergabe · WhatsApp Business als Plus-Funktion (Cloud-API, Meta-Verifizierung, Kosten pro Nachricht) · Homescreen-Widget · Pakete vom Server nachladen · Video-KI voll automatisch · Preisvergleich mit echter Prospekt-Datenquelle (Lizenz/Partner) statt Websuche
 - Neuheiten-Regel: Bei jeder neuen Funktion APP_VERSION erhöhen und in NEUHEITEN eintragen → Sentinel fragt beim nächsten Öffnen „Möchtest du meine neuen Funktionen kennenlernen?“
