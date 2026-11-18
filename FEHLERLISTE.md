@@ -3,6 +3,8 @@
 Robsen schickt tagsüber alles rein, abends wird gefixt und gesammelt hochgeladen.
 
 ## Offen (für heute Abend)
+- 18.11. Gratisfragen: Ab sofort zählt JEDE Frage an Sentinel, auch beim Kennenlernen (Gratis-Einrichtung/[extra]-Regel komplett raus). Nur Zwischenschritte derselben Antwort (sentinel_folge) zählen nicht. Robsen: „Kapselung klappt nicht – Bewerbung lief wieder gratis.“
+- 18.11. Anleitung zum Start viel zu lang → kompakt wie die Paket-Liste in den Einstellungen: oben „Gratis“ (je Funktion eine kurze Zeile mit Icon), darunter „Ab Abo“ (Pakete & Extras kurz, mit 🔒), Details erst beim Antippen aufklappen.
 - Manifest: android.hardware.wifi als optional markiert (Google-Hinweis bei 1.88, kommt mit der nächsten Version)
 
 ## Wünsche (größer, nicht für die Abend-Runde)
