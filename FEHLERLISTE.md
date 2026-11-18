@@ -3,7 +3,7 @@
 Robsen schickt tagsüber alles rein, abends wird gefixt und gesammelt hochgeladen.
 
 ## Offen (für heute Abend)
-– noch nichts –
+- Manifest: android.hardware.wifi als optional markiert (Google-Hinweis bei 1.88, kommt mit der nächsten Version)
 
 ## Wünsche (größer, nicht für die Abend-Runde)
 - Noch offen: Health Connect (Samsung Health/Google Fit: Schlaf, Puls) · Sentinel teilen / NFC-Übergabe · WhatsApp Business als Plus-Funktion (Cloud-API, Meta-Verifizierung, Kosten pro Nachricht) · Homescreen-Widget · Pakete vom Server nachladen · Video-KI voll automatisch · Preisvergleich mit echter Prospekt-Datenquelle (Lizenz/Partner) statt Websuche
