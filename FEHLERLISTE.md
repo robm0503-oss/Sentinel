@@ -3,7 +3,7 @@
 Robsen schickt tagsüber alles rein, abends wird gefixt und gesammelt hochgeladen.
 
 ## Offen (für heute Abend)
-– noch nichts –
+- 18.11. Gratisfragen in der Kennenlern-/Einrichtungsphase: Bisher ist dort ALLES gratis (Tester hat nebenbei Englisch geübt, Zähler blieb bei 10/10). Neu: gratis nur, was wirklich zum Kennenlernen/Einrichten gehört (Name, Vorlieben, Ort, Telegram, Gesicht, Stimme …). Alles andere (Englisch üben, Bilder, Wetter, Wissensfragen …) zählt als normale Gratisfrage – auch mitten in der Einrichtung.
 
 ## Wünsche (größer, nicht für die Abend-Runde)
 - Noch offen: Health Connect (Samsung Health/Google Fit: Schlaf, Puls) · Sentinel teilen / NFC-Übergabe · WhatsApp Business als Plus-Funktion (Cloud-API, Meta-Verifizierung, Kosten pro Nachricht) · Homescreen-Widget · Pakete vom Server nachladen · Video-KI voll automatisch · Preisvergleich mit echter Prospekt-Datenquelle (Lizenz/Partner) statt Websuche
