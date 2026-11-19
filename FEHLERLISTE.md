@@ -6,7 +6,7 @@ Robsen schickt tagsüber alles rein, abends wird gefixt und gesammelt hochgelade
 - 18.11. (Ronny) Telegram: erst Rezept geschickt, danach Erinnerung angefragt → Rezept kam nochmal mit (alte Antwort/Inhalt wird erneut gesendet). Prüfen, ob nachricht_ans_handy/Bestätigung den vorigen Inhalt wiederholt.
 - 18.11. (Ronny) 7 Fragen gestellt, nur 4 gezählt → wird durch „jede Frage zählt“ (s. u.) behoben, danach gegenprüfen.
 - 18.11. (Ronny) Wetter zuerst gefragt → bei Frage 2 und 3 hat Sentinel das Wetter ungefragt nochmal „aktualisiert“. Regel: frühere Antworten nie wiederholen/ergänzen, nur auf die aktuelle Frage antworten (evtl. Wetter-Ergebnis im Verlauf kürzen).
-- 18.11. Gratisfragen: Ab sofort zählt JEDE Frage an Sentinel, auch beim Kennenlernen (Gratis-Einrichtung/[extra]-Regel komplett raus). Nur Zwischenschritte derselben Antwort (sentinel_folge) zählen nicht. Robsen: „Kapselung klappt nicht – Bewerbung lief wieder gratis.“
+- 18.11./19.11. Gratisfragen: Ab sofort zählt JEDE Frage an Sentinel, auch beim Kennenlernen (Gratis-Einrichtung/[extra]-Regel raus). AUSNAHME (Robsen 19.11.): nur die Antworten auf „Wie soll ich dich nennen?“ und „Wo wohnst du?“ bleiben gratis (Server: gratis nur wenn die Antwort ausschließlich ich_kenne_dich/ort_setzen nutzt). Nur Zwischenschritte derselben Antwort (sentinel_folge) zählen nicht. Robsen: „Kapselung klappt nicht – Bewerbung lief wieder gratis.“
 - 18.11. Anleitung zum Start viel zu lang → kompakt wie die Paket-Liste in den Einstellungen: oben „Gratis“ (je Funktion eine kurze Zeile mit Icon), darunter „Ab Abo“ (Pakete & Extras kurz, mit 🔒), Details erst beim Antippen aufklappen.
 - Manifest: android.hardware.wifi als optional markiert (Google-Hinweis bei 1.88, kommt mit der nächsten Version)
 
