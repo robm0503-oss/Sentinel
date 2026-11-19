@@ -3,6 +3,8 @@
 Robsen schickt tagsüber alles rein, abends wird gefixt und gesammelt hochgeladen.
 
 ## Offen (für heute Abend)
+- 19.11. Gedächtnis-Korrektur greift nicht: Freundin sagt „Flug am 28.11.“, Sentinel versteht 28.12., sie korrigiert → später sagt Sentinel wieder 28.12. Korrektur muss den alten Fakt ERSETZEN (merke_dir/vergiss: alten Eintrag löschen, Termine/Erinnerungen mit falschem Datum anpassen), Regel im Prompt: bei Korrektur alte Info sofort überschreiben.
+- 19.11. Lässt Leute nicht ausreden: kurze Sprechpause → Sentinel denkt, die Frage ist zu Ende. Längere Pausen-Toleranz (Android EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS / POSSIBLY_COMPLETE höher, JS-Wartezeit nach letztem Wort ~2 s, Teilstücke zusammenfügen, wenn innerhalb von 2–3 s weitergesprochen wird); evtl. Einstellung „Ich spreche langsam / mit Pausen“.
 - 18.11. (Ronny) Telegram: erst Rezept geschickt, danach Erinnerung angefragt → Rezept kam nochmal mit (alte Antwort/Inhalt wird erneut gesendet). Prüfen, ob nachricht_ans_handy/Bestätigung den vorigen Inhalt wiederholt.
 - 18.11. (Ronny) 7 Fragen gestellt, nur 4 gezählt → wird durch „jede Frage zählt“ (s. u.) behoben, danach gegenprüfen.
 - 18.11. (Ronny) Wetter zuerst gefragt → bei Frage 2 und 3 hat Sentinel das Wetter ungefragt nochmal „aktualisiert“. Regel: frühere Antworten nie wiederholen/ergänzen, nur auf die aktuelle Frage antworten (evtl. Wetter-Ergebnis im Verlauf kürzen).
