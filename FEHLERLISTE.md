@@ -3,6 +3,8 @@
 Robsen schickt tagsüber alles rein, abends wird gefixt und gesammelt hochgeladen.
 
 ## Offen (für heute Abend)
+- 23.11. (Ronny) Beantwortet/schickt immer wieder alte Fragen nochmal. Verdacht: Im Verlauf bleiben Nutzerfragen ohne Antwort stehen (nach Fehler/Limit/„keine Antwort“) → das Gehirn holt sie nach. Fix: unbeantwortete Fragen im Verlauf als erledigt markieren oder entfernen, Verlauf kürzen, Regel „nur die letzte Nachricht beantworten“ (v82) prüfen.
+- 23.11. (Ronny) Sentinel behauptet Aktionen, die er nicht gemacht hat („Einkaufsliste aufs Handy geschickt“ – stimmte nicht, er hat sich danach selbst korrigiert). Regel: Aktionen nur bestätigen, wenn das Werkzeug wirklich aufgerufen wurde und ok meldete; App-seitig prüfen: sagt die Antwort „geschickt/gespeichert/erinnert“ ohne passenden Werkzeugaufruf → nachfassen lassen.
 - Anleitung zum Start kompakt (Gratis / Ab Abo, Details zum Aufklappen) – noch offen
 - Absturz-Ursache 1.88 (Google: „stürzt nach dem Öffnen ab“): Absturzberichte gehen ab 1.89 automatisch per Telegram an Robsen → dann gezielt fixen
 
