@@ -3,20 +3,15 @@
 Robsen schickt tagsüber alles rein, abends wird gefixt und gesammelt hochgeladen.
 
 ## Offen (für heute Abend)
-- 19.11. Gedächtnis-Korrektur greift nicht: Freundin sagt „Flug am 28.11.“, Sentinel versteht 28.12., sie korrigiert → später sagt Sentinel wieder 28.12. Korrektur muss den alten Fakt ERSETZEN (merke_dir/vergiss: alten Eintrag löschen, Termine/Erinnerungen mit falschem Datum anpassen), Regel im Prompt: bei Korrektur alte Info sofort überschreiben.
-- 19.11. Lässt Leute nicht ausreden: kurze Sprechpause → Sentinel denkt, die Frage ist zu Ende. Längere Pausen-Toleranz (Android EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS / POSSIBLY_COMPLETE höher, JS-Wartezeit nach letztem Wort ~2 s, Teilstücke zusammenfügen, wenn innerhalb von 2–3 s weitergesprochen wird); evtl. Einstellung „Ich spreche langsam / mit Pausen“.
-- 18.11. (Ronny) Telegram: erst Rezept geschickt, danach Erinnerung angefragt → Rezept kam nochmal mit (alte Antwort/Inhalt wird erneut gesendet). Prüfen, ob nachricht_ans_handy/Bestätigung den vorigen Inhalt wiederholt.
-- 18.11. (Ronny) 7 Fragen gestellt, nur 4 gezählt → wird durch „jede Frage zählt“ (s. u.) behoben, danach gegenprüfen.
-- 18.11. (Ronny) Wetter zuerst gefragt → bei Frage 2 und 3 hat Sentinel das Wetter ungefragt nochmal „aktualisiert“. Regel: frühere Antworten nie wiederholen/ergänzen, nur auf die aktuelle Frage antworten (evtl. Wetter-Ergebnis im Verlauf kürzen).
-- 18.11./19.11. Gratisfragen: Ab sofort zählt JEDE Frage an Sentinel, auch beim Kennenlernen (Gratis-Einrichtung/[extra]-Regel raus). AUSNAHME (Robsen 19.11.): nur die Antworten auf „Wie soll ich dich nennen?“ und „Wo wohnst du?“ bleiben gratis (Server: gratis nur wenn die Antwort ausschließlich ich_kenne_dich/ort_setzen nutzt). Nur Zwischenschritte derselben Antwort (sentinel_folge) zählen nicht. Robsen: „Kapselung klappt nicht – Bewerbung lief wieder gratis.“
-- 18.11. Anleitung zum Start viel zu lang → kompakt wie die Paket-Liste in den Einstellungen: oben „Gratis“ (je Funktion eine kurze Zeile mit Icon), darunter „Ab Abo“ (Pakete & Extras kurz, mit 🔒), Details erst beim Antippen aufklappen.
-- Manifest: android.hardware.wifi als optional markiert (Google-Hinweis bei 1.88, kommt mit der nächsten Version)
+- Anleitung zum Start kompakt (Gratis / Ab Abo, Details zum Aufklappen) – noch offen
+- Absturz-Ursache 1.88 (Google: „stürzt nach dem Öffnen ab“): Absturzberichte gehen ab 1.89 automatisch per Telegram an Robsen → dann gezielt fixen
 
 ## Wünsche (größer, nicht für die Abend-Runde)
 - Noch offen: Health Connect (Samsung Health/Google Fit: Schlaf, Puls) · Sentinel teilen / NFC-Übergabe · WhatsApp Business als Plus-Funktion (Cloud-API, Meta-Verifizierung, Kosten pro Nachricht) · Homescreen-Widget · Pakete vom Server nachladen · Video-KI voll automatisch · Preisvergleich mit echter Prospekt-Datenquelle (Lizenz/Partner) statt Websuche
 - Neuheiten-Regel: Bei jeder neuen Funktion APP_VERSION erhöhen und in NEUHEITEN eintragen → Sentinel fragt beim nächsten Öffnen „Möchtest du meine neuen Funktionen kennenlernen?“
 
 ## Erledigt
+- 23.11. (v82, Store 1.89) nach Google-Entfernung („stürzt nach dem Öffnen ab“): Absturz-Wächter (Stacktrace + Gerät + Android-Version → Server → Telegram an Robsen), Spracherkennung/Sprachausgabe/Start abgesichert (keine Abstürze mehr durch Fehler in Rückrufen), WLAN-Hardware optional · Jede Frage zählt, gratis nur Name & Wohnort (Server) · Ausreden lassen: 2 s Wartezeit nach Satzende, Einstellung „Ich spreche mit Pausen“ (3 s) · Korrekturen ersetzen alte Infos inkl. Terminen · keine ungefragten Wiederholungen (Wetter, Rezept per Telegram)
 - 18.11. abends (v81, Store 1.88): Antworten als Text/Untertitel (abschaltbar) · Antippen während Sentinel spricht = sofort still · Telegram-Assistent in den Einstellungen (BotFather öffnen, Token einfügen, Chat-ID automatisch + Begrüßung) · Gratis beim Kennenlernen nur noch fürs Kennenlernen/Einrichten (fremde Themen per [extra] oder Nutz-Werkzeug zählen normal, Server)
 - 17./18.11. nachts – **v80 „Was die Großen können“** (Store 1.87):
   - Update-Ansage: nach jedem Update fragt Sentinel, ob man die neuen Funktionen kennenlernen will, zählt sie auf und fragt „Was möchtest du davon einrichten?“

@@ -321,6 +321,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <div class="field"><button class="ghost" id="sLogBtn" type="button">Ohren-Protokoll anzeigen</button></div>
     <div class="field"><label>Geräte-ID (für deine Admin-Seite)</label><div style="display:flex;gap:8px"><input id="sUid" type="text" readonly style="flex:1"><button class="ghost" id="sUidKopie" type="button">Kopieren</button></div></div>
     <label class="check"><input id="sUntertitel" type="checkbox"> Antworten auch als Text anzeigen (Untertitel)</label>
+    <label class="check"><input id="sPausen" type="checkbox"> Ich spreche mit Pausen (Sentinel wartet länger, bis du fertig bist)</label>
     <label class="check"><input id="sSchwarm" type="checkbox"> Schwarmwissen: aus Fehlern lernen und das Gelernte anonym mit allen Sentinels teilen (nie Persönliches)</label>
     <div class="field">
       <label for="sEngine">Ohren</label>
@@ -341,7 +342,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 81</div>
+    <div class="hint" id="verHint">Sentinel Version 82</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -1185,7 +1186,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
       if (!t) { elog("Ohren: Satz zu Ende, aber leer"); return; }
       nBuf += " " + t;
       if (!nativeAddressed && addressed(nBuf, nativeUtterStart || Date.now())) nativeAddressed = true;
-      clearTimeout(nFlushT); nFlushT = setTimeout(nFlush, 1000); // 1 s Stille reicht, dann geht's los
+      clearTimeout(nFlushT); nFlushT = setTimeout(nFlush, cfg.pausen ? 3000 : 2000); // kurz warten – vielleicht redet er nach einer Pause weiter
     });
     SV.addListener("speechStart", () => { if (nBuf) { clearTimeout(nFlushT); nFlushT = setTimeout(nFlush, 6000); } });
     SV.addListener("ready", () => { if (!nativeReadyOnce) { nativeReadyOnce = true; elog("Ohren bereit – ich höre"); } lastAlive = Date.now(); lastReady = Date.now(); });
@@ -1958,7 +1959,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
   }
   let einr = Object.assign({ aktiv: false, erledigt: [] }, store.get("einrichtung", {}));
   // Gratis ist beim Kennenlernen nur, was wirklich zum Kennenlernen/Einrichten gehört
-  const EXTRA_REGEL = `\nGRATIS-REGEL: Während der Einrichtung sind nur Antworten gratis, die zum Kennenlernen oder Einrichten gehören (Name, Vorlieben, Ort, Gesicht, Stimme, Telegram, Funktionen einrichten oder erklären). Fragt dein Gegenüber etwas anderes (z. B. Wissensfragen, Englisch üben, Bilder, Wetter, Rezepte, Texte schreiben), dann beantworte es normal, aber schreib ganz an den Anfang deiner Antwort [extra] – das zählt dann als normale Frage.`;
+  const EXTRA_REGEL = ""; const _alteExtraRegel = `\nGRATIS-REGEL: Während der Einrichtung sind nur Antworten gratis, die zum Kennenlernen oder Einrichten gehören (Name, Vorlieben, Ort, Gesicht, Stimme, Telegram, Funktionen einrichten oder erklären). Fragt dein Gegenüber etwas anderes (z. B. Wissensfragen, Englisch üben, Bilder, Wetter, Rezepte, Texte schreiben), dann beantworte es normal, aber schreib ganz an den Anfang deiner Antwort [extra] – das zählt dann als normale Frage.`;
   const saveEinr = () => store.set("einrichtung", einr);
   function einrichtungInfo() {
     if (!einr.aktiv) return "";
@@ -2521,8 +2522,12 @@ Offene Punkte: ${fehlt.join("; ")}.`;
   // ================= v80: NEUHEITEN NACH UPDATES =================
   // Jedes Mal, wenn neue Funktionen dazukommen: APP_VERSION erhöhen und hier eintragen.
   // Beim nächsten Öffnen fragt Sentinel, ob man die Neuheiten kennenlernen will.
-  const APP_VERSION = 81;
+  const APP_VERSION = 82;
   const NEUHEITEN = {
+    82: [
+      ["⏸️", "Ausreden lassen", "Ich warte jetzt länger, bis du fertig bist. Sprichst du mit Pausen, schalte in den Einstellungen „Ich spreche mit Pausen“ ein.", "(einfach ganz normal reden)"],
+      ["🧠", "Korrekturen merken", "Wenn du mich korrigierst, gilt ab sofort nur noch das Richtige – auch bei Terminen und Erinnerungen.", "Nein, wir fliegen am 28.11."],
+    ],
     81: [
       ["💬", "Antworten zum Mitlesen", "Meine Antworten stehen jetzt auch als Text auf dem Bildschirm – abschaltbar in den Einstellungen.", "Was ist ein Halbleiter?"],
       ["✋", "Antippen = Ruhe", "Rede ich zu lange? Einfach mein Gesicht antippen, dann bin ich sofort still.", "(Gesicht antippen, während ich spreche)"],
@@ -2759,7 +2764,8 @@ Offene Punkte: ${fehlt.join("; ")}.`;
 
   // ================= v80: REGELN FÜR DAS GEHIRN =================
   function v80Regeln() {
-    return `NEUE FÄHIGKEITEN:
+    return `GESPRÄCHSREGELN: Beantworte immer nur die aktuelle Frage. Wiederhole oder „aktualisiere“ frühere Antworten (z. B. Wetter, Rezepte) nie ungefragt. Wird dir etwas korrigiert („Nein, der 28.11., nicht der 28.12.“), gilt ab sofort NUR die Korrektur: mit merke_dir die richtige Info speichern und die falsche mit vergiss löschen, betroffene Erinnerungen/Termine löschen und richtig neu anlegen, und danach nie wieder die alte Angabe verwenden. Schicke per Telegram nur, was gerade verlangt wurde – nie frühere Inhalte nochmal.
+NEUE FÄHIGKEITEN:
 - Anrufen (anrufen) und WhatsApp/SMS (nachricht_vorbereiten): Nummern, die du kennst (aus dem Gedächtnis), direkt nutzen; sonst nach der Nummer fragen und anbieten, sie dir zu merken. Du schickst nie selbst – du öffnest die fertige Nachricht, gesendet wird mit einem Tipp.
 - Radio (radio): Sender oder Musikrichtung abspielen. Läuft Radio, hört er/sie dich nur nach Antippen.
 - Morgen-Briefing (morgen_briefing): Wird darum gebeten oder ist es Zeit dafür: hol das Wetter (wetter), schau auf heutige Termine und Erinnerungen, Geburtstage, bald fällige MHDs und – wenn die Websuche verfügbar ist – die 3 wichtigsten Nachrichten des Tages. Dann kompakt in höchstens 6 Sätzen, freundlich, mit einem motivierenden Satz zum Schluss. Schrittziel oder Fasten erwähnen, wenn aktiv.
@@ -4109,7 +4115,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   // ================= EINSTELLUNGEN =================
   function openSettings() {
     $("sKeyFeld").hidden = !cfg.key; $("sKey").value = cfg.key; $("sModel").value = cfg.model; $("sPhase").value = cfg.phase || "erwachsen"; $("firmaFeld").hidden = !zwecke().includes("firma"); $("sFirma").value = cfg.firma || ""; $("sGesicht").value = cfg.gesicht || "roboter"; stimmFelder(); stimmListe(); $("sBudget").value = cfg.budget || 10; $("sOrt").value = cfg.ort;
-    $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sSchwarm").checked = cfg.schwarm === true; $("sUntertitel").checked = cfg.untertitel !== false; $("sUid").value = uid;
+    $("sLimit").value = cfg.limit; $("sSearch").checked = cfg.search; $("sSchwarm").checked = cfg.schwarm === true; $("sUntertitel").checked = cfg.untertitel !== false; $("sPausen").checked = !!cfg.pausen; $("sUid").value = uid;
     { const box = $("sPakete"); box.replaceChildren(); const frei = paketeFrei();
       $("sPaketeHinweis").textContent = frei ? "" : "– 🔒 ab Abo Plus";
       for (const [k, pk] of Object.entries(PAKETE)) { const l = el("label", "check"); const c = el("input"); c.type = "checkbox"; c.dataset.paket = k; c.checked = frei && paketAn(k); c.disabled = !frei; l.append(c, " " + pk.ic + " " + pk.name); box.append(l); } } $("sWake").checked = cfg.wake; $("sLook").checked = cfg.look !== false;
@@ -4243,7 +4249,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   $("setSave").addEventListener("click", () => {
     cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.gesicht = $("sGesicht").value; cfg.phase = $("sPhase").value; cfg.firma = $("sFirma").value.trim().slice(0, 6000); stimmMerken(); cfg.budget = Math.max(1, Math.min(500, parseInt($("sBudget").value, 10) || 10)); cfg.ort = $("sOrt").value.trim();
     cfg.limit = Math.max(10, Math.min(5000, parseInt($("sLimit").value, 10) || 300));
-    cfg.untertitel = $("sUntertitel").checked;
+    cfg.untertitel = $("sUntertitel").checked; cfg.pausen = $("sPausen").checked;
     if ($("sSchwarm").checked !== (cfg.schwarm === true)) { cfg.schwarm = $("sSchwarm").checked; if (cfg.schwarm) setTimeout(schwarmAbgleich, 1000); }
     if (paketeFrei()) { cfg.pakete = {}; document.querySelectorAll("#sPakete input").forEach(c => { cfg.pakete[c.dataset.paket] = c.checked; }); }
     cfg.search = $("sSearch").checked; cfg.wake = $("sWake").checked; cfg.look = $("sLook").checked;

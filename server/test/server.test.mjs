@@ -20,6 +20,7 @@ globalThis.fetch = async (url, opt) => {
   }
   gesendet.push(b);
   if (JSON.stringify(b.messages).includes("EXTRA-TEST")) return new Response(JSON.stringify({ content: [{ type: "text", text: "[extra] Hello means Hallo." }], stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 10 } }), { status: 200 });
+  if (JSON.stringify(b.messages).includes("NAME-TEST")) return new Response(JSON.stringify({ content: [{ type: "tool_use", id: "t2", name: "ich_kenne_dich", input: {} }], stop_reason: "tool_use", usage: { input_tokens: 100, output_tokens: 10 } }), { status: 200 });
   if (JSON.stringify(b.messages).includes("BILD-TEST")) return new Response(JSON.stringify({ content: [{ type: "tool_use", id: "t1", name: "bild_erstellen", input: {} }], stop_reason: "tool_use", usage: { input_tokens: 100, output_tokens: 10 } }), { status: 200 });
   return new Response(JSON.stringify({ content: [{ type: "text", text: "ok" }], stop_reason: "end_turn", usage: { input_tokens: 200000, output_tokens: 20000 } }), { status: 200 });
 };
@@ -74,18 +75,18 @@ console.log("ALLE TESTS OK");
   const c3 = body => worker.fetch(new Request("https://x/v1/messages", { method: "POST", headers: { authorization: "Bearer " + uid3 }, body: JSON.stringify(body) }), env).then(async r => ({ status: r.status, j: await r.json() }));
   rc = {};
   let r3;
-  for (let i = 0; i < 5; i++) r3 = await c3({ ...msg, sentinel_einrichtung: true });
+  const name = { ...msg, messages: [{ role: "user", content: "NAME-TEST" }], sentinel_einrichtung: true };
+  for (let i = 0; i < 3; i++) r3 = await c3(name);
   if (r3.status !== 200) console.log(r3.j); assert.equal(r3.status, 200); assert.equal(r3.j.sentinel.probe_rest, 10); assert.equal(gesendet.at(-1).sentinel_einrichtung, undefined);
-  // Fremdes Thema mitten in der Einrichtung zählt normal
-  r3 = await c3({ ...msg, messages: [{ role: "user", content: "EXTRA-TEST" }], sentinel_einrichtung: true }); assert.equal(r3.j.sentinel.probe_rest, 9);
-  r3 = await c3({ ...msg, messages: [{ role: "user", content: "BILD-TEST" }], sentinel_einrichtung: true }); assert.equal(r3.j.sentinel.probe_rest, 8);
-  r3 = await c3({ ...msg, messages: [{ role: "user", content: "BILD-TEST" }], sentinel_einrichtung: true, sentinel_folge: true }); assert.equal(r3.j.sentinel.probe_rest, 8);
-  r3 = await c3({ ...msg, sentinel_einrichtung: true }); assert.equal(r3.j.sentinel.probe_rest, 8);
-  console.log("Einrichtung: fremde Themen zählen ok");
-  r3 = await c3(msg); assert.equal(r3.j.sentinel.probe_rest, 7);
+  // Alles andere zählt – auch mitten in der Einrichtung
+  r3 = await c3({ ...msg, sentinel_einrichtung: true }); assert.equal(r3.j.sentinel.probe_rest, 9);
+  r3 = await c3({ ...msg, messages: [{ role: "user", content: "EXTRA-TEST" }], sentinel_einrichtung: true }); assert.equal(r3.j.sentinel.probe_rest, 8);
+  r3 = await c3({ ...msg, messages: [{ role: "user", content: "BILD-TEST" }], sentinel_einrichtung: true }); assert.equal(r3.j.sentinel.probe_rest, 7);
+  r3 = await c3({ ...msg, messages: [{ role: "user", content: "BILD-TEST" }], sentinel_einrichtung: true, sentinel_folge: true }); assert.equal(r3.j.sentinel.probe_rest, 7);
+  console.log("Einrichtung: nur Name/Ort gratis ok");
   for (let i = 0; i < 7; i++) r3 = await c3(msg);
   assert.equal(r3.j.sentinel.probe_rest, 0); r3 = await c3(msg); assert.equal(r3.status, 429); assert.equal(r3.j.error.type, "tageslimit");
-  r3 = await c3({ ...msg, sentinel_einrichtung: true }); assert.equal(r3.status, 200);
+  r3 = await c3(name); assert.equal(r3.status, 200);
   console.log("Einrichtung gratis ok");
 }
 
@@ -156,4 +157,12 @@ console.log("ALLE TESTS OK");
   const me = await worker.fetch(new Request("https://x/v1/me", { headers: { authorization: "Bearer " + uidF } }), env).then(r => r.json());
   assert.equal(me.anfragen_heute, 1);
   console.log("Folgeschritte ok");
+}
+
+// Absturzbericht -> Telegram
+{
+  const n0 = tgNachrichten.length;
+  const r = await call("/v1/absturz", { version: "1.89", geraet: "Pixel 9", android: "16", trace: "java.lang.NullPointerException at x" });
+  assert.equal(r.status, 200); assert.equal(tgNachrichten.length, n0 + 1); assert.match(tgNachrichten.at(-1).text, /NullPointerException/);
+  console.log("Absturzbericht ok");
 }

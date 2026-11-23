@@ -1,7 +1,7 @@
 // Sentinel-Server: verwaltet Abo-Stufen, Limits und Budget und spricht mit Claude.
 // Die App schickt ihre Anfrage hierher statt direkt zu Anthropic; der API-Key bleibt auf dem Server.
 
-import { wissenMelden, wissenHolen, admin, tagesbericht, codeEinloesen } from "./schwarm.js";
+import { wissenMelden, wissenHolen, admin, tagesbericht, codeEinloesen, absturzMelden } from "./schwarm.js";
 
 const USD_PRO_EUR = 1.08;
 
@@ -102,6 +102,12 @@ export function modellWaehlen(u, gewuenscht) {
 }
 
 const NUTZ_WERKZEUGE = new Set(["bild_erstellen", "lernen", "wetter", "web_search", "dokument_erstellen", "reise_suchen", "navigation_starten", "radio", "kochmodus", "kochschritt", "prompt_kopieren", "tagebuch", "koerper_tagebuch", "scannen", "dolmetscher", "mhd", "ablage", "liste", "timer_stellen", "erinnerung_stellen", "anrufen", "nachricht_vorbereiten", "schritte", "app_oeffnen", "youtube_abspielen", "medien_steuern"]);
+// Gratis beim Kennenlernen sind nur die Antworten auf „Wie soll ich dich nennen?“ und „Wo wohnst du?“
+const GRATIS_WERKZEUGE = new Set(["ich_kenne_dich", "ort_setzen"]);
+export function nurNameOderOrt(data) {
+  const t = ((data && data.content) || []).filter(c => c.type === "tool_use" || c.type === "server_tool_use");
+  return t.length > 0 && t.every(c => GRATIS_WERKZEUGE.has(c.name));
+}
 export function ausserhalbEinrichtung(data) {
   for (const c of (data && data.content) || []) {
     if (c.type === "text" && /\[extra\]/i.test(c.text || "")) return true;
@@ -149,7 +155,7 @@ async function chat(req, env, uid) {
   if (!r.ok || !data) return json(data || { type: "error", error: { type: "api_error", message: "Gehirn nicht erreichbar" } }, r.status || 502);
   const usd = kosten(data.usage, model);
   // Beim Kennenlernen ist nur das Kennenlernen gratis – fremde Themen ([extra] oder Nutz-Werkzeuge) zählen normal
-  if (gratisEinr && !folge && ausserhalbEinrichtung(data)) gratisEinr = false;
+  if (gratisEinr && !folge && !nurNameOderOrt(data)) gratisEinr = false;
   u.used_usd += usd; if (!gratisEinr && !folge) u.req_day += 1;
   if (gratisEinr) await env.DB.prepare("INSERT INTO einrichtung (uid, n) VALUES (?, 1) ON CONFLICT(uid) DO UPDATE SET n = n + 1").bind(u.uid).run();
   else if (u.tier === "probe") u.probe_used = (u.probe_used || 0) + 1;
@@ -209,6 +215,7 @@ export default {
       if (url.pathname === "/v1/messages" && req.method === "POST") return await chat(req, env, uid);
       if (url.pathname === "/v1/bild" && req.method === "POST") return await bild(req, env, uid);
       if (url.pathname === "/v1/code" && req.method === "POST") return await codeEinloesen(req, env, uid);
+      if (url.pathname === "/v1/absturz" && req.method === "POST") return await absturzMelden(req, env, uid);
       if (url.pathname === "/v1/wissen" && req.method === "POST") return await wissenMelden(req, env, uid, url.origin);
       if (url.pathname === "/v1/wissen" && req.method === "GET") return await wissenHolen(env);
       return fehler(404, "not_found", "Gibt es nicht");

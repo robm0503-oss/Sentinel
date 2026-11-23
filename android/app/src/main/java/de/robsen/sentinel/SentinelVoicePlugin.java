@@ -106,8 +106,8 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         });
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
             @Override public void onStart(String id) { notifyListeners("ttsStart", new JSObject().put("id", id)); }
-            @Override public void onDone(String id) { main.post(() -> afterSpeak(id)); }
-            @Override public void onError(String id) { main.post(() -> afterSpeak(id)); }
+            @Override public void onDone(String id) { main.post(() -> { try { afterSpeak(id); } catch (Throwable ignored) {} }); }
+            @Override public void onError(String id) { main.post(() -> { try { afterSpeak(id); } catch (Throwable ignored) {} }); }
         });
     }
 
@@ -115,7 +115,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
 
     private long busyBackoff = 1000;
     private String lastPartial = "";
-    private final Runnable listenRunnable = this::listen;
+    private final Runnable listenRunnable = () -> { try { listen(); } catch (Throwable t) { listening = false; restart(2000); } };
 
     // Text in die Zwischenablage (die WebView darf das oft nicht selbst)
     @PluginMethod
@@ -297,12 +297,15 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
 
     @Override
     public void onPartialResults(Bundle b) {
+        try {
         String t = first(b);
         if (t != null && !t.isEmpty()) { lastPartial = t; notifyListeners("partial", new JSObject().put("text", t)); }
+            } catch (Throwable t) { listening = false; try { destroyRecognizer(); } catch (Throwable ignored) {} restart(1500); }
     }
 
     @Override
     public void onResults(Bundle b) {
+        try {
         String t = first(b);
         // Manche Tablets liefern am Ende ein leeres Ergebnis, obwohl vorher Text kam -> den nehmen
         if ((t == null || t.isEmpty()) && !lastPartial.isEmpty()) t = lastPartial;
@@ -312,10 +315,12 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         listening = false;
         destroyRecognizer();
         restart(250);
+            } catch (Throwable t) { listening = false; try { destroyRecognizer(); } catch (Throwable ignored) {} restart(1500); }
     }
 
     @Override
     public void onError(int error) {
+        try {
         listening = false;
         // "Nichts verstanden", aber vorher kam schon Text -> den Text trotzdem weitergeben
         if ((error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && !lastPartial.isEmpty()) {
@@ -348,6 +353,7 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
             default:
                 restart(1200);
         }
+            } catch (Throwable t) { listening = false; try { destroyRecognizer(); } catch (Throwable ignored) {} restart(1500); }
     }
 
     private String first(Bundle b) {

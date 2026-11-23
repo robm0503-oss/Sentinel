@@ -1,6 +1,14 @@
 package de.robsen.sentinel;
 
 import android.content.Context;
+import android.content.SharedPreferences;
+import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.UUID;
+import org.json.JSONObject;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
@@ -32,11 +40,52 @@ public class MainActivity extends BridgeActivity {
         if (autoPip && Build.VERSION.SDK_INT >= 26 && Build.VERSION.SDK_INT < 31) enterPip();
     }
 
+    // ---------------- Absturzberichte: gehen per Server an Robsens Telegram ----------------
+    private static final String ABSTURZ_URL = "https://sentinel-server.robsen-sentinel.workers.dev/v1/absturz";
+    static boolean absturzSenden(Context c, String trace) {
+        HttpURLConnection h = null;
+        try {
+            SharedPreferences sp = c.getSharedPreferences("sentinel_absturz", MODE_PRIVATE);
+            String id = sp.getString("id", null);
+            if (id == null) { id = UUID.randomUUID().toString(); sp.edit().putString("id", id).commit(); }
+            JSONObject b = new JSONObject();
+            String ver = "?";
+            try { android.content.pm.PackageInfo pi = c.getPackageManager().getPackageInfo(c.getPackageName(), 0); ver = pi.versionName + " (" + (Build.VERSION.SDK_INT >= 28 ? pi.getLongVersionCode() : pi.versionCode) + ")"; } catch (Throwable ignored) {}
+            b.put("version", ver);
+            b.put("geraet", Build.MANUFACTURER + " " + Build.MODEL + " / " + Build.DEVICE);
+            b.put("android", Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")");
+            b.put("trace", trace);
+            h = (HttpURLConnection) new URL(ABSTURZ_URL).openConnection();
+            h.setConnectTimeout(2000); h.setReadTimeout(2000); h.setDoOutput(true); h.setRequestMethod("POST");
+            h.setRequestProperty("content-type", "application/json"); h.setRequestProperty("authorization", "Bearer " + id);
+            try (OutputStream o = h.getOutputStream()) { o.write(b.toString().getBytes("UTF-8")); }
+            return h.getResponseCode() == 200;
+        } catch (Throwable e) { return false; } finally { if (h != null) h.disconnect(); }
+    }
+    private void absturzWaechter() {
+        final Context app = getApplicationContext();
+        final SharedPreferences sp = app.getSharedPreferences("sentinel_absturz", MODE_PRIVATE);
+        final String alt = sp.getString("trace", null);
+        if (alt != null) new Thread(() -> { if (absturzSenden(app, alt)) sp.edit().remove("trace").commit(); }).start();
+        final Thread.UncaughtExceptionHandler vorher = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
+            try {
+                StringWriter sw = new StringWriter(); e.printStackTrace(new PrintWriter(sw));
+                final String tr = "Thread: " + t.getName() + "\n" + sw;
+                sp.edit().putString("trace", tr).commit();
+                Thread s = new Thread(() -> { if (absturzSenden(app, tr)) sp.edit().remove("trace").commit(); });
+                s.start(); s.join(2500);
+            } catch (Throwable ignored) {}
+            if (vorher != null) vorher.uncaughtException(t, e); else System.exit(2);
+        });
+    }
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        try { absturzWaechter(); } catch (Throwable ignored) {}
         registerPlugin(SentinelVoicePlugin.class);
         super.onCreate(savedInstanceState);
-        keepOn();
+        try { keepOn(); } catch (Throwable ignored) {}
     }
 
     // Bildschirm bleibt an – Sentinel steht ja im Wohnzimmer.
@@ -54,7 +103,7 @@ public class MainActivity extends BridgeActivity {
     @SuppressWarnings("deprecation")
     public void onResume() {
         super.onResume();
-        keepOn();
+        try { keepOn(); } catch (Throwable ignored) {}
         refreshPip();
         try {
             if (screenLock == null) {

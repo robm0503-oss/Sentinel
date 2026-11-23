@@ -172,6 +172,18 @@ export async function tagesbericht(env) {
 }
 
 // Freischaltcode einlösen → Gerät wird VIP (max. 10 Versuche pro Gerät und Tag)
+// Absturzberichte der App -> Telegram an Robsen (max. 20 pro Tag)
+export async function absturzMelden(req, env, uid) {
+  const b = await req.json().catch(() => ({}));
+  const tag = new Date().toISOString().slice(0, 10);
+  const z = await env.DB.prepare("SELECT n FROM bilder WHERE uid = ? AND day = ?").bind("absturz", tag).first();
+  if (z && z.n >= 20) return new Response(JSON.stringify({ ok: true, gedrosselt: true }), { headers: { "content-type": "application/json" } });
+  await env.DB.prepare("INSERT INTO bilder (uid, day, n) VALUES (?, ?, 1) ON CONFLICT(uid, day) DO UPDATE SET n = n + 1").bind("absturz", tag).run();
+  const text = `💥 Sentinel-Absturz\nVersion: ${String(b.version || "?").slice(0, 20)}\nGerät: ${String(b.geraet || "?").slice(0, 120)}\nAndroid: ${String(b.android || "?").slice(0, 20)}\nGeräte-ID: ${uid.slice(0, 8)}\n\n${String(b.trace || "").slice(0, 3200)}`;
+  await telegram(env, text);
+  return new Response(JSON.stringify({ ok: true }), { headers: { "content-type": "application/json" } });
+}
+
 export async function codeEinloesen(req, env, uid) {
   const j = (x, st = 200) => new Response(JSON.stringify(x), { status: st, headers: { "content-type": "application/json", "access-control-allow-origin": "*" } });
   let body = {}; try { body = await req.json(); } catch (e) {}
