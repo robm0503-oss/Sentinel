@@ -3,6 +3,7 @@
 Robsen schickt tagsüber alles rein, abends wird gefixt und gesammelt hochgeladen.
 
 ## Offen (für heute Abend)
+- 24.11. Sentinel als Standard-Assistent: Eintrag als Assistent-App (Intent ASSIST / VoiceInteractionService), damit langes Drücken der Ein/Aus-Taste bzw. Wischen aus der Ecke Sentinel startet und er sofort zuhört – auch aus anderen Apps. Store-konform. Einrichtungsschritt „Als Assistent einstellen“ mit Knopf zu den Android-Einstellungen.
 - Absturz-Ursache 1.88: wartet auf ersten Absturzbericht per Telegram (Wächter seit 1.90)
 
 ## Wünsche (größer, nicht für die Abend-Runde)
