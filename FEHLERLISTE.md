@@ -3,16 +3,14 @@
 Robsen schickt tagsüber alles rein, abends wird gefixt und gesammelt hochgeladen.
 
 ## Offen (für heute Abend)
-- 23.11. (Ronny) Beantwortet/schickt immer wieder alte Fragen nochmal. Verdacht: Im Verlauf bleiben Nutzerfragen ohne Antwort stehen (nach Fehler/Limit/„keine Antwort“) → das Gehirn holt sie nach. Fix: unbeantwortete Fragen im Verlauf als erledigt markieren oder entfernen, Verlauf kürzen, Regel „nur die letzte Nachricht beantworten“ (v82) prüfen.
-- 23.11. (Ronny) Sentinel behauptet Aktionen, die er nicht gemacht hat („Einkaufsliste aufs Handy geschickt“ – stimmte nicht, er hat sich danach selbst korrigiert). Regel: Aktionen nur bestätigen, wenn das Werkzeug wirklich aufgerufen wurde und ok meldete; App-seitig prüfen: sagt die Antwort „geschickt/gespeichert/erinnert“ ohne passenden Werkzeugaufruf → nachfassen lassen.
-- Anleitung zum Start kompakt (Gratis / Ab Abo, Details zum Aufklappen) – noch offen
-- Absturz-Ursache 1.88 (Google: „stürzt nach dem Öffnen ab“): Absturzberichte gehen ab 1.89 automatisch per Telegram an Robsen → dann gezielt fixen
+- Absturz-Ursache 1.88: wartet auf ersten Absturzbericht per Telegram (Wächter seit 1.90)
 
 ## Wünsche (größer, nicht für die Abend-Runde)
 - Noch offen: Health Connect (Samsung Health/Google Fit: Schlaf, Puls) · Sentinel teilen / NFC-Übergabe · WhatsApp Business als Plus-Funktion (Cloud-API, Meta-Verifizierung, Kosten pro Nachricht) · Homescreen-Widget · Pakete vom Server nachladen · Video-KI voll automatisch · Preisvergleich mit echter Prospekt-Datenquelle (Lizenz/Partner) statt Websuche
 - Neuheiten-Regel: Bei jeder neuen Funktion APP_VERSION erhöhen und in NEUHEITEN eintragen → Sentinel fragt beim nächsten Öffnen „Möchtest du meine neuen Funktionen kennenlernen?“
 
 ## Erledigt
+- 24.11. (v83, Store 1.91): „Was ich kann“ kompakt – Kästchen pro Fähigkeit, sortiert nach Gratis / Basis / Plus (Pakete) / Pro / Business, eigenes Abo markiert, ohne „Neu in Version“ · 💬-Knopf oben + Einstellung: Text auf dem Display ein/aus · Gezeigte Übersicht + „Was möchtest du einrichten?“ landen im Verlauf (kein „hab ich nicht gezeigt“ mehr) · Behauptete Aktionen ohne Werkzeug → einmal automatisch nachfassen (ausführen oder ehrlich sagen) · alte Fragen nicht nochmal beantworten (Regel seit v82)
 - 23.11. (v82, Store 1.89) nach Google-Entfernung („stürzt nach dem Öffnen ab“): Absturz-Wächter (Stacktrace + Gerät + Android-Version → Server → Telegram an Robsen), Spracherkennung/Sprachausgabe/Start abgesichert (keine Abstürze mehr durch Fehler in Rückrufen), WLAN-Hardware optional · Jede Frage zählt, gratis nur Name & Wohnort (Server) · Ausreden lassen: 2 s Wartezeit nach Satzende, Einstellung „Ich spreche mit Pausen“ (3 s) · Korrekturen ersetzen alte Infos inkl. Terminen · keine ungefragten Wiederholungen (Wetter, Rezept per Telegram)
 - 18.11. abends (v81, Store 1.88): Antworten als Text/Untertitel (abschaltbar) · Antippen während Sentinel spricht = sofort still · Telegram-Assistent in den Einstellungen (BotFather öffnen, Token einfügen, Chat-ID automatisch + Begrüßung) · Gratis beim Kennenlernen nur noch fürs Kennenlernen/Einrichten (fremde Themen per [extra] oder Nutz-Werkzeug zählen normal, Server)
 - 17./18.11. nachts – **v80 „Was die Großen können“** (Store 1.87):

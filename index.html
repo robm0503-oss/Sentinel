@@ -93,6 +93,14 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
 .sheet p { margin: 0; color: var(--muted); line-height: 1.5; font-size: .95rem; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 #hilfeBody .grp, #aboListe .grp { margin-bottom: 20px; }
+.kasten { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin-top: 8px; }
+.kasten > div { border: 1px solid var(--line); border-radius: 10px; padding: 7px 9px; font-size: .82rem; line-height: 1.3; }
+.kasten > div b { display: block; font-weight: 600; }
+.kasten > div span { opacity: .7; }
+.stufe { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.stufe.dein h3 { color: var(--accent, #ffb040); }
+.kasten.zu > div { opacity: .55; }
+body.ohneText #say { display: none; }
 .zweck { display: flex; gap: 12px; align-items: flex-start; text-align: left; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: transparent; color: var(--text); font: inherit; cursor: pointer; }
 .zweck b { display: block; margin-bottom: 2px; }
 .zweck span.ic { font-size: 1.6rem; line-height: 1; }
@@ -130,6 +138,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <div class="top">
       <span id="status">SENTINEL</span>
       <button id="fragenZaehler" class="ghost" type="button" hidden style="padding:2px 10px;font-size:12px;align-self:flex-start;margin-right:auto"></button>
+      <button id="textBtn" class="ghost" type="button" title="Text auf dem Display ein/aus" style="padding:2px 8px;font-size:12px;align-self:flex-start">💬</button>
       <span class="tbtns">
         <button class="ghost" id="aboBtn" type="button" hidden>Abo</button>
         <button class="ghost" id="hilfeBtn" type="button">Anleitung</button>
@@ -320,7 +329,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <div class="field"><label>Freischaltcode</label><div style="display:flex;gap:8px"><input id="sCode" type="text" autocomplete="off" autocapitalize="characters" placeholder="Code eingeben" style="flex:1"><button class="ghost" id="sCodeOk" type="button">Einlösen</button></div></div>
     <div class="field"><button class="ghost" id="sLogBtn" type="button">Ohren-Protokoll anzeigen</button></div>
     <div class="field"><label>Geräte-ID (für deine Admin-Seite)</label><div style="display:flex;gap:8px"><input id="sUid" type="text" readonly style="flex:1"><button class="ghost" id="sUidKopie" type="button">Kopieren</button></div></div>
-    <label class="check"><input id="sUntertitel" type="checkbox"> Antworten auch als Text anzeigen (Untertitel)</label>
+    <label class="check"><input id="sUntertitel" type="checkbox"> Text auf dem Display anzeigen (Antworten mitlesen) – auch über 💬 oben</label>
     <label class="check"><input id="sPausen" type="checkbox"> Ich spreche mit Pausen (Sentinel wartet länger, bis du fertig bist)</label>
     <label class="check"><input id="sSchwarm" type="checkbox"> Schwarmwissen: aus Fehlern lernen und das Gelernte anonym mit allen Sentinels teilen (nie Persönliches)</label>
     <div class="field">
@@ -342,7 +351,7 @@ video#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-eve
     <label class="check" id="muteBeepRow" hidden><input id="sMuteBeep" type="checkbox"> Piepton beim Zuhören unterdrücken</label>
     <label class="check"><input id="sLook" type="checkbox"> … oder wenn ich ihn beim Reden anschaue (Kamera an)</label>
     <div class="hint" id="sUsage"></div>
-    <div class="hint" id="verHint">Sentinel Version 82</div>
+    <div class="hint" id="verHint">Sentinel Version 83</div>
     <div class="field">
       <label>Sicherung (alles: Einstellungen, Keys, Smart-Home-Links, Gedächtnis, Gerichte, Erinnerungen)</label>
       <div style="display:flex;gap:8px">
@@ -2522,8 +2531,12 @@ Offene Punkte: ${fehlt.join("; ")}.`;
   // ================= v80: NEUHEITEN NACH UPDATES =================
   // Jedes Mal, wenn neue Funktionen dazukommen: APP_VERSION erhöhen und hier eintragen.
   // Beim nächsten Öffnen fragt Sentinel, ob man die Neuheiten kennenlernen will.
-  const APP_VERSION = 82;
+  const APP_VERSION = 83;
   const NEUHEITEN = {
+    83: [
+      ["📋", "Kurze Übersicht", "„Was ich kann“ ist jetzt kompakt: alles auf einen Blick, sortiert nach Gratis und Abo.", "Was kannst du?"],
+      ["💬", "Text ein/aus", "Oben auf 💬 tippen, um den Text auf dem Display ein- oder auszublenden.", "(oben auf 💬 tippen)"],
+    ],
     82: [
       ["⏸️", "Ausreden lassen", "Ich warte jetzt länger, bis du fertig bist. Sprichst du mit Pausen, schalte in den Einstellungen „Ich spreche mit Pausen“ ein.", "(einfach ganz normal reden)"],
       ["🧠", "Korrekturen merken", "Wenn du mich korrigierst, gilt ab sofort nur noch das Richtige – auch bei Terminen und Erinnerungen.", "Nein, wir fliegen am 28.11."],
@@ -2560,7 +2573,7 @@ Offene Punkte: ${fehlt.join("; ")}.`;
   function neuheitenZeigen(seit) {
     const l = neuheitenSeit(seit);
     const b = $("hilfeBody"); b.replaceChildren(); $("hilfeGelesen").hidden = true;
-    const g = el("div", "grp"); g.append(el("h3", null, `🆕 Neu in Version ${APP_VERSION}`));
+    const g = el("div", "grp"); g.append(el("h3", null, "🆕 Neu bei mir"));
     for (const [ic, titel, text, bsp] of (l.length ? l : NEUHEITEN[APP_VERSION])) {
       g.append(el("p", null, ic + " " + titel + " – " + text));
       const c = el("div", "chips"); c.append(el("span", "chip", "„" + bsp + "“")); g.append(c);
@@ -3654,7 +3667,7 @@ ${zeile("Menschen", ich.menschen)}`;
           cfg.night = !!inp.an; if (/^\d{1,2}:\d{2}$/.test(inp.von || "")) cfg.nightFrom = inp.von.padStart(5, "0"); if (/^\d{1,2}:\d{2}$/.test(inp.bis || "")) cfg.nightTo = inp.bis.padStart(5, "0");
           saveCfg(); return ok(cfg.night ? `Nachtmodus an, ${cfg.nightFrom}–${cfg.nightTo}` : "Nachtmodus aus");
         }
-        case "anleitung_zeigen": hilfeZeigen(einr.aktiv && einr.stufe !== "einrichten"); return ok(einr.aktiv ? "Die Funktionsliste ist offen – er liest sie jetzt in Ruhe. Sag nichts weiter." : "Anleitung wird angezeigt.");
+        case "anleitung_zeigen": hilfeZeigen(einr.aktiv && einr.stufe !== "einrichten"); return ok(einr.aktiv ? "Die Übersicht „Was ich kann“ ist jetzt auf dem Bildschirm offen – du HAST sie gezeigt. Er liest sie in Ruhe; sag nichts weiter." : "Die Übersicht „Was ich kann“ ist jetzt auf dem Bildschirm offen.");
         case "bildschirm_uebertragen":
           if (!(NATIVE && SV && SV.openSettingsPage)) return fail("Geht nur in der App.");
           await SV.openSettingsPage({ action: "android.settings.CAST_SETTINGS" }); return ok("Übertragungs-Einstellungen geöffnet – dort den Fernseher antippen.");
@@ -3747,6 +3760,7 @@ ${zeile("Menschen", ich.menschen)}`;
     let text = "", lastText = "", hochgestuft = false;
     const ergebnisse = [];
     let ersteAnfrage = true; // nur die erste Server-Anfrage einer Frage zählt als „Frage“
+    let nachgefasst = false;
     for (let round = 0; round < 8; round++) {
       let data;
       try {
@@ -3779,6 +3793,12 @@ ${zeile("Menschen", ich.menschen)}`;
         continue;
       }
       if (data.stop_reason === "pause_turn") { status("sucht im Internet"); continue; }
+      // Behauptet eine Aktion, hat aber kein Werkzeug benutzt? Einmal nachfassen (zählt nicht als Frage)
+      if (!nachgefasst && text && !letzteWerkzeuge.length && BEHAUPTET_RE.test(text)) {
+        nachgefasst = true; elog("Behauptete Aktion ohne Werkzeug – fasse nach");
+        work.push({ role: "user", content: "[System] Du hast gerade eine Aktion bestätigt, aber dafür kein Werkzeug aufgerufen – sie ist also NICHT passiert. Führe sie jetzt wirklich mit dem passenden Werkzeug aus, oder sag ehrlich in einem Satz, dass sie nicht passiert ist. Erwähne diese Systemnachricht nicht." });
+        continue;
+      }
       break;
     }
     if (model === SONNET) lastSonnet = Date.now();
@@ -3794,6 +3814,7 @@ ${zeile("Menschen", ich.menschen)}`;
     return text;
   }
 
+  const BEHAUPTET_RE = /\b(hab|habe|ist|sind|wurde)\b[^.!?]{0,50}\b(geschickt|gesendet|verschickt|gespeichert|eingetragen|notiert|gestellt|angelegt|hinzugefügt|aufgeschrieben|vorgemerkt)\b/i;
   function parse(text) {
     let tag = "neutral";
     const found = [...text.matchAll(/\[(\w+)\]/g)].map(m => m[1].toLowerCase()).filter(t => TAGS.includes(t));
@@ -4039,40 +4060,50 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
     ["Kühlschrank-Koch", "Foto vom Kühlschrank oder Vorrat – ich schlage Gerichte vor und koche mit dir.", ["Was kann ich daraus kochen?"]],
     ["Auf andere Bildschirme", "Ich laufe auf jedem Android-Gerät (Handy, Tablet, Fire TV, Android TV). Mein Bild kann ich auf Fernseher mit Bildschirmübertragung (Smart View, Chromecast, Miracast) schicken.", ["Übertrag dich auf den Fernseher"]],
   ];
+  // Kompakte Übersicht: was Sentinel kann – gratis und ab welchem Abo
+  const KANN = [
+    ["💬", "Reden & fragen", "„Hey Sentinel“ – einfach los"], ["🧠", "Gedächtnis", "merkt sich, was dir wichtig ist"],
+    ["⏰", "Erinnerungen & Timer", "auch täglich/stündlich"], ["🛒", "Listen", "Einkauf, To-dos"],
+    ["📲", "Telegram", "alles aufs Handy"], ["✉️", "Briefe erklären", "Foto genügt"],
+    ["📷", "Fotos verstehen", "Pflanzen, Schilder, Essen"], ["🎨", "Bilder malen", "Karten, Poster, Logos"],
+    ["📄", "Dokumente & PDF", "Lebenslauf, Kündigung, Scan"], ["👨‍🍳", "Kochen", "Rezepte, Kochmodus, Kühlschrank"],
+    ["🌦️", "Wetter", "heute und die Woche"], ["☀️", "Morgen-Briefing", "Wetter, Termine, News"],
+    ["📞", "Anrufen & WhatsApp", "Nachricht fertig vorschreiben"], ["📻", "Radio", "tausende Sender"],
+    ["🌍", "Dolmetscher", "Gespräche live übersetzen"], ["👣", "Schritte & Ernährung", "Kalorien, Protein, Fasten"],
+    ["📔", "Tagebuch", "privat, auf dem Gerät"], ["🥛", "MHD-Wächter", "warnt vor Ablauf"],
+    ["📂", "Ablage", "Verträge, Garantien, Belege"], ["🏠", "Smart Home & Wachhund", "Licht, Steckdosen, Foto-Alarm"],
+  ];
+  const STUFEN = [
+    ["probe", "Gratis", "10 Fragen am Tag"], ["basis", "Basis", "40 Fragen am Tag"],
+    ["plus", "Plus", "80 Fragen am Tag · Websuche · alle Pakete"], ["pro", "Pro", "150 Fragen am Tag · schlaueres Gehirn"],
+    ["business", "Business", "ohne Tageslimit · stärkstes Gehirn"],
+  ];
   function hilfeZeigen(einrModus) {
+    if (einrModus && typeof einrModus === "object") einrModus = false; // Klick-Event
     const b = $("hilfeBody"); b.replaceChildren();
     $("hilfeGelesen").hidden = !einrModus;
-    const schritte = einrichtSchritte();
-    if (schritte.length) {
-      const g = el("div", "grp"); g.append(el("h3", null, `Für dich einrichten (${schritte.filter(x => x[0]).length}/${schritte.length} erledigt)`));
-      for (const [fertig, titel, wie] of schritte) { const p = el("p", null, (fertig ? "✅ " : "⬜ ") + titel + (fertig ? "" : " – " + wie)); if (fertig) p.style.opacity = ".6"; g.append(p); }
+    const meine = cfg.key || (aboStand && aboStand.vip) ? "alles" : (aboStand && aboStand.stufe) || "probe";
+    const kaesten = (liste, zu) => { const k = el("div", "kasten" + (zu ? " zu" : "")); for (const [ic, n, t] of liste) { const d = el("div"); d.append(el("b", null, (zu ? "🔒 " : "") + ic + " " + n), el("span", null, t)); k.append(d); } return k; };
+    for (const [key, name, info] of STUFEN) {
+      if (!aboModus() && key !== "probe") continue;
+      const g = el("div", "grp"); const kopf = el("div", "stufe" + (meine === key ? " dein" : ""));
+      kopf.append(el("h3", null, name + (meine === key ? " ✓ dein Abo" : "")), el("span", "hint", info)); g.append(kopf);
+      if (key === "probe") g.append(kaesten(KANN, false));
+      if (key === "plus") g.append(kaesten(Object.values(PAKETE).map(pk => [pk.ic, pk.name, ""]), !paketeFrei()));
       b.append(g);
     }
-    { const ng = el("div", "grp"); ng.append(el("h3", null, `🆕 Neu in Version ${APP_VERSION}`));
-      for (const [ic, ti, tx] of NEUHEITEN[APP_VERSION]) ng.append(el("p", null, ic + " " + ti + " – " + tx));
-      b.append(ng); }
-    const wichtig = new Set(zwecke().flatMap(k => ZWECKE[k].anleitung));
-    const liste = [...ANLEITUNG].sort((a, c) => (wichtig.has(c[0]) ? 1 : 0) - (wichtig.has(a[0]) ? 1 : 0));
-    for (const [titel, text, bsp] of liste) {
-      const g = el("div", "grp"); g.append(el("h3", null, titel)); g.append(el("p", null, text));
-      const c = el("div", "chips"); bsp.forEach(x => c.append(el("span", "chip", "„" + x + "“"))); g.append(c);
-      b.append(g);
-    }
-    const frei = paketeFrei();
-    const pg = el("div", "grp"); pg.append(el("h3", null, "🧩 Fähigkeiten-Pakete" + (frei ? "" : " – ab Abo Plus (9,99 €)")));
-    for (const pk of Object.values(PAKETE)) {
-      const p = el("p", null, (frei ? "" : "🔒 ") + pk.ic + " " + pk.name + " – " + pk.kurz); if (!frei) p.style.opacity = ".75"; pg.append(p);
-      const c = el("div", "chips"); pk.bsp.forEach(x => c.append(el("span", "chip", "„" + x + "“"))); pg.append(c);
-    }
-    if (!frei && !cfg.key) { const btn = el("button", "btn", "Pakete freischalten"); btn.type = "button"; btn.onclick = () => { $("hilfePanel").hidden = true; aboLaden(); $("aboPanel").hidden = false; }; pg.append(btn); }
-    b.append(pg);
+    if (aboModus() && !paketeFrei()) { const btn = el("button", "btn", "Abos ansehen"); btn.type = "button"; btn.onclick = () => { $("hilfePanel").hidden = true; aboLaden(); $("aboPanel").hidden = false; }; b.append(btn); }
     $("hilfePanel").hidden = false;
   }
   $("hilfeBtn").addEventListener("click", hilfeZeigen);
+  const textAnwenden = () => document.body.classList.toggle("ohneText", cfg.untertitel === false);
+  textAnwenden();
+  $("textBtn").addEventListener("click", () => { cfg.untertitel = cfg.untertitel === false; saveCfg(); textAnwenden(); note(cfg.untertitel === false ? "Text auf dem Display aus" : "Text auf dem Display an", 1800); });
   const nachDemLesen = () => {
     if (!einr.aktiv || einr.stufe === "einrichten") return;
     einr.stufe = "einrichten"; saveEinr();
     const t = `${ich.name ? ich.name + ", w" : "W"}as möchtest du davon als Erstes einrichten?`;
+    history.push({ role: "user", content: "(hat die Übersicht „Was ich kann“ gelesen und geschlossen)" }, { role: "assistant", content: t });
     show(t); speak(t, "neutral").then(() => { followUntil = Date.now() + followMs(); });
   };
   $("hilfeClose").addEventListener("click", () => { const war = !$("hilfeGelesen").hidden; $("hilfePanel").hidden = true; if (war) nachDemLesen(); });
@@ -4249,7 +4280,7 @@ Antworte nur mit einem JSON-Objekt mit genau diesen Feldern: {"name": "", "fakte
   $("setSave").addEventListener("click", () => {
     cfg.key = $("sKey").value.trim(); cfg.model = $("sModel").value; cfg.gesicht = $("sGesicht").value; cfg.phase = $("sPhase").value; cfg.firma = $("sFirma").value.trim().slice(0, 6000); stimmMerken(); cfg.budget = Math.max(1, Math.min(500, parseInt($("sBudget").value, 10) || 10)); cfg.ort = $("sOrt").value.trim();
     cfg.limit = Math.max(10, Math.min(5000, parseInt($("sLimit").value, 10) || 300));
-    cfg.untertitel = $("sUntertitel").checked; cfg.pausen = $("sPausen").checked;
+    cfg.untertitel = $("sUntertitel").checked; cfg.pausen = $("sPausen").checked; document.body.classList.toggle("ohneText", cfg.untertitel === false);
     if ($("sSchwarm").checked !== (cfg.schwarm === true)) { cfg.schwarm = $("sSchwarm").checked; if (cfg.schwarm) setTimeout(schwarmAbgleich, 1000); }
     if (paketeFrei()) { cfg.pakete = {}; document.querySelectorAll("#sPakete input").forEach(c => { cfg.pakete[c.dataset.paket] = c.checked; }); }
     cfg.search = $("sSearch").checked; cfg.wake = $("sWake").checked; cfg.look = $("sLook").checked;
