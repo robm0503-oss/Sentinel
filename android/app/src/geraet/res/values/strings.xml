@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Sentinel Gerätesteuerung</string>
+    <string name="title_activity_main">Sentinel Gerätesteuerung</string>
+    <string name="steuerung_name">Sentinel Gerätesteuerung</string>
+    <string name="steuerung_beschreibung">Erlaubt Sentinel, auf deinen Befehl Apps zu bedienen: Bildschirm lesen, tippen, schreiben und scrollen. Sentinel handelt nur, wenn du ihn darum bittest. Passwörter und Zahlungen gibt Sentinel nie ein.</string>
+</resources>

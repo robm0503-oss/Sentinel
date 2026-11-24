@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Gerätesteuerung: Sentinel darf (nach ausdrücklicher Freigabe in den Bedienungshilfen) den Bildschirm lesen und tippen -->
+        <service
+            android:name="de.robsen.sentinel.SentinelGeraetesteuerung"
+            android:exported="false"
+            android:label="@string/steuerung_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/geraetesteuerung" />
+        </service>
+    </application>
+</manifest>

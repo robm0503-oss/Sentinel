@@ -38,6 +38,16 @@ android {
             keyPassword 'android'
         }
     }
+    // Zwei Ausführungen: „store“ = Play-Store-Version, „geraet“ = Testversion mit Gerätesteuerung (nur per Download, nie im Store)
+    flavorDimensions "art"
+    productFlavors {
+        store { dimension "art" }
+        geraet {
+            dimension "art"
+            applicationIdSuffix ".geraet"
+            versionNameSuffix "-geraet"
+        }
+    }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug

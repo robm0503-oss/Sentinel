@@ -512,6 +512,52 @@ public class SentinelVoicePlugin extends Plugin implements RecognitionListener {
         main.post(warte);
     }
 
+    // ---------------- Gerätesteuerung (nur Test-Ausführung „geraet“) ----------------
+    @PluginMethod
+    public void steuerungStatus(PluginCall call) {
+        boolean verfuegbar;
+        try { getContext().getPackageManager().getServiceInfo(new android.content.ComponentName(getContext(), SentinelGeraetesteuerung.class), 0); verfuegbar = true; }
+        catch (Exception e) { verfuegbar = false; }
+        call.resolve(new JSObject().put("verfuegbar", verfuegbar).put("aktiv", SentinelGeraetesteuerung.instanz != null));
+    }
+
+    @PluginMethod
+    public void steuerungEinrichten(PluginCall call) {
+        try {
+            android.content.Intent i = new android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS);
+            i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(i);
+            call.resolve();
+        } catch (Exception e) { call.reject("Einstellungen ließen sich nicht öffnen: " + e.getMessage()); }
+    }
+
+    @PluginMethod
+    public void steuerung(PluginCall call) {
+        final SentinelGeraetesteuerung g = SentinelGeraetesteuerung.instanz;
+        if (g == null) { call.reject("Die Gerätesteuerung ist noch nicht eingeschaltet (Einstellungen → Bedienungshilfen → Sentinel Gerätesteuerung)."); return; }
+        final String aktion = call.getString("aktion", "lesen");
+        new Thread(() -> {
+            try {
+                boolean ok = true;
+                switch (aktion) {
+                    case "lesen": break;
+                    case "tippen": ok = g.tippen(call.getInt("nr", -1), false); break;
+                    case "lang_tippen": ok = g.tippen(call.getInt("nr", -1), true); break;
+                    case "schreiben": ok = g.schreiben(call.getInt("nr", -1), call.getString("text", "")); break;
+                    case "wischen": ok = g.wischen(call.getString("richtung", "runter")); break;
+                    case "zurueck": case "home": case "apps": case "benachrichtigungen": ok = g.global(aktion); break;
+                    case "warten": break;
+                    default: throw new IllegalArgumentException("unbekannte Aktion: " + aktion);
+                }
+                if (!"lesen".equals(aktion)) Thread.sleep("warten".equals(aktion) ? 2000 : 1100);
+                JSObject r = new JSObject();
+                r.put("ok", ok);
+                r.put("bildschirm", g.lesen().toString());
+                call.resolve(r);
+            } catch (Throwable e) { call.reject(e.getMessage() != null ? e.getMessage() : e.toString()); }
+        }).start();
+    }
+
     @PluginMethod
     public void setVoice(PluginCall call) {
         voiceName = call.getString("name");

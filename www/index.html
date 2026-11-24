@@ -2528,6 +2528,12 @@ Offene Punkte: ${fehlt.join("; ")}.`;
     try { if (NATIVE && SV && SV.stopSpeaking) SV.stopSpeaking().catch(() => {}); else if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel(); } catch (e) {}
     elog("Angetippt – Sprechen gestoppt"); status("still");
   }
+  // ================= GERÄTESTEUERUNG (nur Test-App „Sentinel Gerätesteuerung“) =================
+  let steuerung = { verfuegbar: false, aktiv: false };
+  async function steuerungPruefen() { try { if (NATIVE && SV && SV.steuerungStatus) steuerung = await SV.steuerungStatus(); } catch (e) {} return steuerung; }
+  setTimeout(steuerungPruefen, 1500);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") steuerungPruefen(); });
+  const bildschirmKurz = j => { try { const o = JSON.parse(j); return "App: " + (o.app || "?") + "\n" + (o.elemente || []).map(e => `[${e.nr}] ${e.art}${e.passwort ? " (Passwort)" : ""}${e.text ? ": " + e.text : ""}`).join("\n"); } catch (e) { return String(j).slice(0, 6000); } };
   // ================= v80: NEUHEITEN NACH UPDATES =================
   // Jedes Mal, wenn neue Funktionen dazukommen: APP_VERSION erhöhen und hier eintragen.
   // Beim nächsten Öffnen fragt Sentinel, ob man die Neuheiten kennenlernen will.
@@ -2777,7 +2783,8 @@ Offene Punkte: ${fehlt.join("; ")}.`;
 
   // ================= v80: REGELN FÜR DAS GEHIRN =================
   function v80Regeln() {
-    return `GESPRÄCHSREGELN: Beantworte immer nur die aktuelle Frage. Wiederhole oder „aktualisiere“ frühere Antworten (z. B. Wetter, Rezepte) nie ungefragt. Wird dir etwas korrigiert („Nein, der 28.11., nicht der 28.12.“), gilt ab sofort NUR die Korrektur: mit merke_dir die richtige Info speichern und die falsche mit vergiss löschen, betroffene Erinnerungen/Termine löschen und richtig neu anlegen, und danach nie wieder die alte Angabe verwenden. Schicke per Telegram nur, was gerade verlangt wurde – nie frühere Inhalte nochmal.
+    return (steuerung.verfuegbar ? `GERÄTESTEUERUNG (Test): Mit geraet_steuern kannst du Apps auf diesem Gerät bedienen – NUR wenn dein Gegenüber dich ausdrücklich darum bittet. Vorgehen: App mit app_oeffnen starten, dann lesen, einen Schritt nach dem anderen (tippen/schreiben/wischen), nach jedem Schritt den neuen Bildschirm prüfen. Sag kurz, was du tust. Harte Grenzen: niemals Passwörter, PINs, Bank-/Kartendaten eingeben, nichts kaufen oder bezahlen, keine Konten anlegen oder Bedingungen akzeptieren – das macht dein Gegenüber selbst. VOR dem Absenden von Nachrichten, Posten, Löschen oder Ändern von Einstellungen: fertig vorbereiten, dann anhalten und fragen „Soll ich abschicken?“. Bei Anmeldeseiten oder wenn du nicht weiterkommst: anhalten und erklären. Ist die Steuerung nicht eingeschaltet, biete aktion einrichten an.
+` : "") + `GESPRÄCHSREGELN: Beantworte immer nur die aktuelle Frage. Wiederhole oder „aktualisiere“ frühere Antworten (z. B. Wetter, Rezepte) nie ungefragt. Wird dir etwas korrigiert („Nein, der 28.11., nicht der 28.12.“), gilt ab sofort NUR die Korrektur: mit merke_dir die richtige Info speichern und die falsche mit vergiss löschen, betroffene Erinnerungen/Termine löschen und richtig neu anlegen, und danach nie wieder die alte Angabe verwenden. Schicke per Telegram nur, was gerade verlangt wurde – nie frühere Inhalte nochmal.
 NEUE FÄHIGKEITEN:
 - Anrufen (anrufen) und WhatsApp/SMS (nachricht_vorbereiten): Nummern, die du kennst (aus dem Gedächtnis), direkt nutzen; sonst nach der Nummer fragen und anbieten, sie dir zu merken. Du schickst nie selbst – du öffnest die fertige Nachricht, gesendet wird mit einem Tipp.
 - Radio (radio): Sender oder Musikrichtung abspielen. Läuft Radio, hört er/sie dich nur nach Antippen.
@@ -2794,7 +2801,7 @@ NEUE FÄHIGKEITEN:
 - Neuheiten: Fragt jemand „Was ist neu?“, nutze neuheiten_zeigen und fasse kurz zusammen.
 `;
   }
-  const v80Info = () => fitInfo() + mhdInfo() + dolmInfo() + neuInfo() + (radioEl ? `\nRADIO läuft: ${radioName}.` : "") + (cfg.briefing ? `\nMorgen-Briefing ist täglich um ${cfg.briefing} eingestellt.` : "");
+  const v80Info = () => (steuerung.verfuegbar ? `\nGerätesteuerung: ${steuerung.aktiv ? "eingeschaltet" : "noch nicht eingeschaltet"}.` : "") + fitInfo() + mhdInfo() + dolmInfo() + neuInfo() + (radioEl ? `\nRADIO läuft: ${radioName}.` : "") + (cfg.briefing ? `\nMorgen-Briefing ist täglich um ${cfg.briefing} eingestellt.` : "");
 
   // ================= REISEN =================
   function reiseLink(inp) {
@@ -3231,6 +3238,10 @@ ${zeile("Menschen", ich.menschen)}`;
       { name: "scannen", description: "Dokumenten-Scanner: macht aus dem zuletzt angehängten Foto (oder dem Kamerabild) ein sauberes PDF. seite = Seite sammeln (mehrseitig), fertig = PDF erstellen (titel), abbrechen. farbig=true behält die Farben (Standard: Schwarzweiß, kontrastreich).",
         input_schema: obj({ aktion: { type: "string", enum: ["seite", "fertig", "abbrechen"] }, titel: { type: "string" }, farbig: { type: "boolean" } }, ["aktion"]) },
     );
+    if (steuerung.verfuegbar) t.push(
+      { name: "geraet_steuern", description: "Gerätesteuerung: bedient das Handy/Tablet wie ein Mensch. aktion: einrichten (öffnet die Bedienungshilfen zum Einschalten), lesen (Bildschirm als nummerierte Liste), tippen/lang_tippen (nr aus lesen), schreiben (nr eines Eingabefelds + text), wischen (richtung hoch/runter/links/rechts), zurueck, home, apps, benachrichtigungen, warten. Nach jeder Aktion kommt der neue Bildschirm zurück. Apps startest du mit app_oeffnen.",
+        input_schema: obj({ aktion: { type: "string", enum: ["einrichten", "lesen", "tippen", "lang_tippen", "schreiben", "wischen", "zurueck", "home", "apps", "benachrichtigungen", "warten"] }, nr: { type: "integer" }, text: { type: "string" }, richtung: { type: "string", enum: ["hoch", "runter", "links", "rechts"] } }, ["aktion"]) },
+    );
     if (NATIVE && SV) t.push(
       { name: "anrufen", description: "Öffnet die Telefon-App mit der Nummer – man muss nur noch auf den grünen Hörer tippen.",
         input_schema: obj({ nummer: { type: "string" }, name: { type: "string" } }, ["nummer"]) },
@@ -3614,6 +3625,13 @@ ${zeile("Menschen", ich.menschen)}`;
           const r = await scanPdf(String(inp.titel || "Scan " + new Date().toLocaleDateString("de-DE")), seiten, !inp.farbig); scanSeiten = [];
           return ok(r + ` (${seiten.length} Seite${seiten.length > 1 ? "n" : ""})`);
         }
+        case "geraet_steuern": {
+          if (inp.aktion === "einrichten") { await SV.steuerungEinrichten(); return ok("Die Bedienungshilfen sind offen. Erklär kurz: dort „Sentinel Gerätesteuerung“ antippen, einschalten und bestätigen – danach zurück zu Sentinel."); }
+          await steuerungPruefen();
+          if (!steuerung.aktiv) return fail("Die Gerätesteuerung ist noch nicht eingeschaltet. Biete an, sie einzurichten (aktion einrichten).");
+          const r = await SV.steuerung({ aktion: inp.aktion, nr: inp.nr, text: inp.text, richtung: inp.richtung });
+          return ok((r.ok === false ? "Hinweis: Die Aktion wurde evtl. nicht ausgeführt.\n" : "") + "Bildschirm jetzt:\n" + bildschirmKurz(r.bildschirm));
+        }
         case "anrufen": {
           const nr = nummerSauber(inp.nummer); if (nr.replace("+", "").length < 3) return fail("Ich brauche die Telefonnummer.");
           try { await SV.openUrl({ url: "tel:" + nr }); } catch (e) { return fail("Auf diesem Gerät gibt es keine Telefon-App."); }
@@ -3761,7 +3779,8 @@ ${zeile("Menschen", ich.menschen)}`;
     const ergebnisse = [];
     let ersteAnfrage = true; // nur die erste Server-Anfrage einer Frage zählt als „Frage“
     let nachgefasst = false;
-    for (let round = 0; round < 8; round++) {
+    let maxRunden = 8;
+    for (let round = 0; round < maxRunden; round++) {
       let data;
       try {
         const sys = systemBlocks();
@@ -3784,6 +3803,7 @@ ${zeile("Menschen", ich.menschen)}`;
       if (text) lastText = text;
       if (data.stop_reason === "tool_use") {
         if (data.content.some(c => c.type === "server_tool_use")) status("sucht im Internet");
+        if (data.content.some(c => c.type === "tool_use" && c.name === "geraet_steuern")) maxRunden = 30; // Gerätesteuerung braucht viele kleine Schritte
         const res = await Promise.all(data.content.filter(c => c.type === "tool_use").map(runTool));
         data.content.filter(c => c.type === "tool_use").forEach((c, i) => {
           const r = res[i]; if (!r.is_error) letzteWerkzeuge.push(c.name); else schwarmFehler(c.name, r.content); elog(`Werkzeug ${c.name}: ${r.is_error ? "FEHLER " : ""}${String(r.content).slice(0, 90)}`);
