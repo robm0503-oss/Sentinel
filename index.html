@@ -2516,7 +2516,7 @@ Offene Punkte: ${fehlt.join("; ")}.`;
       const an = Object.keys(PAKETE).filter(paketAn);
       return an.length ? "FÄHIGKEITEN-PAKETE (aktiv):\n" + an.map(k => "- " + PAKETE[k].regeln).join("\n") + "\n" : "";
     }
-    return `FÄHIGKEITEN-PAKETE (gesperrt, ab Abo Plus 9,99 €): ${Object.values(PAKETE).map(p => p.name).join(", ")}. Fragt jemand nach etwas, das genau zu einem dieser Pakete gehört, hilf mit dem, was du ohne Paket kannst, und sag in EINEM Satz, dass das Paket „…“ das noch besser kann und ab Plus enthalten ist – biete an, die Abos zu zeigen (abo_zeigen). Nicht aufdringlich, höchstens einmal pro Gespräch.\n`;
+    return `FÄHIGKEITEN-PAKETE (gesperrt, ab Abo Plus 9,99 €): ${Object.values(PAKETE).map(p => p.name + " (" + p.kurz + ")").join("; ")}.\nREGEL GESPERRTE PAKETE: Fragt jemand nach etwas, das zu einem dieser Pakete gehört (z. B. Ernährungs- oder Trainingsplan, Preisvergleich, Quiz-Show, Reiseplan, Kündigung schreiben, Abschriftenliste …), dann liefere es NICHT, auch nicht in Kurzform. Antworte nur kurz und freundlich in einem Satz: „Das gehört zu meinem Paket „<Name>“ – das ist ab dem Plus-Abo dabei. Soll ich dir die Abos zeigen?“ Sagt er ja: abo_zeigen. Einfache Alltagsfragen, die nicht zu einem Paket gehören, beantwortest du ganz normal.\n`;
   }
   async function textKopieren(t) {
     if (NATIVE && SV && SV.copyText) { try { await SV.copyText({ text: t }); return true; } catch (e) { elog("Kopieren (Android): " + (e.message || e)); } }
