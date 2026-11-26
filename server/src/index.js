@@ -15,8 +15,8 @@ const HAIKU = "claude-haiku-5-5", SONNET = "claude-sonnet-5-5", OPUS = "claude-o
 
 // Abo-Stufen (Budget pro Monat in Euro, Anfragen pro Tag)
 export const STUFEN = {
-  probe:    { name: "Gratis",   budgetEur: 0,  proTag: 10,   bilderTag: 3,   modelle: [HAIKU],               suche: false, maxTokens: 1000 },
-  basis:    { name: "Basis",    budgetEur: 1.5, proTag: 40,  bilderTag: 10,  modelle: [HAIKU],                       suche: false, maxTokens: 1500 },
+  probe:    { name: "Gratis",   budgetEur: 0,  proTag: 10,   bilderTag: 3,   modelle: [HAIKU],               suche: false, maxTokens: 2000 },
+  basis:    { name: "Basis",    budgetEur: 1.5, proTag: 40,  bilderTag: 10,  modelle: [HAIKU],                       suche: false, maxTokens: 3000 },
   plus:     { name: "Plus",     budgetEur: 4,  proTag: 80,   bilderTag: 25, modelle: [HAIKU, SONNET],               suche: true,  maxTokens: 4000, bremse: 0.8 },
   pro:      { name: "Pro",      budgetEur: 9,  proTag: 150,  bilderTag: 60, modelle: [HAIKU, SONNET],               suche: true,  maxTokens: 4000, bremse: 0.9 },
   business: { name: "Business", budgetEur: 25, proTag: null, bilderTag: 150, modelle: [HAIKU, SONNET, OPUS],         suche: true,  maxTokens: 6000, bremse: 0.95 },

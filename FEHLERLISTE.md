@@ -3,7 +3,6 @@
 Robsen schickt tagsüber alles rein, abends wird gefixt und gesammelt hochgeladen.
 
 ## Offen (für heute Abend)
-- 25.11. (Ronny) „Erstellt mir keinen Ernährungsplan, obwohl mehrmals probiert.“ Prüfen: Fitness-Coach-Paket ist ab Plus (Gratis-Nutzer → muss klar sagen „ab Plus“ bzw. einfachen Plan trotzdem liefern?), langer Plan → max_tokens/„keine Antwort“?, PDF-Erstellung (dokument_erstellen) schlägt fehl?, neues Nachfassen bei behaupteten Aktionen greift fälschlich? Rückmeldung von Ronny abwarten: was genau kam?
 - 24.11. Sentinel als Standard-Assistent: Eintrag als Assistent-App (Intent ASSIST / VoiceInteractionService), damit langes Drücken der Ein/Aus-Taste bzw. Wischen aus der Ecke Sentinel startet und er sofort zuhört – auch aus anderen Apps. Store-konform. Einrichtungsschritt „Als Assistent einstellen“ mit Knopf zu den Android-Einstellungen.
 - Absturz-Ursache 1.88: wartet auf ersten Absturzbericht per Telegram (Wächter seit 1.90)
 
@@ -12,6 +11,7 @@ Robsen schickt tagsüber alles rein, abends wird gefixt und gesammelt hochgelade
 - Neuheiten-Regel: Bei jeder neuen Funktion APP_VERSION erhöhen und in NEUHEITEN eintragen → Sentinel fragt beim nächsten Öffnen „Möchtest du meine neuen Funktionen kennenlernen?“
 
 ## Erledigt
+- 26.11. (1.92) „Keine Antwort“ beim Ernährungsplan: Ursache = Antwortlänge (Gratis max. 1000 Tokens, Plan wurde mitten im Werkzeugaufruf abgeschnitten). Fix: Limit Gratis 2000 / Basis 3000, abgeschnittene Antworten → automatisch kürzere Fassung holen (zählt nicht), Längen-Hinweis je Abo im Prompt
 - 24.11. (v83, Store 1.91): „Was ich kann“ kompakt – Kästchen pro Fähigkeit, sortiert nach Gratis / Basis / Plus (Pakete) / Pro / Business, eigenes Abo markiert, ohne „Neu in Version“ · 💬-Knopf oben + Einstellung: Text auf dem Display ein/aus · Gezeigte Übersicht + „Was möchtest du einrichten?“ landen im Verlauf (kein „hab ich nicht gezeigt“ mehr) · Behauptete Aktionen ohne Werkzeug → einmal automatisch nachfassen (ausführen oder ehrlich sagen) · alte Fragen nicht nochmal beantworten (Regel seit v82)
 - 23.11. (v82, Store 1.89) nach Google-Entfernung („stürzt nach dem Öffnen ab“): Absturz-Wächter (Stacktrace + Gerät + Android-Version → Server → Telegram an Robsen), Spracherkennung/Sprachausgabe/Start abgesichert (keine Abstürze mehr durch Fehler in Rückrufen), WLAN-Hardware optional · Jede Frage zählt, gratis nur Name & Wohnort (Server) · Ausreden lassen: 2 s Wartezeit nach Satzende, Einstellung „Ich spreche mit Pausen“ (3 s) · Korrekturen ersetzen alte Infos inkl. Terminen · keine ungefragten Wiederholungen (Wetter, Rezept per Telegram)
 - 18.11. abends (v81, Store 1.88): Antworten als Text/Untertitel (abschaltbar) · Antippen während Sentinel spricht = sofort still · Telegram-Assistent in den Einstellungen (BotFather öffnen, Token einfügen, Chat-ID automatisch + Begrüßung) · Gratis beim Kennenlernen nur noch fürs Kennenlernen/Einrichten (fremde Themen per [extra] oder Nutz-Werkzeug zählen normal, Server)

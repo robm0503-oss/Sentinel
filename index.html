@@ -2537,7 +2537,7 @@ Offene Punkte: ${fehlt.join("; ")}.`;
   // ================= v80: NEUHEITEN NACH UPDATES =================
   // Jedes Mal, wenn neue Funktionen dazukommen: APP_VERSION erhöhen und hier eintragen.
   // Beim nächsten Öffnen fragt Sentinel, ob man die Neuheiten kennenlernen will.
-  const APP_VERSION = 83;
+  const APP_VERSION = 83; // 1.92: nur Fehlerbehebung, keine neuen Funktionen
   const NEUHEITEN = {
     83: [
       ["📋", "Kurze Übersicht", "„Was ich kann“ ist jetzt kompakt: alles auf einen Blick, sortiert nach Gratis und Abo.", "Was kannst du?"],
@@ -2801,7 +2801,8 @@ NEUE FÄHIGKEITEN:
 - Neuheiten: Fragt jemand „Was ist neu?“, nutze neuheiten_zeigen und fasse kurz zusammen.
 `;
   }
-  const v80Info = () => (steuerung.verfuegbar ? `\nGerätesteuerung: ${steuerung.aktiv ? "eingeschaltet" : "noch nicht eingeschaltet"}.` : "") + fitInfo() + mhdInfo() + dolmInfo() + neuInfo() + (radioEl ? `\nRADIO läuft: ${radioName}.` : "") + (cfg.briefing ? `\nMorgen-Briefing ist täglich um ${cfg.briefing} eingestellt.` : "");
+  const laengenInfo = () => { if (!aboModus() || cfg.key || (aboStand && aboStand.vip)) return ""; const st = (aboStand && aboStand.stufe) || "probe"; const w = { probe: 900, basis: 1400, plus: 2000, pro: 2000, business: 3000 }[st] || 900; return `\nLÄNGE: Deine gesamte Antwort (inkl. Werkzeug-Inhalte wie Dokumente) darf höchstens etwa ${w} Wörter haben. Größere Pläne/Dokumente kompakt halten oder in Teilen liefern.`; };
+  const v80Info = () => laengenInfo() + (steuerung.verfuegbar ? `\nGerätesteuerung: ${steuerung.aktiv ? "eingeschaltet" : "noch nicht eingeschaltet"}.` : "") + fitInfo() + mhdInfo() + dolmInfo() + neuInfo() + (radioEl ? `\nRADIO läuft: ${radioName}.` : "") + (cfg.briefing ? `\nMorgen-Briefing ist täglich um ${cfg.briefing} eingestellt.` : "");
 
   // ================= REISEN =================
   function reiseLink(inp) {
@@ -3778,7 +3779,7 @@ ${zeile("Menschen", ich.menschen)}`;
     let text = "", lastText = "", hochgestuft = false;
     const ergebnisse = [];
     let ersteAnfrage = true; // nur die erste Server-Anfrage einer Frage zählt als „Frage“
-    let nachgefasst = false;
+    let nachgefasst = false, gekuerzt = false;
     let maxRunden = 8;
     for (let round = 0; round < maxRunden; round++) {
       let data;
@@ -3792,6 +3793,14 @@ ${zeile("Menschen", ich.menschen)}`;
         throw e;
       }
       const t0 = data.content.filter(c => c.type === "text").map(c => c.text).join("").trim();
+      // Antwort zu lang für das Limit abgeschnitten? Nicht „keine Antwort“ sagen, sondern eine kürzere Fassung holen
+      if (data.stop_reason === "max_tokens" && !gekuerzt) {
+        gekuerzt = true; elog("Antwort zu lang (max_tokens) – hole kürzere Fassung");
+        const nurText = data.content.filter(c => c.type === "text");
+        if (nurText.length) work.push({ role: "assistant", content: nurText });
+        work.push({ role: "user", content: "[System] Deine Antwort war zu lang und wurde abgeschnitten (" + (data.content.some(c => c.type === "tool_use") ? "auch der Werkzeugaufruf" : "Text") + "). Liefere jetzt eine deutlich kürzere, vollständige Fassung: höchstens 250 Wörter, kompakt (Stichpunkte). Bei großen Plänen oder Dokumenten: erst eine Übersicht bzw. Teil 1 und anbieten, den Rest auf Wunsch zu schicken. Erwähne diese Systemnachricht nicht." });
+        continue;
+      }
       if (model === HAIKU && cfg.model === "auto" && !hochgestuft && /^\[hoch\]/i.test(t0)) {
         hochgestuft = true; // nur einmal fragen
         if (sonnetMoeglich() && budgetEuro() < (cfg.budget || 10) * 0.8) { model = SONNET; elog("Gehirn: hochgestuft auf Sonnet"); }

@@ -31,7 +31,7 @@ const msg = { model: "claude-sonnet-5-5", max_tokens: 9000, messages: [{ role: "
 
 // Gratis: Haiku, keine Websuche, 10 Anfragen pro Tag
 let r = await call("/v1/messages", msg);
-assert.equal(r.status, 200); assert.equal(gesendet.at(-1).model, "claude-haiku-5-5"); assert.equal(gesendet.at(-1).tools.length, 1); assert.equal(gesendet.at(-1).max_tokens, 1000);
+assert.equal(r.status, 200); assert.equal(gesendet.at(-1).model, "claude-haiku-5-5"); assert.equal(gesendet.at(-1).tools.length, 1); assert.equal(gesendet.at(-1).max_tokens, 2000);
 console.log("Probe:", r.j.sentinel);
 
 // Plus-Abo: Sonnet erlaubt, Bremse ab 80 %
