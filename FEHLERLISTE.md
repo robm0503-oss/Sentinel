@@ -3,6 +3,7 @@
 Robsen schickt tagsüber alles rein, abends wird gefixt und gesammelt hochgeladen.
 
 ## Offen (für heute Abend)
+- 25.11. (Ronny) „Erstellt mir keinen Ernährungsplan, obwohl mehrmals probiert.“ Prüfen: Fitness-Coach-Paket ist ab Plus (Gratis-Nutzer → muss klar sagen „ab Plus“ bzw. einfachen Plan trotzdem liefern?), langer Plan → max_tokens/„keine Antwort“?, PDF-Erstellung (dokument_erstellen) schlägt fehl?, neues Nachfassen bei behaupteten Aktionen greift fälschlich? Rückmeldung von Ronny abwarten: was genau kam?
 - 24.11. Sentinel als Standard-Assistent: Eintrag als Assistent-App (Intent ASSIST / VoiceInteractionService), damit langes Drücken der Ein/Aus-Taste bzw. Wischen aus der Ecke Sentinel startet und er sofort zuhört – auch aus anderen Apps. Store-konform. Einrichtungsschritt „Als Assistent einstellen“ mit Knopf zu den Android-Einstellungen.
 - Absturz-Ursache 1.88: wartet auf ersten Absturzbericht per Telegram (Wächter seit 1.90)
 
